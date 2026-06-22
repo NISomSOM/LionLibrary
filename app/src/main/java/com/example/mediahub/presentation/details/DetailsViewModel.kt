@@ -26,7 +26,6 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-// ===== State =====
 
 @Stable
 data class DetailsState(
@@ -41,7 +40,6 @@ data class DetailsState(
     val error: String? = null
 )
 
-// ===== Action =====
 
 sealed interface DetailsAction {
     data class OnSeasonSelected(val seasonNumber: Int) : DetailsAction
@@ -52,14 +50,12 @@ sealed interface DetailsAction {
     data class OnMarkEpisodeWatchedToggle(val episodeId: Long) : DetailsAction
 }
 
-// ===== Event =====
 
 sealed interface DetailsEvent {
     data class LaunchPlayer(val intent: Intent) : DetailsEvent
     data class ShowError(val message: String) : DetailsEvent
 }
 
-// ===== ViewModel =====
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DetailsViewModel(

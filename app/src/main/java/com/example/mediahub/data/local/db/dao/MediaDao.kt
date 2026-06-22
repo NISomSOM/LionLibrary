@@ -30,8 +30,6 @@ interface MediaDao {
     @Query("SELECT * FROM media WHERE tmdbId = :tmdbId LIMIT 1")
     suspend fun getByTmdbId(tmdbId: Int): MediaEntity?
 
-    @Query("SELECT * FROM media WHERE title = :title AND mediaType = :mediaType LIMIT 1")
-    suspend fun getByTitleAndType(title: String, mediaType: String): MediaEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(media: MediaEntity): Long
@@ -39,15 +37,9 @@ interface MediaDao {
     @Query("SELECT * FROM media WHERE isUnidentified = 0 ORDER BY lastUpdated DESC LIMIT 20")
     fun getRecentlyAdded(): Flow<List<MediaEntity>>
 
-    @Query("SELECT * FROM media WHERE isUnidentified = 0 ORDER BY title ASC")
-    fun getAll(): Flow<List<MediaEntity>>
-
-    @Query("DELETE FROM media WHERE id = :id")
-    suspend fun delete(id: Long)
 
     @Query("SELECT * FROM media WHERE filePath = :filePath LIMIT 1")
     suspend fun getByFilePath(filePath: String): MediaEntity?
 
-    @Query("SELECT COUNT(*) FROM media")
-    suspend fun getCount(): Int
+
 }

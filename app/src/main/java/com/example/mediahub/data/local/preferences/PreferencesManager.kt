@@ -15,7 +15,6 @@ class PreferencesManager(context: Context) {
 
     private val dataStore = context.dataStore
 
-    // --- Readers (Flow) ---
 
     val tmdbApiKey: Flow<String> = dataStore.data.map { prefs ->
         prefs[PreferencesKeys.TMDB_API_KEY] ?: ""
@@ -37,11 +36,6 @@ class PreferencesManager(context: Context) {
         prefs[PreferencesKeys.LAST_SCAN_TIME] ?: 0L
     }
 
-    val isSetupComplete: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[PreferencesKeys.IS_SETUP_COMPLETE] ?: false
-    }
-
-    // --- Writers (suspend) ---
 
     suspend fun setTmdbApiKey(key: String) {
         dataStore.edit { prefs -> prefs[PreferencesKeys.TMDB_API_KEY] = key }
@@ -63,7 +57,4 @@ class PreferencesManager(context: Context) {
         dataStore.edit { prefs -> prefs[PreferencesKeys.LAST_SCAN_TIME] = time }
     }
 
-    suspend fun setSetupComplete(complete: Boolean) {
-        dataStore.edit { prefs -> prefs[PreferencesKeys.IS_SETUP_COMPLETE] = complete }
-    }
 }

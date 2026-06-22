@@ -70,7 +70,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// ===== Root Composable =====
 
 @Composable
 fun SettingsRoot(
@@ -95,7 +94,6 @@ fun SettingsRoot(
     )
 }
 
-// ===== Screen Composable =====
 
 @Composable
 fun SettingsScreen(
@@ -285,7 +283,6 @@ fun SettingsScreen(
     }
 }
 
-// ===== Component Composables =====
 
 @Composable
 private fun ApiKeySection(

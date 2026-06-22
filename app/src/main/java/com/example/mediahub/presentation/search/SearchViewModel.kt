@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-// ===== State =====
 
 @Stable
 data class SearchState(
@@ -32,7 +31,6 @@ data class SearchState(
     val isSearching: Boolean = false
 )
 
-// ===== Action =====
 
 sealed interface SearchAction {
     data class OnQueryChange(val query: String) : SearchAction
@@ -40,14 +38,12 @@ sealed interface SearchAction {
     data class OnMediaClick(val mediaId: Long, val mediaType: MediaType) : SearchAction
 }
 
-// ===== Event =====
 
 sealed interface SearchEvent {
     data class NavigateToMovieDetails(val mediaId: Long) : SearchEvent
     data class NavigateToShowDetails(val mediaId: Long) : SearchEvent
 }
 
-// ===== ViewModel =====
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class SearchViewModel(

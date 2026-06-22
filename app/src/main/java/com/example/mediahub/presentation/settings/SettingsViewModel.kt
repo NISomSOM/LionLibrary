@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-// ===== State =====
 
 @Stable
 data class SettingsState(
@@ -34,7 +33,6 @@ data class SettingsState(
     val isApiKeySaved: Boolean = false
 )
 
-// ===== Action =====
 
 sealed interface SettingsAction {
     data class OnApiKeyInputChange(val value: String) : SettingsAction
@@ -49,13 +47,11 @@ sealed interface SettingsAction {
     data object OnDismissClearHistoryDialog : SettingsAction
 }
 
-// ===== Event =====
 
 sealed interface SettingsEvent {
     data class ShowSnackbar(val message: String) : SettingsEvent
 }
 
-// ===== ViewModel =====
 
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,

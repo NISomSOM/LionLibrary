@@ -2,13 +2,10 @@ package com.example.mediahub.data.mapper
 
 import com.example.mediahub.data.local.db.entity.EpisodeEntity
 import com.example.mediahub.data.local.db.entity.MediaEntity
-import com.example.mediahub.data.local.db.entity.MediaWithProgressEntity
 import com.example.mediahub.data.local.db.entity.SeasonEntity
 import com.example.mediahub.data.local.db.entity.WatchProgressEntity
 import com.example.mediahub.data.remote.dto.MovieDetailsDto
-import com.example.mediahub.data.remote.dto.MovieDto
 import com.example.mediahub.data.remote.dto.TvDetailsDto
-import com.example.mediahub.data.remote.dto.TvShowDto
 import com.example.mediahub.domain.model.Episode
 import com.example.mediahub.domain.model.MediaItem
 import com.example.mediahub.domain.model.MediaType
@@ -17,7 +14,6 @@ import com.example.mediahub.domain.model.Season
 import com.example.mediahub.domain.model.WatchProgress
 import com.example.mediahub.data.local.db.entity.JumpBackInEntity
 
-// ===== Entity ↔ Domain =====
 
 fun MediaEntity.toMediaItem(): MediaItem = MediaItem(
     id = id,
@@ -120,30 +116,6 @@ fun JumpBackInEntity.toJumpBackInItem(): JumpBackInItem = JumpBackInItem(
     lastWatched = lastWatched
 )
 
-// ===== DTO → Entity =====
-
-fun MovieDto.toMediaEntity(
-    mediaType: MediaType,
-    confidence: Float,
-    posterLocalPath: String?,
-    backdropLocalPath: String?,
-    filePath: String? = null
-): MediaEntity = MediaEntity(
-    tmdbId = id,
-    title = title,
-    originalTitle = originalTitle,
-    overview = overview,
-    posterPath = posterLocalPath,
-    backdropPath = backdropLocalPath,
-    genres = null, // genre IDs need separate lookup — populated from MovieDetailsDto
-    rating = voteAverage,
-    year = releaseDate?.take(4)?.toIntOrNull(),
-    mediaType = mediaType.name,
-    matchConfidence = confidence,
-    isUnidentified = false,
-    lastUpdated = System.currentTimeMillis(),
-    filePath = filePath
-)
 
 fun MovieDetailsDto.toMediaEntity(
     mediaType: MediaType,
@@ -166,28 +138,6 @@ fun MovieDetailsDto.toMediaEntity(
     isUnidentified = false,
     lastUpdated = System.currentTimeMillis(),
     filePath = filePath
-)
-
-fun TvShowDto.toMediaEntity(
-    mediaType: MediaType,
-    confidence: Float,
-    posterLocalPath: String?,
-    backdropLocalPath: String?
-): MediaEntity = MediaEntity(
-    tmdbId = id,
-    title = name,
-    originalTitle = originalName,
-    overview = overview,
-    posterPath = posterLocalPath,
-    backdropPath = backdropLocalPath,
-    genres = null,
-    rating = voteAverage,
-    year = firstAirDate?.take(4)?.toIntOrNull(),
-    mediaType = mediaType.name,
-    matchConfidence = confidence,
-    isUnidentified = false,
-    lastUpdated = System.currentTimeMillis(),
-    logoPath = null
 )
 
 fun TvDetailsDto.toMediaEntity(

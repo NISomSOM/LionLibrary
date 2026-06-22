@@ -12,8 +12,7 @@ class FolderPermissionException(message: String) : Exception(message)
 
 /**
  * Recursively traverses a SAF document tree and collects video files.
- * Filters by [Constants.SUPPORTED_VIDEO_EXTENSIONS] and ignores
- * files with [Constants.IGNORED_EXTENSIONS].
+ * Filters by [Constants.SUPPORTED_VIDEO_EXTENSIONS].
  */
 class FolderScanner(private val context: Context) {
 

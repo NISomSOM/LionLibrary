@@ -14,7 +14,6 @@ class DataStoreSettingsRepository(
     override val animeFolderUri: Flow<String> = preferencesManager.animeFolderUri
 
     override val lastScanTime: Flow<Long> = preferencesManager.lastScanTime
-    override val isSetupComplete: Flow<Boolean> = preferencesManager.isSetupComplete
 
     override suspend fun setTmdbApiKey(key: String) = preferencesManager.setTmdbApiKey(key)
     override suspend fun setMoviesFolderUri(uri: String) = preferencesManager.setMoviesFolderUri(uri)
@@ -22,5 +21,4 @@ class DataStoreSettingsRepository(
     override suspend fun setAnimeFolderUri(uri: String) = preferencesManager.setAnimeFolderUri(uri)
 
     override suspend fun setLastScanTime(time: Long) = preferencesManager.setLastScanTime(time)
-    override suspend fun setSetupComplete(complete: Boolean) = preferencesManager.setSetupComplete(complete)
 }

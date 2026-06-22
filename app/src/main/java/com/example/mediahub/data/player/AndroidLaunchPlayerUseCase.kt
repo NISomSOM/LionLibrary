@@ -9,7 +9,7 @@ import com.example.mediahub.domain.usecase.LaunchPlayerUseCase
  * Implementation of [LaunchPlayerUseCase] that builds a generic
  * ACTION_VIEW intent to play the video.
  */
-class LaunchPlayerUseCaseImpl(
+class AndroidLaunchPlayerUseCase(
     private val context: Context
 ) : LaunchPlayerUseCase {
 

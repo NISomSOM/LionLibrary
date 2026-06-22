@@ -10,7 +10,6 @@ interface SettingsRepository {
     val animeFolderUri: Flow<String>
 
     val lastScanTime: Flow<Long>
-    val isSetupComplete: Flow<Boolean>
 
     suspend fun setTmdbApiKey(key: String)
     suspend fun setMoviesFolderUri(uri: String)
@@ -18,5 +17,4 @@ interface SettingsRepository {
     suspend fun setAnimeFolderUri(uri: String)
 
     suspend fun setLastScanTime(time: Long)
-    suspend fun setSetupComplete(complete: Boolean)
 }

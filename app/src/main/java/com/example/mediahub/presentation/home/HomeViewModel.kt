@@ -3,7 +3,6 @@ package com.example.mediahub.presentation.home
 import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.core.net.toUri
 import com.example.mediahub.domain.model.JumpBackInItem
 import com.example.mediahub.domain.model.MediaItem
 import com.example.mediahub.domain.model.MediaType
@@ -18,7 +17,6 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-// ===== State =====
 
 @Stable
 data class HomeState(
@@ -32,7 +30,6 @@ data class HomeState(
     val error: String? = null
 )
 
-// ===== Action =====
 
 sealed interface HomeAction {
     data class OnMediaClick(val mediaId: Long, val mediaType: MediaType) : HomeAction
@@ -40,7 +37,6 @@ sealed interface HomeAction {
     data class OnJumpBackInClick(val filePath: String) : HomeAction
 }
 
-// ===== Event =====
 
 sealed interface HomeEvent {
     data class NavigateToMovieDetails(val mediaId: Long) : HomeEvent
@@ -50,7 +46,6 @@ sealed interface HomeEvent {
 
 }
 
-// ===== ViewModel =====
 
 class HomeViewModel(
     private val getHomeContentUseCase: GetHomeContentUseCase,

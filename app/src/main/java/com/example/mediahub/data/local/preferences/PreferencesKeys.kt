@@ -11,5 +11,4 @@ object PreferencesKeys {
     val ANIME_FOLDER_URI = stringPreferencesKey("anime_folder_uri")
 
     val LAST_SCAN_TIME = longPreferencesKey("last_scan_time")
-    val IS_SETUP_COMPLETE = booleanPreferencesKey("is_setup_complete")
 }

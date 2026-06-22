@@ -7,11 +7,6 @@ object Constants {
         "mkv", "mp4", "avi", "mov", "m4v", "webm"
     )
 
-    // Extensions to ignore during scanning
-    val IGNORED_EXTENSIONS = setOf(
-        "srt", "ass", "txt", "jpg", "png", "nfo", "xml"
-    )
-
     // TMDB
     const val TMDB_BASE_URL = "https://api.themoviedb.org/3/"
     const val TMDB_IMAGE_BASE_URL_W500 = "https://image.tmdb.org/t/p/w500"
@@ -22,13 +17,7 @@ object Constants {
     // Confidence threshold for TMDB matching
     const val MATCH_CONFIDENCE_THRESHOLD = 0.80f
 
-    // External player package names
-    const val VLC_PACKAGE = "org.videolan.vlc"
-    const val MX_PLAYER_PACKAGE = "com.mxtech.videoplayer.ad"
 
-    // Player preference values
-    const val PLAYER_VLC = "vlc"
-    const val PLAYER_MX = "mxplayer"
 
     // Image cache directory name
     const val IMAGE_CACHE_DIR = "posters"

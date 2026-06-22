@@ -32,7 +32,7 @@ import kotlinx.coroutines.flow.flowOn
  *
  * Implements [ScanLibraryUseCase] so it can be injected where needed.
  */
-class MediaScannerImpl(
+class AndroidMediaScanner(
     private val folderScanner: FolderScanner,
     private val fileNameParser: FileNameParser,
     private val tmdbApiService: TmdbApiService,
@@ -149,7 +149,6 @@ class MediaScannerImpl(
         emit(ScanProgress(total, total, "", ScanStatus.COMPLETE))
     }.flowOn(Dispatchers.IO)
 
-    // ===== Movie Handling =====
 
     private suspend fun handleMovie(
         parsed: ParsedFile.Movie,
@@ -191,13 +190,25 @@ class MediaScannerImpl(
                 imageCacheManager.cacheBackdrop(path, "movie_${details.id}_backdrop.jpg")
             }
 
+            // Fetch and cache logo
+            val images = try {
+                tmdbApiService.getMovieImages(details.id, apiKey)
+            } catch (e: Exception) {
+                null
+            }
+
+            val logoInfo = images?.logos?.firstOrNull { it.iso6391 == "en" } ?: images?.logos?.firstOrNull()
+            val logoLocalPath = logoInfo?.filePath?.let { path ->
+                imageCacheManager.cacheLogo(path, "movie_${details.id}_logo.png")
+            }
+
             val entity = details.toMediaEntity(
                 mediaType = mediaType,
                 confidence = confidence,
                 posterLocalPath = posterPath,
                 backdropLocalPath = backdropPath,
                 filePath = fileUri
-            )
+            ).copy(logoPath = logoLocalPath)
             mediaDao.insert(entity)
         } catch (e: retrofit2.HttpException) {
             throw e
@@ -208,7 +219,6 @@ class MediaScannerImpl(
         }
     }
 
-    // ===== Episode Handling (TV & Anime) =====
 
     private suspend fun handleEpisode(
         parsed: ParsedFile.Episode,
@@ -275,7 +285,6 @@ class MediaScannerImpl(
         }
     }
 
-    // ===== Shared Helpers =====
 
     /**
      * Finds or creates a MediaEntity for a TV show / anime by TMDB ID.
@@ -288,11 +297,7 @@ class MediaScannerImpl(
         confidence: Float,
         parsedTitle: String
     ): Long {
-        // Check if already exists by folder name (title)
-        val existingByTitle = mediaDao.getByTitleAndType(parsedTitle, mediaType.name)
-        if (existingByTitle != null) return existingByTitle.id
-
-        // Check if already exists by TMDB ID as a fallback
+        // Check if already exists by TMDB ID
         val existingByTmdb = mediaDao.getByTmdbId(tmdbId)
         if (existingByTmdb != null) return existingByTmdb.id
 

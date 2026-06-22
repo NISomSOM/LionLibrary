@@ -15,7 +15,11 @@ val networkModule = module {
 
     single {
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BASIC
+            level = if (com.example.mediahub.BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BASIC
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
         }
         OkHttpClient.Builder()
             .addInterceptor(logging)

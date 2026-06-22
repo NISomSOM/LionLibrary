@@ -49,4 +49,10 @@ interface TmdbApiService {
         @Path("id") id: Int,
         @Query("api_key") key: String
     ): TvImagesResponseDto
+
+    @GET("movie/{id}/images")
+    suspend fun getMovieImages(
+        @Path("id") id: Int,
+        @Query("api_key") key: String
+    ): TvImagesResponseDto
 }

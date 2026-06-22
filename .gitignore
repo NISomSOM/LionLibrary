@@ -1,8 +1,8 @@
 *.iml
 .gradle
 /local.properties
-.idea
-.vscode
+/.idea/
+/.vscode/
 .DS_Store
 /build
 build/

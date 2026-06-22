@@ -5,10 +5,10 @@ Note: The current version does NOT come with a built in media player (as of yet)
 
 ## Screenshots
 
-| Home Screens | Detail Screens |
-| :---: | :---: |
-| <img src="Screenshots/Home1.jpeg" width="240" alt="Home Screen 1" /> | <img src="Screenshots/Details1.jpeg" width="240" alt="Details Screen 1" /> |
-| <img src="Screenshots/Home2.jpeg" width="240" alt="Home Screen 2" /> | <img src="Screenshots/Details2.jpeg" width="240" alt="Details Screen 2" /> |
+| Home Screens | Detail Screens | Expected Directory |
+| :---: | :---: | :---: |
+| <img src="Screenshots/Home1.jpeg" width="240" alt="Home Screen 1" /> | <img src="Screenshots/Details1.jpeg" width="240" alt="Details Screen 1" /> | <img src="Screenshots/Directory1.jpeg" width="240" alt="Expected Directory 1" /> |
+| <img src="Screenshots/Home2.jpeg" width="240" alt="Home Screen 2" /> | <img src="Screenshots/Details2.jpeg" width="240" alt="Details Screen 2" /> | <img src="Screenshots/Directory2.jpeg" width="240" alt="Expected Directory 2" /> |
 
 ## Setup Instructions
 

@@ -11,6 +11,7 @@ data class EpisodeDto(
     @SerialName("name") val name: String? = null,
     @SerialName("overview") val overview: String? = null,
     @SerialName("runtime") val runtime: Int? = null,
+    @SerialName("air_date") val airDate: String? = null,
     @SerialName("still_path") val stillPath: String? = null
 )
 

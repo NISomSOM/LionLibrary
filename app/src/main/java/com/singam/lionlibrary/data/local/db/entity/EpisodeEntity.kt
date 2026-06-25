@@ -28,6 +28,7 @@ data class EpisodeEntity(
     val title: String?,
     val overview: String?,
     val runtime: Int?,
+    val airDate: String?,
     val thumbnailPath: String?,
     val filePath: String
 )

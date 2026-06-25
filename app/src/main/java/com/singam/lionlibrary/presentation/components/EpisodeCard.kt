@@ -1,8 +1,6 @@
 package com.singam.lionlibrary.presentation.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,14 +14,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -31,8 +26,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.singam.lionlibrary.domain.model.Episode
 import java.io.File
@@ -41,107 +38,109 @@ import java.io.File
 fun EpisodeCard(
     episode: Episode,
     isWatched: Boolean,
-    seasonPosterPath: String? = null,
-    showBackdropPath: String? = null,
-    showPosterPath: String? = null,
-    onClick: () -> Unit,
-    onToggleWatched: () -> Unit,
+    onMarkWatched: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val imagePath = episode.thumbnailPath ?: seasonPosterPath ?: showBackdropPath ?: showPosterPath
-
-    Card(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+            .background(Color.Transparent)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp)
+        // Top Row: Thumbnail + Title/Subtitle + Check Icon
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
+            // Left: Thumbnail
+            Box(
+                modifier = Modifier
+                    .width(110.dp)
+                    .aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(4.dp))
             ) {
-                // Thumbnail with Play Icon
-                Box(
-                    modifier = Modifier
-                        .weight(0.4f)
-                        .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (imagePath != null) {
-                        AsyncImage(
-                            model = File(imagePath),
-                            contentDescription = "Thumbnail",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Box(modifier = Modifier.fillMaxSize().background(Color.DarkGray))
-                    }
-                    
-                    // Semi-transparent play icon overlay
-                    Box(
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(100))
-                            .padding(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-                
-                Spacer(modifier = Modifier.width(12.dp))
-                
-                // Title and Watched Icon
-                Row(
-                    modifier = Modifier.weight(0.6f),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Text(
-                        text = "${episode.episodeNumber}. ${episode.title ?: "Episode ${episode.episodeNumber}"}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
+                if (episode.thumbnailPath != null) {
+                    AsyncImage(
+                        model = File(episode.thumbnailPath),
+                        contentDescription = "Thumbnail",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
-                    
-                    IconButton(
-                        onClick = onToggleWatched,
-                        modifier = Modifier.size(32.dp).padding(start = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isWatched) Icons.Default.Check else Icons.Outlined.CheckCircle,
-                            contentDescription = if (isWatched) "Mark as Unwatched" else "Mark as Watched",
-                            tint = if (isWatched) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxSize().background(Color.DarkGray))
                 }
+                
+                // Play Icon Overlay (bottom-left)
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Play",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(4.dp)
+                        .size(24.dp)
+                )
             }
-            
-            // Overview
-            if (!episode.overview.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(12.dp))
+
+            // Middle: Title & Subtitle
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp)
+            ) {
+                // Title
                 Text(
-                    text = episode.overview,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
+                    text = episode.title ?: "Episode ${episode.episodeNumber}",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Subtitle
+                val subtitleParts = mutableListOf<String>()
+                subtitleParts.add("S${episode.seasonNumber} E${episode.episodeNumber}")
+                if (!episode.airDate.isNullOrBlank()) {
+                    subtitleParts.add(episode.airDate)
+                }
+                if (episode.runtime != null && episode.runtime > 0) {
+                    subtitleParts.add("${episode.runtime}m")
+                }
+                Text(
+                    text = subtitleParts.joinToString(" · "),
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+
+            // Right: Watched Button
+            IconButton(
+                onClick = { onMarkWatched(episode.id) },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = if (isWatched) Icons.Rounded.CheckCircle else Icons.Outlined.CheckCircle,
+                    contentDescription = if (isWatched) "Mark as Unwatched" else "Mark as Watched",
+                    tint = if (isWatched) Color.White else Color.Gray
+                )
+            }
+        }
+
+        // Overview below Top Row
+        if (!episode.overview.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = episode.overview,
+                fontSize = 13.sp,
+                color = Color.Gray,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 18.sp
+            )
         }
     }
 }
-

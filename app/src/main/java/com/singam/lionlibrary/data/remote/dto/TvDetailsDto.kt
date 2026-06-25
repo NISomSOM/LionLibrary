@@ -16,7 +16,9 @@ data class TvDetailsDto(
     @SerialName("genres") val genres: List<GenreDto>? = null,
     @SerialName("number_of_seasons") val numberOfSeasons: Int? = null,
     @SerialName("number_of_episodes") val numberOfEpisodes: Int? = null,
-    @SerialName("seasons") val seasons: List<SeasonSummaryDto>? = null
+    @SerialName("seasons") val seasons: List<SeasonSummaryDto>? = null,
+    @SerialName("episode_run_time") val episodeRunTime: List<Int>? = null,
+    @SerialName("content_ratings") val contentRatings: TvContentRatingsResponseDto? = null
 )
 
 @Serializable

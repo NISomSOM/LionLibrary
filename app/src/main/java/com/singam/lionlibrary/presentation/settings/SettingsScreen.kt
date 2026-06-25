@@ -7,6 +7,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,6 +67,7 @@ import com.singam.lionlibrary.ui.theme.OrangeAccent
 import com.singam.lionlibrary.ui.theme.SuccessGreen
 import com.singam.lionlibrary.ui.theme.TextTertiary
 import com.singam.lionlibrary.util.FolderPickerHelper
+import com.singam.lionlibrary.R
 import org.koin.androidx.compose.koinViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -294,11 +297,22 @@ private fun ApiKeySection(
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
 
-    SectionHeader(
-        title = "TMDB API Key", 
-        icon = Icons.Filled.Key,
-        onInfoClick = onInfoClick
-    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SectionHeader(
+            title = "TMDB API Key", 
+            icon = Icons.Filled.Key,
+            onInfoClick = onInfoClick
+        )
+        Image(
+            painter = painterResource(id = R.drawable.tmdb_logo),
+            contentDescription = "TMDB Logo",
+            modifier = Modifier.height(16.dp)
+        )
+    }
     Spacer(modifier = Modifier.height(12.dp))
 
     OutlinedTextField(

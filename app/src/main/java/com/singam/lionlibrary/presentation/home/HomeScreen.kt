@@ -205,6 +205,19 @@ fun HomeScreen(
                 )
             }
         }
+
+        // Genres
+        state.genresContent.forEach { (genre, items) ->
+            if (items.isNotEmpty()) {
+                item {
+                    MediaRow(
+                        title = genre,
+                        items = items,
+                        onItemClick = { onAction(HomeAction.OnMediaClick(it.id, it.mediaType)) }
+                    )
+                }
+            }
+        }
     }
 }
 

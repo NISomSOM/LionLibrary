@@ -29,6 +29,8 @@ fun MediaEntity.toMediaItem(): MediaItem = MediaItem(
     mediaType = MediaType.valueOf(mediaType),
     matchConfidence = matchConfidence,
     isUnidentified = isUnidentified,
+    duration = duration,
+    certification = certification,
     lastUpdated = lastUpdated,
     filePath = filePath,
     logoPath = logoPath
@@ -48,6 +50,8 @@ fun MediaItem.toMediaEntity(): MediaEntity = MediaEntity(
     mediaType = mediaType.name,
     matchConfidence = matchConfidence,
     isUnidentified = isUnidentified,
+    duration = duration,
+    certification = certification,
     lastUpdated = lastUpdated,
     filePath = filePath,
     logoPath = logoPath
@@ -61,6 +65,7 @@ fun EpisodeEntity.toEpisode(): Episode = Episode(
     title = title,
     overview = overview,
     runtime = runtime,
+    airDate = airDate,
     thumbnailPath = thumbnailPath,
     filePath = filePath
 )
@@ -73,6 +78,7 @@ fun Episode.toEpisodeEntity(): EpisodeEntity = EpisodeEntity(
     title = title,
     overview = overview,
     runtime = runtime,
+    airDate = airDate,
     thumbnailPath = thumbnailPath,
     filePath = filePath
 )
@@ -136,6 +142,8 @@ fun MovieDetailsDto.toMediaEntity(
     mediaType = mediaType.name,
     matchConfidence = confidence,
     isUnidentified = false,
+    duration = runtime,
+    certification = releaseDates?.results?.find { it.iso31661 == "US" }?.releaseDates?.firstOrNull { !it.certification.isNullOrBlank() }?.certification,
     lastUpdated = System.currentTimeMillis(),
     filePath = filePath
 )
@@ -158,6 +166,8 @@ fun TvDetailsDto.toMediaEntity(
     mediaType = mediaType.name,
     matchConfidence = confidence,
     isUnidentified = false,
+    duration = episodeRunTime?.firstOrNull(),
+    certification = contentRatings?.results?.find { it.iso31661 == "US" }?.rating,
     lastUpdated = System.currentTimeMillis(),
     logoPath = null
 )

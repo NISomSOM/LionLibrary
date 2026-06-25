@@ -16,6 +16,9 @@ interface SeasonDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(season: SeasonEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(items: List<SeasonEntity>)
+
     @Query("SELECT * FROM seasons WHERE showId = :showId AND seasonNumber = :seasonNumber LIMIT 1")
     suspend fun getByShowAndSeason(showId: Long, seasonNumber: Int): SeasonEntity?
 }

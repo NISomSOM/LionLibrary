@@ -28,6 +28,8 @@ data class MediaEntity(
     val mediaType: String,
     val matchConfidence: Float,
     val isUnidentified: Boolean,
+    val duration: Int? = null,
+    val certification: String? = null,
     val lastUpdated: Long,
     val filePath: String? = null
 )

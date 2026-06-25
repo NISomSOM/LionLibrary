@@ -26,6 +26,7 @@ data class HomeState(
     val tvShows: List<MediaItem> = emptyList(),
     val anime: List<MediaItem> = emptyList(),
     val recentlyAdded: List<MediaItem> = emptyList(),
+    val genresContent: Map<String, List<MediaItem>> = emptyMap(),
     val isLoading: Boolean = true,
     val error: String? = null
 )
@@ -118,6 +119,16 @@ class HomeViewModel(
                         val allMedia = content.movies + content.tvShows + content.anime
                         val featured = currentState.featuredItem ?: allMedia.randomOrNull()
                         
+                        val genreMap = mutableMapOf<String, MutableList<MediaItem>>()
+                        allMedia.forEach { item ->
+                            item.genres?.split(",")?.forEach { genre ->
+                                val trimmedGenre = genre.trim()
+                                if (trimmedGenre.isNotEmpty()) {
+                                    genreMap.getOrPut(trimmedGenre) { mutableListOf() }.add(item)
+                                }
+                            }
+                        }
+
                         currentState.copy(
                             featuredItem = featured,
                             jumpBackInItems = content.jumpBackInItems,
@@ -125,6 +136,7 @@ class HomeViewModel(
                             tvShows = content.tvShows,
                             anime = content.anime,
                             recentlyAdded = content.recentlyAdded,
+                            genresContent = genreMap.mapValues { it.value.toList() }.toSortedMap(),
                             isLoading = false,
                             error = null
                         )

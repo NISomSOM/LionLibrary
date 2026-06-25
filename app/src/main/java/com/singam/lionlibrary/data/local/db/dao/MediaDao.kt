@@ -36,6 +36,9 @@ interface MediaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(media: MediaEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<MediaEntity>)
+
     @Query("SELECT * FROM media WHERE isUnidentified = 0 ORDER BY lastUpdated DESC LIMIT 20")
     fun getRecentlyAdded(): Flow<List<MediaEntity>>
 

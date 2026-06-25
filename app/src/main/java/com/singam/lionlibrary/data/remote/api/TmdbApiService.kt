@@ -25,13 +25,13 @@ interface TmdbApiService {
         @Query("query") query: String
     ): TvSearchResponse
 
-    @GET("movie/{id}")
+    @GET("movie/{id}?append_to_response=release_dates")
     suspend fun getMovieDetails(
         @Path("id") id: Int,
         @Query("api_key") key: String
     ): MovieDetailsDto
 
-    @GET("tv/{id}")
+    @GET("tv/{id}?append_to_response=content_ratings")
     suspend fun getTvDetails(
         @Path("id") id: Int,
         @Query("api_key") key: String

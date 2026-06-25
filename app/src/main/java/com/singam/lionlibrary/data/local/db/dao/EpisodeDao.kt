@@ -28,6 +28,9 @@ interface EpisodeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(episode: EpisodeEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<EpisodeEntity>)
+
     @Query("SELECT * FROM episodes WHERE showId = :showId ORDER BY seasonNumber, episodeNumber")
     fun getAllForShow(showId: Long): Flow<List<EpisodeEntity>>
 }

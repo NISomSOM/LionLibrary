@@ -17,6 +17,9 @@ object Constants {
     // Confidence threshold for TMDB matching
     const val MATCH_CONFIDENCE_THRESHOLD = 0.80f
 
+    // Number of files processed concurrently during library scan (flatMapMerge concurrency)
+    const val SCAN_CONCURRENCY = 8
+
 
 
     // Image cache directory name

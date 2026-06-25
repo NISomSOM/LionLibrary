@@ -20,8 +20,14 @@ import com.singam.lionlibrary.util.Constants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 // Main scanner logic that ties everything together (SAF, TMDB, DB, etc).
 // Implements ScanLibraryUseCase for injection.
@@ -36,6 +42,23 @@ class AndroidMediaScanner(
     private val settingsRepository: SettingsRepository
 ) : ScanLibraryUseCase {
 
+    // Per-tmdbId locks — prevent concurrent coroutines for the same show from racing
+    // into getOrCreateShow / getOrCreateSeason and inserting duplicate rows.
+    // ConcurrentHashMap is safe for concurrent reads/writes; getOrPut is atomic.
+    private val showLocks = ConcurrentHashMap<Int, Mutex>()
+    private val seasonLocks = ConcurrentHashMap<Pair<Long, Int>, Mutex>()
+
+    // Carries the result of processing a single file back to the serial collector.
+    private sealed interface FileResult {
+        data class Media(val entity: MediaEntity) : FileResult
+        data class Episode(val entity: EpisodeEntity) : FileResult
+        data class Skipped(val displayName: String) : FileResult
+        data class Error(val displayName: String, val status: ScanStatus) : FileResult
+        // Signals the entire scan should abort with a terminal status
+        data class FatalAbort(val status: ScanStatus, val displayName: String) : FileResult
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override operator fun invoke(): Flow<ScanProgress> = flow {
         val apiKey = settingsRepository.tmdbApiKey.first()
         if (apiKey.isBlank()) {
@@ -74,68 +97,128 @@ class AndroidMediaScanner(
 
         emit(ScanProgress(total, 0, "", ScanStatus.SCANNING))
 
-        for ((index, file) in allFiles.withIndex()) {
-            val fileUriString = file.uri.toString()
+        // Thread-safe counter — incremented from multiple coroutines inside flatMapMerge
+        val processedCount = AtomicInteger(0)
 
-            emit(
-                ScanProgress(
-                    total = total,
-                    processed = index,
-                    currentFile = file.displayName,
-                    status = ScanStatus.SCANNING
-                )
-            )
+        // Batch buffers — only written from the serial .collect {} lambda, so no locking needed
+        val mediaBatch = mutableListOf<MediaEntity>()
+        val episodeBatch = mutableListOf<EpisodeEntity>()
 
-            try {
-                // Check if already in DB
-                val existingMedia = mediaDao.getByFilePath(fileUriString)
-                if (existingMedia != null) {
-                    emit(ScanProgress(total, index + 1, file.displayName, ScanStatus.SKIPPED))
-                    continue
-                }
-
-                // Also check episodes table for TV/Anime
-                if (file.mediaType != MediaType.MOVIE) {
-                    val existingEpisode = episodeDao.getByFilePath(fileUriString)
-                    if (existingEpisode != null) {
-                        emit(ScanProgress(total, index + 1, file.displayName, ScanStatus.SKIPPED))
-                        continue
-                    }
-                }
-
-                // Parse filename
-                val parsed = fileNameParser.parse(file)
-
-                when (parsed) {
-                    is ParsedFile.Movie -> handleMovie(parsed, fileUriString, apiKey, file.mediaType)
-                    is ParsedFile.Episode -> handleEpisode(parsed, fileUriString, apiKey, file.mediaType)
-                    is ParsedFile.Unknown -> handleUnidentified(parsed.rawName, fileUriString, file.mediaType)
-                }
-
-                emit(ScanProgress(total, index + 1, file.displayName, ScanStatus.MATCHED))
-            } catch (e: retrofit2.HttpException) {
-                if (e.code() == 401) {
-                    emit(ScanProgress(total, index + 1, file.displayName, ScanStatus.INVALID_API_KEY))
-                    return@flow
-                } else {
-                    handleUnidentified(file.displayName, fileUriString, file.mediaType)
-                    emit(ScanProgress(total, index + 1, file.displayName, ScanStatus.ERROR))
-                }
-            } catch (e: java.io.IOException) {
-                handleUnidentified(file.displayName, fileUriString, file.mediaType)
-                // Save all remaining unprocessed files as unidentified
-                for (j in (index + 1) until allFiles.size) {
-                    val remaining = allFiles[j]
-                    handleUnidentified(remaining.displayName, remaining.uri.toString(), remaining.mediaType)
-                }
-                emit(ScanProgress(total, total, "", ScanStatus.NO_INTERNET))
-                return@flow
-            } catch (e: Exception) {
-                // Save as unidentified on error
-                handleUnidentified(file.displayName, fileUriString, file.mediaType)
-                emit(ScanProgress(total, index + 1, file.displayName, ScanStatus.ERROR))
+        // Flush helpers
+        suspend fun flushMedia() {
+            if (mediaBatch.isNotEmpty()) {
+                mediaDao.insertAll(mediaBatch.toList())
+                mediaBatch.clear()
             }
         }
+        suspend fun flushEpisodes() {
+            if (episodeBatch.isNotEmpty()) {
+                episodeDao.insertAll(episodeBatch.toList())
+                episodeBatch.clear()
+            }
+        }
+
+        var abortStatus: ScanStatus? = null
+
+        allFiles
+            .asFlow()
+            .flatMapMerge(concurrency = Constants.SCAN_CONCURRENCY) { file ->
+                flow {
+                    val fileUriString = file.uri.toString()
+
+                    try {
+                        // Skip files already in DB — no TMDB call made
+                        val existingMedia = mediaDao.getByFilePath(fileUriString)
+                        if (existingMedia != null) {
+                            emit(FileResult.Skipped(file.displayName))
+                            return@flow
+                        }
+
+                        // Also check episodes table for TV/Anime
+                        if (file.mediaType != MediaType.MOVIE) {
+                            val existingEpisode = episodeDao.getByFilePath(fileUriString)
+                            if (existingEpisode != null) {
+                                emit(FileResult.Skipped(file.displayName))
+                                return@flow
+                            }
+                        }
+
+                        // Parse filename
+                        val parsed = fileNameParser.parse(file)
+
+                        val result: FileResult = when (parsed) {
+                            is ParsedFile.Movie -> {
+                                val entity = processMovie(parsed, fileUriString, apiKey, file.mediaType)
+                                if (entity != null) FileResult.Media(entity)
+                                else FileResult.Error(file.displayName, ScanStatus.MATCHED)
+                            }
+                            is ParsedFile.Episode -> {
+                                val entity = processEpisode(parsed, fileUriString, apiKey, file.mediaType)
+                                if (entity != null) FileResult.Episode(entity)
+                                else FileResult.Error(file.displayName, ScanStatus.MATCHED)
+                            }
+                            is ParsedFile.Unknown -> {
+                                handleUnidentified(parsed.rawName, fileUriString, file.mediaType)
+                                FileResult.Error(file.displayName, ScanStatus.MATCHED)
+                            }
+                        }
+                        emit(result)
+                    } catch (e: retrofit2.HttpException) {
+                        if (e.code() == 401) {
+                            emit(FileResult.FatalAbort(ScanStatus.INVALID_API_KEY, file.displayName))
+                        } else {
+                            handleUnidentified(file.displayName, fileUriString, file.mediaType)
+                            emit(FileResult.Error(file.displayName, ScanStatus.ERROR))
+                        }
+                    } catch (e: java.io.IOException) {
+                        handleUnidentified(file.displayName, fileUriString, file.mediaType)
+                        emit(FileResult.FatalAbort(ScanStatus.NO_INTERNET, file.displayName))
+                    } catch (e: Exception) {
+                        // Save as unidentified on error, continue scanning
+                        handleUnidentified(file.displayName, fileUriString, file.mediaType)
+                        emit(FileResult.Error(file.displayName, ScanStatus.ERROR))
+                    }
+                }
+            }
+            .collect { result ->
+                // .collect{} is serial — safe to mutate batch lists without locking
+
+                when (result) {
+                    is FileResult.Skipped -> {
+                        val count = processedCount.incrementAndGet()
+                        emit(ScanProgress(total, count, result.displayName, ScanStatus.SKIPPED))
+                    }
+                    is FileResult.Media -> {
+                        mediaBatch.add(result.entity)
+                        val count = processedCount.incrementAndGet()
+                        emit(ScanProgress(total, count, result.entity.title, ScanStatus.MATCHED))
+                        if (mediaBatch.size >= 20) flushMedia()
+                    }
+                    is FileResult.Episode -> {
+                        episodeBatch.add(result.entity)
+                        val count = processedCount.incrementAndGet()
+                        emit(ScanProgress(total, count, "", ScanStatus.MATCHED))
+                        if (episodeBatch.size >= 20) flushEpisodes()
+                    }
+                    is FileResult.Error -> {
+                        val count = processedCount.incrementAndGet()
+                        emit(ScanProgress(total, count, result.displayName, result.status))
+                    }
+                    is FileResult.FatalAbort -> {
+                        // Flush whatever was buffered before stopping
+                        flushMedia()
+                        flushEpisodes()
+                        abortStatus = result.status
+                        emit(ScanProgress(total, processedCount.get(), result.displayName, result.status))
+                    }
+                }
+            }
+
+        // Flush remaining batches that didn't fill a full buffer of 20
+        flushMedia()
+        flushEpisodes()
+
+        if (abortStatus != null) return@flow
 
         // Update last scan time
         settingsRepository.setLastScanTime(System.currentTimeMillis())
@@ -143,19 +226,20 @@ class AndroidMediaScanner(
     }.flowOn(Dispatchers.IO)
 
 
-    private suspend fun handleMovie(
+    // Processes a movie file — returns the MediaEntity to be batched, or null if unidentified.
+    private suspend fun processMovie(
         parsed: ParsedFile.Movie,
         fileUri: String,
         apiKey: String,
         mediaType: MediaType
-    ) {
-        try {
+    ): MediaEntity? {
+        return try {
             val searchResult = tmdbApiService.searchMovie(apiKey, parsed.title, parsed.year)
             val firstResult = searchResult.results.firstOrNull()
 
             if (firstResult == null) {
                 handleUnidentified(parsed.title, fileUri, mediaType)
-                return
+                return null
             }
 
             val tmdbYear = firstResult.releaseDate?.take(4)?.toIntOrNull()
@@ -165,12 +249,12 @@ class AndroidMediaScanner(
 
             if (confidence < Constants.MATCH_CONFIDENCE_THRESHOLD) {
                 handleUnidentified(parsed.title, fileUri, mediaType)
-                return
+                return null
             }
 
             // Check for existing entry by TMDB ID (dedup)
             val existing = mediaDao.getByTmdbId(firstResult.id)
-            if (existing != null) return
+            if (existing != null) return null
 
             // Fetch full details for genres
             val details = tmdbApiService.getMovieDetails(firstResult.id, apiKey)
@@ -195,37 +279,38 @@ class AndroidMediaScanner(
                 imageCacheManager.cacheLogo(path, "movie_${details.id}_logo.png")
             }
 
-            val entity = details.toMediaEntity(
+            details.toMediaEntity(
                 mediaType = mediaType,
                 confidence = confidence,
                 posterLocalPath = posterPath,
                 backdropLocalPath = backdropPath,
                 filePath = fileUri
             ).copy(logoPath = logoLocalPath)
-            mediaDao.insert(entity)
         } catch (e: retrofit2.HttpException) {
             throw e
         } catch (e: java.io.IOException) {
             throw e
         } catch (e: Exception) {
             handleUnidentified(parsed.title, fileUri, mediaType)
+            null
         }
     }
 
 
-    private suspend fun handleEpisode(
+    // Processes an episode file — returns the EpisodeEntity to be batched, or null if unidentified.
+    private suspend fun processEpisode(
         parsed: ParsedFile.Episode,
         fileUri: String,
         apiKey: String,
         mediaType: MediaType
-    ) {
-        try {
+    ): EpisodeEntity? {
+        return try {
             val searchResult = tmdbApiService.searchTv(apiKey, parsed.title)
             val firstResult = searchResult.results.firstOrNull()
 
             if (firstResult == null) {
                 handleUnidentified(parsed.title, fileUri, mediaType)
-                return
+                return null
             }
 
             val tmdbYear = firstResult.firstAirDate?.take(4)?.toIntOrNull()
@@ -235,32 +320,34 @@ class AndroidMediaScanner(
 
             if (confidence < Constants.MATCH_CONFIDENCE_THRESHOLD) {
                 handleUnidentified(parsed.title, fileUri, mediaType)
-                return
+                return null
             }
 
-            // Get or create show entry
+            // Get or create show entry — individual insert needed (returns ID for linking)
             val showId = getOrCreateShow(firstResult.id, apiKey, mediaType, confidence, parsed.title)
 
-            // Get or create season entry — also returns the season details DTO to avoid a duplicate API call
+            // Get or create season entry — individual insert needed (returns ID + DTO)
             val (_, seasonDetails) = getOrCreateSeason(showId, firstResult.id, parsed.season, apiKey)
 
             val episodeInfo = seasonDetails?.episodes?.find { it.episodeNumber == parsed.episode }
 
             val thumbnailPath = episodeInfo?.stillPath?.let { path ->
-                imageCacheManager.cacheEpisodeStill(path, "tv_${firstResult.id}_s${parsed.season}e${parsed.episode}_still.jpg")
+                imageCacheManager.cacheEpisodeStill(
+                    path,
+                    "tv_${firstResult.id}_s${parsed.season}e${parsed.episode}_still.jpg"
+                )
             }
 
-            episodeDao.insert(
-                EpisodeEntity(
-                    showId = showId,
-                    seasonNumber = parsed.season,
-                    episodeNumber = parsed.episode,
-                    title = episodeInfo?.name,
-                    overview = episodeInfo?.overview,
-                    runtime = episodeInfo?.runtime,
-                    thumbnailPath = thumbnailPath,
-                    filePath = fileUri
-                )
+            EpisodeEntity(
+                showId = showId,
+                seasonNumber = parsed.season,
+                episodeNumber = parsed.episode,
+                title = episodeInfo?.name,
+                overview = episodeInfo?.overview,
+                runtime = episodeInfo?.runtime,
+                airDate = episodeInfo?.airDate,
+                thumbnailPath = thumbnailPath,
+                filePath = fileUri
             )
         } catch (e: retrofit2.HttpException) {
             throw e
@@ -268,11 +355,17 @@ class AndroidMediaScanner(
             throw e
         } catch (e: Exception) {
             handleUnidentified(parsed.title, fileUri, mediaType)
+            null
         }
     }
 
 
     // Finds or creates a MediaEntity for a TV show / anime. Returns the local DB ID.
+    //
+    // THREAD SAFETY: guarded by a per-tmdbId Mutex so that concurrent coroutines processing
+    // episodes of the same show don't all see getByTmdbId()==null and each insert a duplicate row.
+    // TV shows have filePath=null, so SQLite's UNIQUE constraint on filePath does NOT prevent
+    // duplicates (NULL != NULL in SQL). The mutex is the only guard.
     private suspend fun getOrCreateShow(
         tmdbId: Int,
         apiKey: String,
@@ -280,68 +373,78 @@ class AndroidMediaScanner(
         confidence: Float,
         parsedTitle: String
     ): Long {
-        // Check if already exists by TMDB ID
-        val existingByTmdb = mediaDao.getByTmdbId(tmdbId)
-        if (existingByTmdb != null) return existingByTmdb.id
+        val lock = showLocks.computeIfAbsent(tmdbId) { Mutex() }
+        return lock.withLock {
+            // Re-check inside the lock: another coroutine may have inserted it
+            // while we were waiting to acquire the lock.
+            val existingByTmdb = mediaDao.getByTmdbId(tmdbId)
+            if (existingByTmdb != null) return@withLock existingByTmdb.id
 
-        val details = tmdbApiService.getTvDetails(tmdbId, apiKey)
+            val details = tmdbApiService.getTvDetails(tmdbId, apiKey)
 
-        val posterPath = details.posterPath?.let { path ->
-            imageCacheManager.cachePoster(path, "tv_${details.id}_poster.jpg")
-        }
-        val backdropPath = details.backdropPath?.let { path ->
-            imageCacheManager.cacheBackdrop(path, "tv_${details.id}_backdrop.jpg")
-        }
+            val posterPath = details.posterPath?.let { path ->
+                imageCacheManager.cachePoster(path, "tv_${details.id}_poster.jpg")
+            }
+            val backdropPath = details.backdropPath?.let { path ->
+                imageCacheManager.cacheBackdrop(path, "tv_${details.id}_backdrop.jpg")
+            }
 
-        // Fetch and cache logo
-        val images = try {
-            tmdbApiService.getTvImages(tmdbId, apiKey)
-        } catch (e: Exception) {
-            null
-        }
-        
-        val logoInfo = images?.logos?.firstOrNull { it.iso6391 == "en" } ?: images?.logos?.firstOrNull()
-        val logoLocalPath = logoInfo?.filePath?.let { path ->
-            imageCacheManager.cacheLogo(path, "tv_${details.id}_logo.png")
-        }
+            // Fetch and cache logo
+            val images = try {
+                tmdbApiService.getTvImages(tmdbId, apiKey)
+            } catch (e: Exception) {
+                null
+            }
 
-        val entity = details.toMediaEntity(
-            mediaType = mediaType,
-            confidence = confidence,
-            posterLocalPath = posterPath,
-            backdropLocalPath = backdropPath
-        ).copy(title = parsedTitle, logoPath = logoLocalPath)
-        return mediaDao.insert(entity)
+            val logoInfo = images?.logos?.firstOrNull { it.iso6391 == "en" } ?: images?.logos?.firstOrNull()
+            val logoLocalPath = logoInfo?.filePath?.let { path ->
+                imageCacheManager.cacheLogo(path, "tv_${details.id}_logo.png")
+            }
+
+            val entity = details.toMediaEntity(
+                mediaType = mediaType,
+                confidence = confidence,
+                posterLocalPath = posterPath,
+                backdropLocalPath = backdropPath
+            ).copy(title = parsedTitle, logoPath = logoLocalPath)
+            mediaDao.insert(entity)
+        }
     }
 
     // Gets or creates a SeasonEntity. Returns the ID and the DTO so we don't hit the API twice.
+    //
+    // THREAD SAFETY: guarded by a per-(showId, seasonNumber) Mutex for the same reason as
+    // getOrCreateShow — concurrent episodes in the same season must not race on insert.
     private suspend fun getOrCreateSeason(
         showId: Long,
         tmdbId: Int,
         seasonNumber: Int,
         apiKey: String
     ): Pair<Long, SeasonDetailsDto?> {
-        // Check if the season already exists in the database
-        val existing = seasonDao.getByShowAndSeason(showId, seasonNumber)
+        val lock = seasonLocks.computeIfAbsent(Pair(showId, seasonNumber)) { Mutex() }
+        return lock.withLock {
+            // Re-check inside the lock.
+            val existing = seasonDao.getByShowAndSeason(showId, seasonNumber)
 
-        val seasonDetails = try {
-            tmdbApiService.getSeasonDetails(tmdbId, seasonNumber, apiKey)
-        } catch (e: Exception) {
-            null
-        }
-
-        if (existing != null) return Pair(existing.id, seasonDetails)
-
-        val seasonEntity = SeasonEntity(
-            showId = showId,
-            seasonNumber = seasonNumber,
-            name = seasonDetails?.name ?: "Season $seasonNumber",
-            posterPath = seasonDetails?.posterPath?.let { path ->
-                imageCacheManager.cachePoster(path, "tv_${tmdbId}_s${seasonNumber}_poster.jpg")
+            val seasonDetails = try {
+                tmdbApiService.getSeasonDetails(tmdbId, seasonNumber, apiKey)
+            } catch (e: Exception) {
+                null
             }
-        )
-        val seasonId = seasonDao.insert(seasonEntity)
-        return Pair(seasonId, seasonDetails)
+
+            if (existing != null) return@withLock Pair(existing.id, seasonDetails)
+
+            val seasonEntity = SeasonEntity(
+                showId = showId,
+                seasonNumber = seasonNumber,
+                name = seasonDetails?.name ?: "Season $seasonNumber",
+                posterPath = seasonDetails?.posterPath?.let { path ->
+                    imageCacheManager.cachePoster(path, "tv_${tmdbId}_s${seasonNumber}_poster.jpg")
+                }
+            )
+            val seasonId = seasonDao.insert(seasonEntity)
+            Pair(seasonId, seasonDetails)
+        }
     }
 
     // Fallback for files we couldn't identify.
@@ -368,10 +471,11 @@ class AndroidMediaScanner(
                 mediaType = mediaType.name,
                 matchConfidence = 0f,
                 isUnidentified = true,
+                duration = null,
+                certification = null,
                 lastUpdated = System.currentTimeMillis(),
                 filePath = fileUri
             )
         )
     }
 }
-

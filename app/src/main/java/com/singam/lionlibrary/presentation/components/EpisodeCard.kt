@@ -1,6 +1,7 @@
 package com.singam.lionlibrary.presentation.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,11 +40,13 @@ fun EpisodeCard(
     episode: Episode,
     isWatched: Boolean,
     onMarkWatched: (Long) -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .clickable { onClick() }
             .background(Color.Transparent)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {

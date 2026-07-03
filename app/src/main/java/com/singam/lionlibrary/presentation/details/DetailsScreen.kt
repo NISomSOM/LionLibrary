@@ -406,6 +406,7 @@ fun DetailsScreen(
                     episode = episode,
                     isWatched = state.watchedEpisodeIds.contains(episode.id),
                     onMarkWatched = { onAction(DetailsAction.OnMarkEpisodeWatchedToggle(it)) },
+                    onClick = { onAction(DetailsAction.OnPlayEpisode(episode.id, episode.filePath)) },
                     modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp)
                 )
             }

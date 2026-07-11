@@ -14,6 +14,7 @@ import com.singam.lionlibrary.presentation.home.HomeRoot
 
 import com.singam.lionlibrary.presentation.details.DetailsRoot
 import com.singam.lionlibrary.presentation.search.SearchRoot
+import com.singam.lionlibrary.presentation.player.PlayerRoot
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 @OptIn(ExperimentalFoundationApi::class)
@@ -63,7 +64,12 @@ fun LionLibraryNavHost(
             route = Routes.MOVIE_DETAILS,
             arguments = listOf(navArgument("mediaId") { type = NavType.LongType })
         ) { backStackEntry ->
-            DetailsRoot(snackbarHostState = snackbarHostState)
+            DetailsRoot(
+                snackbarHostState = snackbarHostState,
+                onNavigateToPlayer = { mediaType, mediaId ->
+                    navController.navigate(Routes.player(mediaType, mediaId))
+                }
+            )
         }
 
         // Show Details
@@ -71,7 +77,23 @@ fun LionLibraryNavHost(
             route = Routes.SHOW_DETAILS,
             arguments = listOf(navArgument("mediaId") { type = NavType.LongType })
         ) { backStackEntry ->
-            DetailsRoot(snackbarHostState = snackbarHostState)
+            DetailsRoot(
+                snackbarHostState = snackbarHostState,
+                onNavigateToPlayer = { mediaType, mediaId ->
+                    navController.navigate(Routes.player(mediaType, mediaId))
+                }
+            )
+        }
+
+        // Player
+        composable(
+            route = Routes.PLAYER,
+            arguments = listOf(
+                navArgument("mediaType") { type = NavType.StringType },
+                navArgument("mediaId") { type = NavType.LongType }
+            )
+        ) { backStackEntry ->
+            PlayerRoot(navController = navController)
         }
     }
 }

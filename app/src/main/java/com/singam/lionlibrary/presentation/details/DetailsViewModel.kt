@@ -11,7 +11,6 @@ import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.Season
 import com.singam.lionlibrary.domain.usecase.GetMediaDetailsUseCase
-import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
 
 import com.singam.lionlibrary.domain.usecase.UpdateWatchProgressUseCase
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -52,7 +51,7 @@ sealed interface DetailsAction {
 
 
 sealed interface DetailsEvent {
-    data class LaunchPlayer(val intent: Intent) : DetailsEvent
+    data class NavigateToPlayer(val mediaType: String, val mediaId: Long) : DetailsEvent
     data class ShowError(val message: String) : DetailsEvent
 }
 
@@ -61,7 +60,6 @@ sealed interface DetailsEvent {
 class DetailsViewModel(
     savedStateHandle: SavedStateHandle,
     private val getMediaDetailsUseCase: GetMediaDetailsUseCase,
-    private val launchPlayerUseCase: LaunchPlayerUseCase,
     private val updateWatchProgressUseCase: UpdateWatchProgressUseCase
 ) : ViewModel() {
 
@@ -171,8 +169,7 @@ class DetailsViewModel(
                 if (media != null && media.filePath != null) {
                     viewModelScope.launch {
                         updateWatchProgressUseCase.markAsStarted(mediaId, 0L)
-                        val intent = launchPlayerUseCase(Uri.parse(media.filePath), 0L)
-                        _events.send(DetailsEvent.LaunchPlayer(intent))
+                        _events.send(DetailsEvent.NavigateToPlayer(MediaType.MOVIE.name, mediaId))
                     }
                 } else {
                     viewModelScope.launch { _events.send(DetailsEvent.ShowError("File path not available")) }
@@ -183,8 +180,7 @@ class DetailsViewModel(
                 if (nextEp != null) {
                     viewModelScope.launch {
                         updateWatchProgressUseCase.markAsStarted(mediaId, nextEp.id)
-                        val intent = launchPlayerUseCase(Uri.parse(nextEp.filePath), 0L)
-                        _events.send(DetailsEvent.LaunchPlayer(intent))
+                        _events.send(DetailsEvent.NavigateToPlayer(MediaType.TV_SHOW.name, mediaId))
                     }
                 } else {
                     viewModelScope.launch { _events.send(DetailsEvent.ShowError("No episode available to resume")) }
@@ -193,8 +189,7 @@ class DetailsViewModel(
             is DetailsAction.OnPlayEpisode -> {
                 viewModelScope.launch {
                     updateWatchProgressUseCase.markAsStarted(mediaId, action.episodeId)
-                    val intent = launchPlayerUseCase(Uri.parse(action.filePath), 0L)
-                    _events.send(DetailsEvent.LaunchPlayer(intent))
+                    _events.send(DetailsEvent.NavigateToPlayer(MediaType.TV_SHOW.name, mediaId))
                 }
             }
             is DetailsAction.OnMarkMovieWatchedToggle -> {

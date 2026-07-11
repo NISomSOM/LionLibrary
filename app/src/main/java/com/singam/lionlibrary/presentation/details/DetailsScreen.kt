@@ -75,6 +75,7 @@ import java.io.File
 @Composable
 fun DetailsRoot(
     snackbarHostState: SnackbarHostState,
+    onNavigateToPlayer: (String, Long) -> Unit,
     viewModel: DetailsViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -83,12 +84,8 @@ fun DetailsRoot(
     LaunchedEffect(viewModel.events) {
         viewModel.events.collect { event ->
             when (event) {
-                is DetailsEvent.LaunchPlayer -> {
-                    try {
-                        context.startActivity(event.intent)
-                    } catch (e: Exception) {
-                        snackbarHostState.showSnackbar("Failed to launch player: ${e.message}")
-                    }
+                is DetailsEvent.NavigateToPlayer -> {
+                    onNavigateToPlayer(event.mediaType, event.mediaId)
                 }
                 is DetailsEvent.ShowError -> {
                     snackbarHostState.showSnackbar(event.message)

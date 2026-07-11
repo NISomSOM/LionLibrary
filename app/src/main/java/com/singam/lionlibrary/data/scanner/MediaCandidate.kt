@@ -6,7 +6,8 @@ sealed interface MediaCandidate {
     data class Movie(
         val sourceUri: Uri,
         val title: String,
-        val year: Int?
+        val year: Int?,
+        val subtitleUri: Uri? = null
     ) : MediaCandidate
 
     data class Show(
@@ -24,5 +25,6 @@ sealed interface MediaCandidate {
 
 data class EpisodeFile(
     val uri: Uri,
-    val episodeNumber: Int
+    val episodeNumber: Int,
+    val subtitleUri: Uri? = null
 )

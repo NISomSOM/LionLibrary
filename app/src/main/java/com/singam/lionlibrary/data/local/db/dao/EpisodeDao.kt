@@ -33,5 +33,19 @@ interface EpisodeDao {
 
     @Query("SELECT * FROM episodes WHERE showId = :showId ORDER BY seasonNumber, episodeNumber")
     fun getAllForShow(showId: Long): Flow<List<EpisodeEntity>>
+
+    @Query("""
+        SELECT * FROM episodes WHERE showId = :showId AND
+        (seasonNumber > :season OR (seasonNumber = :season AND episodeNumber > :episode))
+        ORDER BY seasonNumber ASC, episodeNumber ASC LIMIT 1
+    """)
+    suspend fun getNextEpisode(showId: Long, season: Int, episode: Int): EpisodeEntity?
+
+    @Query("""
+        SELECT * FROM episodes WHERE showId = :showId AND
+        (seasonNumber < :season OR (seasonNumber = :season AND episodeNumber < :episode))
+        ORDER BY seasonNumber DESC, episodeNumber DESC LIMIT 1
+    """)
+    suspend fun getPreviousEpisode(showId: Long, season: Int, episode: Int): EpisodeEntity?
 }
 

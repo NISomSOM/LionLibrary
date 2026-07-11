@@ -31,6 +31,7 @@ data class MediaEntity(
     val duration: Int? = null,
     val certification: String? = null,
     val lastUpdated: Long,
-    val filePath: String? = null
+    val filePath: String? = null,
+    val externalSubtitlePath: String? = null
 )
 

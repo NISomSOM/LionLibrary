@@ -102,6 +102,11 @@ dependencies {
     // DocumentFile (SAF)
     implementation(libs.androidx.documentfile)
 
+    // Media3
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.common)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

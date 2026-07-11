@@ -24,37 +24,45 @@ class FolderScanner(
                 val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext emptyList()
                 val results = mutableListOf<MediaCandidate>()
 
-                for (entry in root.listFiles()) {
+                val allFiles = root.listFiles()
+                val subtitles = allFiles.filter { it.isFile && isSubtitleFile(it.name) }
+
+                for (entry in allFiles) {
                     if (entry.isFile && isVideoFile(entry.name)) {
                         val nameWithoutExt = entry.name!!.substringBeforeLast('.')
+                        val subtitleUri = subtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
                         val (title, year) = parser.parseMovieTitle(nameWithoutExt)
                         if (title.isNotBlank()) {
-                            results.add(MediaCandidate.Movie(entry.uri, title, year))
+                            results.add(MediaCandidate.Movie(entry.uri, title, year, subtitleUri))
                         } else {
                             results.add(MediaCandidate.Unknown(entry.uri, entry.name ?: "", "Blank title", com.singam.lionlibrary.domain.model.MediaType.MOVIE))
                         }
                     } else if (entry.isDirectory) {
-                        val videos = entry.listFiles().filter { it.isFile && isVideoFile(it.name) }
+                        val dirFiles = entry.listFiles()
+                        val videos = dirFiles.filter { it.isFile && isVideoFile(it.name) }
+                        val dirSubtitles = dirFiles.filter { it.isFile && isSubtitleFile(it.name) }
                         if (videos.size == 1) {
                             val video = videos.first()
+                            val nameWithoutExt = video.name!!.substringBeforeLast('.')
+                            val subtitleUri = dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
                             var (title, year) = parser.parseMovieTitle(entry.name ?: "")
                             if (title.isBlank()) {
-                                val nameWithoutExt = video.name!!.substringBeforeLast('.')
                                 val fallback = parser.parseMovieTitle(nameWithoutExt)
                                 title = fallback.first
                                 year = fallback.second
                             }
                             if (title.isNotBlank()) {
-                                results.add(MediaCandidate.Movie(video.uri, title, year))
+                                results.add(MediaCandidate.Movie(video.uri, title, year, subtitleUri))
                             } else {
                                 results.add(MediaCandidate.Unknown(video.uri, video.name ?: "", "Blank title", com.singam.lionlibrary.domain.model.MediaType.MOVIE))
                             }
                         } else if (videos.size > 1) {
                             for (video in videos) {
                                 val nameWithoutExt = video.name!!.substringBeforeLast('.')
+                                val subtitleUri = dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
                                 val (title, year) = parser.parseMovieTitle(nameWithoutExt)
                                 if (title.isNotBlank()) {
-                                    results.add(MediaCandidate.Movie(video.uri, title, year))
+                                    results.add(MediaCandidate.Movie(video.uri, title, year, subtitleUri))
                                 } else {
                                     results.add(MediaCandidate.Unknown(video.uri, video.name ?: "", "Blank title", com.singam.lionlibrary.domain.model.MediaType.MOVIE))
                                 }
@@ -89,11 +97,15 @@ class FolderScanner(
                                 val seasonNum = extractSeasonNumber(subEntry.name!!)
                                 val eps = mutableListOf<EpisodeFile>()
                                 
-                                for (video in subEntry.listFiles().filter { it.isFile && isVideoFile(it.name) }) {
+                                val dirFiles = subEntry.listFiles()
+                                val dirSubtitles = dirFiles.filter { it.isFile && isSubtitleFile(it.name) }
+                                
+                                for (video in dirFiles.filter { it.isFile && isVideoFile(it.name) }) {
                                     val nameWithoutExt = video.name!!.substringBeforeLast('.')
+                                    val subtitleUri = dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
                                     val (_, epNums) = parser.parseSeasonAndEpisodeNumbers(nameWithoutExt)
                                     for (epNum in epNums) {
-                                        eps.add(EpisodeFile(video.uri, epNum))
+                                        eps.add(EpisodeFile(video.uri, epNum, subtitleUri))
                                     }
                                 }
                                 if (eps.isNotEmpty()) {
@@ -104,12 +116,16 @@ class FolderScanner(
 
                         if (!foundSeasonSubfolder) {
                             val defaultSeasonNum = embeddedSeason ?: 1
-                            for (video in entry.listFiles().filter { it.isFile && isVideoFile(it.name) }) {
+                            val dirFiles = entry.listFiles()
+                            val dirSubtitles = dirFiles.filter { it.isFile && isSubtitleFile(it.name) }
+                            
+                            for (video in dirFiles.filter { it.isFile && isVideoFile(it.name) }) {
                                 val nameWithoutExt = video.name!!.substringBeforeLast('.')
+                                val subtitleUri = dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
                                 val (parsedSeason, epNums) = parser.parseSeasonAndEpisodeNumbers(nameWithoutExt)
                                 val finalSeason = parsedSeason ?: defaultSeasonNum
                                 
-                                val eps = epNums.map { EpisodeFile(video.uri, it) }
+                                val eps = epNums.map { EpisodeFile(video.uri, it, subtitleUri) }
                                 if (eps.isNotEmpty()) {
                                     seasonsMap.getOrPut(finalSeason) { mutableListOf() }.addAll(eps)
                                 }
@@ -152,6 +168,12 @@ class FolderScanner(
         if (name == null) return false
         val extension = name.substringAfterLast('.', "").lowercase()
         return extension in Constants.SUPPORTED_VIDEO_EXTENSIONS
+    }
+
+    private fun isSubtitleFile(name: String?): Boolean {
+        if (name == null) return false
+        val extension = name.substringAfterLast('.', "").lowercase()
+        return extension in Constants.SUBTITLE_EXTENSIONS
     }
 
     private fun isSeasonFolder(name: String?): Boolean {

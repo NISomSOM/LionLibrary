@@ -74,9 +74,14 @@ import java.util.Date
 import java.util.Locale
 
 
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.foundation.layout.widthIn
+
 @Composable
 fun SettingsRoot(
     snackbarHostState: SnackbarHostState,
+    windowSizeClass: WindowSizeClass,
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -93,6 +98,7 @@ fun SettingsRoot(
 
     SettingsScreen(
         state = state,
+        windowSizeClass = windowSizeClass,
         onAction = viewModel::onAction
     )
 }
@@ -101,18 +107,25 @@ fun SettingsRoot(
 @Composable
 fun SettingsScreen(
     state: SettingsState,
+    windowSizeClass: WindowSizeClass,
     onAction: (SettingsAction) -> Unit
 ) {
     val context = LocalContext.current
     var infoDialogTitle by remember { mutableStateOf<String?>(null) }
     var infoDialogText by remember { mutableStateOf<String?>(null) }
 
+    val isExpandedScreen = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(top = 32.dp, bottom = 16.dp, start = 16.dp, end=16.dp)
+            .padding(top = 32.dp, bottom = 16.dp, start = 16.dp, end=16.dp),
+        horizontalAlignment = if (isExpandedScreen) Alignment.CenterHorizontally else Alignment.Start
     ) {
+        Column(
+            modifier = if (isExpandedScreen) Modifier.widthIn(max = 800.dp) else Modifier.fillMaxWidth()
+        ) {
         // Header
         Text(
             text = "Settings",
@@ -227,6 +240,7 @@ fun SettingsScreen(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+        }
     }
 
     // Clear History Confirmation Dialog

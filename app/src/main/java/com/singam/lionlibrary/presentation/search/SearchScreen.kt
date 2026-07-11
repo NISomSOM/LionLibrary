@@ -37,9 +37,13 @@ import com.singam.lionlibrary.domain.model.MediaFilter
 import com.singam.lionlibrary.presentation.components.MediaCard
 import org.koin.androidx.compose.koinViewModel
 
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+
 @Composable
 fun SearchRoot(
     viewModel: SearchViewModel = koinViewModel(),
+    windowSizeClass: WindowSizeClass,
     onNavigateToMovieDetails: (Long) -> Unit,
     onNavigateToShowDetails: (Long) -> Unit
 ) {
@@ -56,6 +60,7 @@ fun SearchRoot(
 
     SearchScreen(
         state = state,
+        windowSizeClass = windowSizeClass,
         onAction = viewModel::onAction
     )
 }
@@ -63,6 +68,7 @@ fun SearchRoot(
 @Composable
 fun SearchScreen(
     state: SearchState,
+    windowSizeClass: WindowSizeClass,
     onAction: (SearchAction) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -153,8 +159,14 @@ fun SearchScreen(
             }
         } else {
             // Results Grid
+            val columnsCount = when (windowSizeClass.widthSizeClass) {
+                WindowWidthSizeClass.Compact -> 3
+                WindowWidthSizeClass.Medium -> 4
+                WindowWidthSizeClass.Expanded -> 6
+                else -> 3
+            }
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = GridCells.Fixed(columnsCount),
                 contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),

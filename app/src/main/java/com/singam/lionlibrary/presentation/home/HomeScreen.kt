@@ -62,11 +62,15 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.ui.draw.clip
 import java.io.File
 
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+
 @androidx.compose.foundation.ExperimentalFoundationApi
 @Composable
 fun HomeRoot(
     viewModel: HomeViewModel = koinViewModel(),
     snackbarHostState: SnackbarHostState,
+    windowSizeClass: WindowSizeClass,
     onNavigateToMovieDetails: (Long) -> Unit,
     onNavigateToShowDetails: (Long) -> Unit,
     onNavigateToPlayer: (String, Long) -> Unit
@@ -98,6 +102,7 @@ fun HomeRoot(
 
     HomeScreen(
         state = state,
+        windowSizeClass = windowSizeClass,
         onAction = viewModel::onAction
     )
 }
@@ -107,6 +112,7 @@ fun HomeRoot(
 @Composable
 fun HomeScreen(
     state: HomeState,
+    windowSizeClass: WindowSizeClass,
     onAction: (HomeAction) -> Unit
 ) {
     var selectedJumpBackInItem by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<JumpBackInItem?>(null) }
@@ -152,6 +158,7 @@ fun HomeScreen(
             item {
                 HeroBannerCarousel(
                     mediaItems = heroItems,
+                    windowSizeClass = windowSizeClass,
                     onPlayClick = { id, type -> onAction(HomeAction.OnPlayClick(id, type)) },
                     onInfoClick = { id, type -> onAction(HomeAction.OnMediaClick(id, type)) }
                 )
@@ -160,6 +167,7 @@ fun HomeScreen(
             item {
                 HeroBannerCarousel(
                     mediaItems = listOf(state.featuredItem),
+                    windowSizeClass = windowSizeClass,
                     onPlayClick = { id, type -> onAction(HomeAction.OnPlayClick(id, type)) },
                     onInfoClick = { id, type -> onAction(HomeAction.OnMediaClick(id, type)) }
                 )
@@ -369,15 +377,17 @@ private fun JumpBackInOptionItem(
 @Composable
 fun HeroBannerCarousel(
     mediaItems: List<MediaItem>,
+    windowSizeClass: WindowSizeClass,
     onPlayClick: (Long, MediaType) -> Unit,
     onInfoClick: (Long, MediaType) -> Unit
 ) {
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { mediaItems.size })
 
+    val bannerHeight = if (windowSizeClass.widthSizeClass == WindowWidthSizeClass.Compact) 500.dp else 350.dp
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(500.dp)
+            .height(bannerHeight)
     ) {
         androidx.compose.foundation.pager.HorizontalPager(
             state = pagerState,

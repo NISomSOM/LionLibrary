@@ -359,6 +359,17 @@ fun PlayerScreen(
                         .padding(start = 32.dp, top = 24.dp, end = 32.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(Color(0x80000000), CircleShape)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+                    
+                    Spacer(modifier = Modifier.width(16.dp))
+                    
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = state.title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         if (state.subtitle.isNotBlank()) {
@@ -366,27 +377,16 @@ fun PlayerScreen(
                         }
                     }
                     
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        if (state.isExternalFallbackLoading) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp).padding(12.dp))
-                        } else {
-                            IconButton(
-                                onClick = { onAction(PlayerAction.OnExternalFallback) },
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .background(Color(0x80000000), CircleShape)
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open External", tint = Color.White)
-                            }
-                        }
-                        
+                    if (state.isExternalFallbackLoading) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp).padding(12.dp))
+                    } else {
                         IconButton(
-                            onClick = onBack,
+                            onClick = { onAction(PlayerAction.OnExternalFallback) },
                             modifier = Modifier
                                 .size(48.dp)
                                 .background(Color(0x80000000), CircleShape)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open External", tint = Color.White)
                         }
                     }
                 }
@@ -498,53 +498,7 @@ fun PlayerScreen(
             }
         }
 
-        // Small "Start Over" Prompt
-        LaunchedEffect(state.showResumePrompt) {
-            if (state.showResumePrompt) {
-                delay(5000)
-                if (state.showResumePrompt) {
-                    onAction(PlayerAction.OnDismissResumePrompt)
-                }
-            }
-        }
 
-        AnimatedVisibility(
-            visible = state.showResumePrompt,
-            enter = fadeIn() + androidx.compose.animation.slideInHorizontally(),
-            exit = fadeOut() + androidx.compose.animation.slideOutHorizontally(),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 32.dp, bottom = 240.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .background(Color(0xFF1E1E1E).copy(alpha = 0.9f), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Resumed from ${formatTime(state.resumePositionMs)}",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Button(
-                    onClick = { onAction(PlayerAction.OnResumePlayback) }, // "Start Over"
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    modifier = Modifier.height(32.dp)
-                ) {
-                    Text("Start Over", style = MaterialTheme.typography.labelMedium)
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = { onAction(PlayerAction.OnDismissResumePrompt) },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = Color.Gray)
-                }
-            }
-        }
     }
 
     if (showAudioSheet) {

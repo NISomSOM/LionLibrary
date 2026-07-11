@@ -16,12 +16,15 @@ import com.singam.lionlibrary.presentation.details.DetailsRoot
 import com.singam.lionlibrary.presentation.search.SearchRoot
 import com.singam.lionlibrary.presentation.player.PlayerRoot
 
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.foundation.ExperimentalFoundationApi
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LionLibraryNavHost(
     navController: NavHostController,
     snackbarHostState: SnackbarHostState,
+    windowSizeClass: WindowSizeClass,
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -33,6 +36,7 @@ fun LionLibraryNavHost(
         composable(Routes.HOME) {
             HomeRoot(
                 snackbarHostState = snackbarHostState,
+                windowSizeClass = windowSizeClass,
                 onNavigateToMovieDetails = { mediaId ->
                     navController.navigate(Routes.MOVIE_DETAILS.replace("{mediaId}", mediaId.toString()))
                 },
@@ -48,6 +52,7 @@ fun LionLibraryNavHost(
         // Search
         composable(Routes.SEARCH) {
             SearchRoot(
+                windowSizeClass = windowSizeClass,
                 onNavigateToMovieDetails = { mediaId ->
                     navController.navigate(Routes.MOVIE_DETAILS.replace("{mediaId}", mediaId.toString()))
                 },
@@ -59,7 +64,10 @@ fun LionLibraryNavHost(
 
         // Settings
         composable(Routes.SETTINGS) {
-            SettingsRoot(snackbarHostState = snackbarHostState)
+            SettingsRoot(
+                snackbarHostState = snackbarHostState,
+                windowSizeClass = windowSizeClass
+            )
         }
 
         // Movie Details
@@ -69,6 +77,7 @@ fun LionLibraryNavHost(
         ) { backStackEntry ->
             DetailsRoot(
                 snackbarHostState = snackbarHostState,
+                windowSizeClass = windowSizeClass,
                 onNavigateToPlayer = { mediaType, mediaId ->
                     navController.navigate(Routes.player(mediaType, mediaId))
                 }
@@ -82,6 +91,7 @@ fun LionLibraryNavHost(
         ) { backStackEntry ->
             DetailsRoot(
                 snackbarHostState = snackbarHostState,
+                windowSizeClass = windowSizeClass,
                 onNavigateToPlayer = { mediaType, mediaId ->
                     navController.navigate(Routes.player(mediaType, mediaId))
                 }

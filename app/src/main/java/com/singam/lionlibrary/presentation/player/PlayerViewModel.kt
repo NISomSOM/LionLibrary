@@ -39,9 +39,7 @@ data class PlayerState(
     val showControls: Boolean = true,
     val isExternalFallbackLoading: Boolean = false,
     val hasNext: Boolean = false,
-    val hasPrevious: Boolean = false,
-    val showResumePrompt: Boolean = false,
-    val resumePositionMs: Long = 0L
+    val hasPrevious: Boolean = false
 )
 
 sealed interface PlayerAction {
@@ -55,8 +53,6 @@ sealed interface PlayerAction {
     data object OnPlayNext : PlayerAction
     data object OnPlayPrevious : PlayerAction
     data object OnExternalFallback : PlayerAction
-    data object OnDismissResumePrompt : PlayerAction
-    data object OnResumePlayback : PlayerAction
 }
 
 sealed interface PlayerEvent {
@@ -208,8 +204,6 @@ class PlayerViewModel(
                 player.playWhenReady = true
                 _state.update { 
                     it.copy(
-                        showResumePrompt = true, 
-                        resumePositionMs = watchProgress.lastPositionMs,
                         currentPositionMs = watchProgress.lastPositionMs
                     ) 
                 }
@@ -279,15 +273,6 @@ class PlayerViewModel(
             is PlayerAction.OnExternalFallback -> {
                 handleExternalFallback()
             }
-            is PlayerAction.OnDismissResumePrompt -> {
-                _state.update { it.copy(showResumePrompt = false) }
-            }
-            is PlayerAction.OnResumePlayback -> {
-                // Now "Start Over" since we already resumed by default
-                _state.update { it.copy(showResumePrompt = false) }
-                player.seekTo(0)
-                player.playWhenReady = true
-            }
         }
     }
 
@@ -299,8 +284,7 @@ class PlayerViewModel(
             _state.update { it.copy(
                 title = show?.title ?: "Unknown Show",
                 subtitle = "S${ep.seasonNumber} E${ep.episodeNumber} - ${ep.title ?: ""}",
-                currentPositionMs = 0L,
-                showResumePrompt = false
+                currentPositionMs = 0L
             ) }
             checkNextPrevious(ep)
             preparePlayer(ep.filePath, ep.externalSubtitlePath)

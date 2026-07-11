@@ -17,17 +17,20 @@ interface WatchProgressDao {
             m.id AS mediaId, 
             m.title AS mediaTitle, 
             m.posterPath, 
+            m.backdropPath,
             m.mediaType,
             e.id AS episodeId, 
             e.title AS episodeTitle, 
             e.seasonNumber, 
             e.episodeNumber, 
+            e.thumbnailPath,
+            w.progress,
+            w.completed,
             COALESCE(e.filePath, m.filePath) AS filePath,
             MAX(w.lastWatched) AS lastWatched
         FROM watch_progress w
         INNER JOIN media m ON m.id = w.mediaId
         LEFT JOIN episodes e ON e.id = w.episodeId
-        WHERE w.completed = 0
         GROUP BY m.id
         ORDER BY lastWatched DESC
         LIMIT 20

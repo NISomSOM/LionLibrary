@@ -231,12 +231,12 @@ class AndroidMediaScanner(
 
     private suspend fun handleCandidateError(candidate: MediaCandidate) {
         when (candidate) {
-            is MediaCandidate.Movie -> handleUnidentified(candidate.title, candidate.sourceUri.toString(), MediaType.MOVIE)
+            is MediaCandidate.Movie -> handleUnidentified(candidate.title, candidate.sourceUri.toString(), MediaType.MOVIE, candidate.subtitleUri?.toString())
             is MediaCandidate.Unknown -> handleUnidentified(candidate.rawName, candidate.sourceUri.toString(), candidate.expectedType)
             is MediaCandidate.Show -> {
                 for (eps in candidate.seasons.values) {
                     for (ep in eps) {
-                        handleUnidentified("${candidate.title} S?E${ep.episodeNumber}", ep.uri.toString(), MediaType.TV_SHOW)
+                        handleUnidentified("${candidate.title} S?E${ep.episodeNumber}", ep.uri.toString(), MediaType.TV_SHOW, ep.subtitleUri?.toString())
                     }
                 }
             }
@@ -272,7 +272,7 @@ class AndroidMediaScanner(
         }
 
         if (firstResult == null || confidence < Constants.MATCH_CONFIDENCE_THRESHOLD) {
-            handleUnidentified(parsed.title, fileUri, MediaType.MOVIE)
+            handleUnidentified(parsed.title, fileUri, MediaType.MOVIE, parsed.subtitleUri?.toString())
             return null
         }
 
@@ -307,7 +307,7 @@ class AndroidMediaScanner(
             posterLocalPath = posterPath,
             backdropLocalPath = backdropPath,
             filePath = fileUri
-        ).copy(logoPath = logoLocalPath)
+        ).copy(logoPath = logoLocalPath, externalSubtitlePath = parsed.subtitleUri?.toString())
         }
     }
 
@@ -342,7 +342,7 @@ class AndroidMediaScanner(
             // Unidentified show -> all its episodes become unidentified
             for (eps in parsed.seasons.values) {
                 for (ep in eps) {
-                    handleUnidentified("${parsed.title} S?E${ep.episodeNumber}", ep.uri.toString(), MediaType.TV_SHOW)
+                    handleUnidentified("${parsed.title} S?E${ep.episodeNumber}", ep.uri.toString(), MediaType.TV_SHOW, ep.subtitleUri?.toString())
                     emit(FileResult.Error("${parsed.title} S?E${ep.episodeNumber}", ScanStatus.MATCHED))
                 }
             }
@@ -380,7 +380,8 @@ class AndroidMediaScanner(
                     runtime = episodeInfo?.runtime,
                     airDate = episodeInfo?.airDate,
                     thumbnailPath = thumbnailPath,
-                    filePath = fileUriString
+                    filePath = fileUriString,
+                    externalSubtitlePath = ep.subtitleUri?.toString()
                 )
                 emit(FileResult.Episode(entity))
             }
@@ -463,7 +464,8 @@ class AndroidMediaScanner(
     private suspend fun handleUnidentified(
         rawName: String,
         fileUri: String,
-        mediaType: MediaType
+        mediaType: MediaType,
+        subtitleUriString: String? = null
     ) {
         val existing = mediaDao.getByFilePath(fileUri)
         if (existing != null) return
@@ -485,7 +487,8 @@ class AndroidMediaScanner(
                 duration = null,
                 certification = null,
                 lastUpdated = System.currentTimeMillis(),
-                filePath = fileUri
+                filePath = fileUri,
+                externalSubtitlePath = subtitleUriString
             )
         )
     }

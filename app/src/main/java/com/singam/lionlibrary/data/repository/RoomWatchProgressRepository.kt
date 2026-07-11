@@ -11,12 +11,37 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class RoomWatchProgressRepository(
-    private val watchProgressDao: WatchProgressDao
+    private val watchProgressDao: WatchProgressDao,
+    private val episodeDao: com.singam.lionlibrary.data.local.db.dao.EpisodeDao
 ) : WatchProgressRepository {
 
     override fun getJumpBackInItems(): Flow<List<JumpBackInItem>> {
         return watchProgressDao.getJumpBackInItems().map { entities ->
-            entities.map { it.toJumpBackInItem() }
+            entities.mapNotNull { entity ->
+                if (entity.completed && entity.mediaType != "MOVIE") {
+                    val nextEp = episodeDao.getNextEpisode(entity.mediaId, entity.seasonNumber ?: 0, entity.episodeNumber ?: 0)
+                    if (nextEp != null) {
+                        entity.toJumpBackInItem().copy(
+                            episodeId = nextEp.id,
+                            episodeTitle = nextEp.title,
+                            seasonNumber = nextEp.seasonNumber,
+                            episodeNumber = nextEp.episodeNumber,
+                            thumbnailPath = nextEp.thumbnailPath,
+                            filePath = nextEp.filePath,
+                            progress = 0f,
+                            isNextUp = true
+                        )
+                    } else {
+                        // Series completed, hide from jump back in
+                        null
+                    }
+                } else if (!entity.completed) {
+                    entity.toJumpBackInItem().copy(isNextUp = false)
+                } else {
+                    // Movie completed
+                    null
+                }
+            }
         }
     }
 

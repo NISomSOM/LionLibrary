@@ -8,6 +8,8 @@ import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.usecase.GetHomeContentUseCase
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
+import com.singam.lionlibrary.domain.usecase.UpdateWatchProgressUseCase
+import android.net.Uri
 
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,13 +37,17 @@ data class HomeState(
 sealed interface HomeAction {
     data class OnMediaClick(val mediaId: Long, val mediaType: MediaType) : HomeAction
     data class OnPlayClick(val mediaId: Long, val mediaType: MediaType) : HomeAction
-    data class OnJumpBackInClick(val filePath: String) : HomeAction
+    data class OnJumpBackInClick(val item: JumpBackInItem) : HomeAction
+    data class OnPlayExternal(val item: JumpBackInItem) : HomeAction
+    data class OnStartFromBeginning(val item: JumpBackInItem) : HomeAction
+    data class OnRemoveWatchProgress(val item: JumpBackInItem) : HomeAction
 }
 
 
 sealed interface HomeEvent {
     data class NavigateToMovieDetails(val mediaId: Long) : HomeEvent
     data class NavigateToShowDetails(val mediaId: Long) : HomeEvent
+    data class NavigateToPlayer(val mediaType: String, val mediaId: Long) : HomeEvent
     data class ShowError(val message: String) : HomeEvent
     data class LaunchPlayer(val intent: android.content.Intent) : HomeEvent
 
@@ -50,7 +56,8 @@ sealed interface HomeEvent {
 
 class HomeViewModel(
     private val getHomeContentUseCase: GetHomeContentUseCase,
-    private val launchPlayerUseCase: LaunchPlayerUseCase
+    private val launchPlayerUseCase: LaunchPlayerUseCase,
+    private val updateWatchProgressUseCase: UpdateWatchProgressUseCase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeState())
@@ -85,22 +92,43 @@ class HomeViewModel(
                 }
             }
             is HomeAction.OnJumpBackInClick -> {
-                if (action.filePath.isNotBlank()) {
-                    try {
-                        val uri = android.net.Uri.parse(action.filePath)
-                        viewModelScope.launch {
-                            val intent = launchPlayerUseCase(uri, 0L)
-                            _events.send(HomeEvent.LaunchPlayer(intent))
-                        }
-                    } catch (e: Exception) {
-                        viewModelScope.launch {
-                            _events.send(HomeEvent.ShowError("Could not launch player"))
-                        }
+                val targetId = if (action.item.mediaType == MediaType.MOVIE) action.item.mediaId else (action.item.episodeId ?: 0L)
+                if (targetId > 0L) {
+                    viewModelScope.launch {
+                        _events.send(HomeEvent.NavigateToPlayer(action.item.mediaType.name, targetId))
                     }
                 } else {
                     viewModelScope.launch {
                         _events.send(HomeEvent.ShowError("File path not found"))
                     }
+                }
+            }
+            is HomeAction.OnPlayExternal -> {
+                val path = action.item.filePath
+                if (path != null) {
+                    viewModelScope.launch {
+                        try {
+                            val intent = launchPlayerUseCase(Uri.parse(path), (action.item.progress ?: 0f).toLong())
+                            _events.send(HomeEvent.LaunchPlayer(intent))
+                        } catch (e: Exception) {
+                            _events.send(HomeEvent.ShowError("Failed to launch external player"))
+                        }
+                    }
+                }
+            }
+            is HomeAction.OnStartFromBeginning -> {
+                val targetId = if (action.item.mediaType == MediaType.MOVIE) action.item.mediaId else (action.item.episodeId ?: 0L)
+                if (targetId > 0L) {
+                    viewModelScope.launch {
+                        updateWatchProgressUseCase.markAsUnwatched(action.item.mediaId, if (action.item.mediaType == MediaType.MOVIE) 0L else targetId)
+                        _events.send(HomeEvent.NavigateToPlayer(action.item.mediaType.name, targetId))
+                    }
+                }
+            }
+            is HomeAction.OnRemoveWatchProgress -> {
+                viewModelScope.launch {
+                    val targetId = if (action.item.mediaType == MediaType.MOVIE) 0L else (action.item.episodeId ?: 0L)
+                    updateWatchProgressUseCase.markAsUnwatched(action.item.mediaId, targetId)
                 }
             }
         }

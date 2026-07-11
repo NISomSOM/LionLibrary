@@ -4,6 +4,7 @@ import com.singam.lionlibrary.presentation.details.DetailsViewModel
 import com.singam.lionlibrary.presentation.home.HomeViewModel
 import com.singam.lionlibrary.presentation.search.SearchViewModel
 import com.singam.lionlibrary.presentation.settings.SettingsViewModel
+import com.singam.lionlibrary.presentation.player.PlayerViewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
@@ -12,5 +13,6 @@ val presentationModule = module {
     viewModelOf(::HomeViewModel)
     viewModelOf(::SearchViewModel)
     viewModelOf(::DetailsViewModel)
+    viewModelOf(::PlayerViewModel)
 }
 

@@ -30,6 +30,7 @@ data class EpisodeEntity(
     val runtime: Int?,
     val airDate: String?,
     val thumbnailPath: String?,
-    val filePath: String
+    val filePath: String,
+    val externalSubtitlePath: String? = null
 )
 

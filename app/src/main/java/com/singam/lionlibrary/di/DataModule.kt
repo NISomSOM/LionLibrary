@@ -25,7 +25,7 @@ val dataModule = module {
 
     singleOf(::FileNameParser)
 
-    single { FolderScanner(androidContext()) }
+    single { FolderScanner(androidContext(), get()) }
 
     single { ImageCacheManager(androidContext(), get()) }
 

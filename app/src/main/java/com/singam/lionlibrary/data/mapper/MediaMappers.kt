@@ -14,6 +14,13 @@ import com.singam.lionlibrary.domain.model.Season
 import com.singam.lionlibrary.domain.model.WatchProgress
 import com.singam.lionlibrary.data.local.db.entity.JumpBackInEntity
 
+fun TvDetailsDto.inferMediaType(): MediaType {
+    val isAnimation = genres?.any { it.id == 16 } == true
+    val isJapanese = originCountry?.contains("JP") == true
+        || originalLanguage == "ja"
+    return if (isAnimation && isJapanese) MediaType.ANIME
+        else MediaType.TV_SHOW
+}
 
 fun MediaEntity.toMediaItem(): MediaItem = MediaItem(
     id = id,

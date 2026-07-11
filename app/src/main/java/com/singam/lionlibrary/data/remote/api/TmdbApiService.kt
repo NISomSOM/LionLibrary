@@ -55,5 +55,17 @@ interface TmdbApiService {
         @Path("id") id: Int,
         @Query("api_key") key: String
     ): TvImagesResponseDto
+
+    @GET("tv/{id}/alternative_titles")
+    suspend fun getTvAlternativeTitles(
+        @Path("id") id: Int,
+        @Query("api_key") key: String
+    ): com.singam.lionlibrary.data.remote.dto.AlternativeTitlesResponse
+
+    @GET("movie/{id}/alternative_titles")
+    suspend fun getMovieAlternativeTitles(
+        @Path("id") id: Int,
+        @Query("api_key") key: String
+    ): com.singam.lionlibrary.data.remote.dto.AlternativeTitlesResponse
 }
 

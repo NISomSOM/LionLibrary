@@ -159,21 +159,11 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         FolderPickerRow(
-            label = "TV Shows",
+            label = "TV Shows & Anime",
             currentUri = state.showsFolderUri,
             onFolderSelected = { uri ->
                 FolderPickerHelper.takePersistablePermission(context.contentResolver, uri)
                 onAction(SettingsAction.OnShowsFolderSelected(uri.toString()))
-            }
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        FolderPickerRow(
-            label = "Anime",
-            currentUri = state.animeFolderUri,
-            onFolderSelected = { uri ->
-                FolderPickerHelper.takePersistablePermission(context.contentResolver, uri)
-                onAction(SettingsAction.OnAnimeFolderSelected(uri.toString()))
             }
         )
 

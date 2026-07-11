@@ -3,70 +3,167 @@ package com.singam.lionlibrary.data.scanner
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
-import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.util.Constants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class FolderPermissionException(message: String) : Exception(message)
 
-// Walks through SAF folders to find video files.
-class FolderScanner(private val context: Context) {
+class FolderScanner(
+    private val context: Context,
+    private val parser: FileNameParser
+) {
 
-    private val seasonPattern1 = Regex("""^[Ss]eason\s*\d+$""")
-    private val seasonPattern2 = Regex("""^[Ss]\d+$""")
+    private val seasonPattern1 = Regex("""(?:^|\s)Season\s+(\d+)""", RegexOption.IGNORE_CASE)
+    private val seasonPattern2 = Regex("""(?:^|\s)S(\d+)(?:\s|$)""", RegexOption.IGNORE_CASE)
+    private val specialsPattern = Regex("""^Specials$""", RegexOption.IGNORE_CASE)
 
-    // Scans a folder (SAF URI) and returns all video files we care about.
-    suspend fun scanFolder(treeUri: Uri, mediaType: MediaType): List<ScannedFile> =
+    suspend fun scanMoviesFolder(treeUri: Uri): List<MediaCandidate> =
         withContext(Dispatchers.IO) {
             try {
                 val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext emptyList()
-                val results = mutableListOf<ScannedFile>()
-                traverseDirectory(root, mediaType, results)
+                val results = mutableListOf<MediaCandidate>()
+
+                for (entry in root.listFiles()) {
+                    if (entry.isFile && isVideoFile(entry.name)) {
+                        val nameWithoutExt = entry.name!!.substringBeforeLast('.')
+                        val (title, year) = parser.parseMovieTitle(nameWithoutExt)
+                        if (title.isNotBlank()) {
+                            results.add(MediaCandidate.Movie(entry.uri, title, year))
+                        } else {
+                            results.add(MediaCandidate.Unknown(entry.uri, entry.name ?: "", "Blank title", com.singam.lionlibrary.domain.model.MediaType.MOVIE))
+                        }
+                    } else if (entry.isDirectory) {
+                        val videos = entry.listFiles().filter { it.isFile && isVideoFile(it.name) }
+                        if (videos.size == 1) {
+                            val video = videos.first()
+                            var (title, year) = parser.parseMovieTitle(entry.name ?: "")
+                            if (title.isBlank()) {
+                                val nameWithoutExt = video.name!!.substringBeforeLast('.')
+                                val fallback = parser.parseMovieTitle(nameWithoutExt)
+                                title = fallback.first
+                                year = fallback.second
+                            }
+                            if (title.isNotBlank()) {
+                                results.add(MediaCandidate.Movie(video.uri, title, year))
+                            } else {
+                                results.add(MediaCandidate.Unknown(video.uri, video.name ?: "", "Blank title", com.singam.lionlibrary.domain.model.MediaType.MOVIE))
+                            }
+                        } else if (videos.size > 1) {
+                            for (video in videos) {
+                                val nameWithoutExt = video.name!!.substringBeforeLast('.')
+                                val (title, year) = parser.parseMovieTitle(nameWithoutExt)
+                                if (title.isNotBlank()) {
+                                    results.add(MediaCandidate.Movie(video.uri, title, year))
+                                } else {
+                                    results.add(MediaCandidate.Unknown(video.uri, video.name ?: "", "Blank title", com.singam.lionlibrary.domain.model.MediaType.MOVIE))
+                                }
+                            }
+                        }
+                    }
+                }
                 results
             } catch (e: SecurityException) {
                 throw FolderPermissionException("Permission revoked for folder: $treeUri")
             }
         }
 
-    // Recursive walk.
-    private fun traverseDirectory(
-        directory: DocumentFile,
-        mediaType: MediaType,
-        results: MutableList<ScannedFile>,
-        parentName: String? = null,
-        grandParentName: String? = null
-    ) {
-        val children = directory.listFiles()
-        for (file in children) {
-            if (file.isDirectory) {
-                traverseDirectory(file, mediaType, results, directory.name, parentName)
-            } else {
-                val name = file.name ?: continue
-                val extension = name.substringAfterLast('.', "").lowercase()
+    suspend fun scanShowsFolder(treeUri: Uri): List<MediaCandidate> =
+        withContext(Dispatchers.IO) {
+            try {
+                val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext emptyList()
+                val rawCandidates = mutableListOf<MediaCandidate.Show>()
+                val results = mutableListOf<MediaCandidate>()
 
-                if (extension in Constants.SUPPORTED_VIDEO_EXTENSIONS) {
-                    val pName = directory.name?.trim() ?: ""
-                    val gpName = parentName?.trim() ?: ""
-                    val isSeasonFolder = seasonPattern1.matches(pName) || seasonPattern2.matches(pName)
-                    val parentFolderName = if (isSeasonFolder && gpName.isNotEmpty()) {
-                        gpName
-                    } else {
-                        pName
+                for (entry in root.listFiles()) {
+                    if (entry.isDirectory) {
+                        val (embeddedSeason, identity) = parser.parseShowFolderIdentity(entry.name ?: "")
+                        if (identity.isBlank()) continue
+
+                        val seasonsMap = mutableMapOf<Int, MutableList<EpisodeFile>>()
+                        var foundSeasonSubfolder = false
+
+                        for (subEntry in entry.listFiles()) {
+                            if (subEntry.isDirectory && isSeasonFolder(subEntry.name)) {
+                                foundSeasonSubfolder = true
+                                val seasonNum = extractSeasonNumber(subEntry.name!!)
+                                val eps = mutableListOf<EpisodeFile>()
+                                
+                                for (video in subEntry.listFiles().filter { it.isFile && isVideoFile(it.name) }) {
+                                    val nameWithoutExt = video.name!!.substringBeforeLast('.')
+                                    val (parsedSeason, epNums) = parser.parseSeasonAndEpisodeNumbers(nameWithoutExt)
+                                    val finalSeason = parsedSeason ?: seasonNum
+                                    for (epNum in epNums) {
+                                        eps.add(EpisodeFile(video.uri, epNum))
+                                    }
+                                }
+                                if (eps.isNotEmpty()) {
+                                    seasonsMap.getOrPut(seasonNum) { mutableListOf() }.addAll(eps)
+                                }
+                            }
+                        }
+
+                        if (!foundSeasonSubfolder) {
+                            val defaultSeasonNum = embeddedSeason ?: 1
+                            for (video in entry.listFiles().filter { it.isFile && isVideoFile(it.name) }) {
+                                val nameWithoutExt = video.name!!.substringBeforeLast('.')
+                                val (parsedSeason, epNums) = parser.parseSeasonAndEpisodeNumbers(nameWithoutExt)
+                                val finalSeason = parsedSeason ?: defaultSeasonNum
+                                
+                                val eps = epNums.map { EpisodeFile(video.uri, it) }
+                                if (eps.isNotEmpty()) {
+                                    seasonsMap.getOrPut(finalSeason) { mutableListOf() }.addAll(eps)
+                                }
+                            }
+                        }
+
+                        if (seasonsMap.isNotEmpty()) {
+                            rawCandidates.add(MediaCandidate.Show(identity, seasonsMap))
+                        }
+                    } else if (entry.isFile && isVideoFile(entry.name)) {
+                        results.add(MediaCandidate.Unknown(
+                            entry.uri, 
+                            entry.name ?: "", 
+                            "Place inside a folder named after the show", 
+                            com.singam.lionlibrary.domain.model.MediaType.TV_SHOW
+                        ))
                     }
-
-                    results.add(
-                        ScannedFile(
-                            uri = file.uri,
-                            displayName = name,
-                            extension = extension,
-                            mediaType = mediaType,
-                            parentFolderName = parentFolderName
-                        )
-                    )
                 }
+
+                // Merge pass
+                val grouped = rawCandidates.groupBy { it.title }
+                val mergedCandidates = grouped.map { (identity, candidates) ->
+                    val mergedSeasons = mutableMapOf<Int, MutableList<EpisodeFile>>()
+                    for (candidate in candidates) {
+                        for ((season, eps) in candidate.seasons) {
+                            mergedSeasons.getOrPut(season) { mutableListOf() }.addAll(eps)
+                        }
+                    }
+                    MediaCandidate.Show(identity, mergedSeasons)
+                }
+
+                results.addAll(mergedCandidates)
+                results
+            } catch (e: SecurityException) {
+                throw FolderPermissionException("Permission revoked for folder: $treeUri")
             }
         }
+
+    private fun isVideoFile(name: String?): Boolean {
+        if (name == null) return false
+        val extension = name.substringAfterLast('.', "").lowercase()
+        return extension in Constants.SUPPORTED_VIDEO_EXTENSIONS
+    }
+
+    private fun isSeasonFolder(name: String?): Boolean {
+        if (name == null) return false
+        return seasonPattern1.matches(name) || seasonPattern2.matches(name) || specialsPattern.matches(name)
+    }
+
+    private fun extractSeasonNumber(name: String): Int {
+        if (specialsPattern.matches(name)) return 0
+        seasonPattern1.find(name)?.let { return it.groupValues[1].toInt() }
+        seasonPattern2.find(name)?.let { return it.groupValues[1].toInt() }
+        return 1
     }
 }
-

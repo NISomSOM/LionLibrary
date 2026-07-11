@@ -24,7 +24,6 @@ data class SettingsState(
     val apiKeyInput: String = "",
     val moviesFolderUri: String = "",
     val showsFolderUri: String = "",
-    val animeFolderUri: String = "",
 
     val lastScanTime: Long = 0L,
     val isScanning: Boolean = false,
@@ -39,7 +38,6 @@ sealed interface SettingsAction {
     data object OnSaveApiKey : SettingsAction
     data class OnMoviesFolderSelected(val uri: String) : SettingsAction
     data class OnShowsFolderSelected(val uri: String) : SettingsAction
-    data class OnAnimeFolderSelected(val uri: String) : SettingsAction
 
     data object OnScanLibrary : SettingsAction
     data object OnClearHistoryClick : SettingsAction
@@ -83,10 +81,6 @@ class SettingsViewModel(
                 settingsRepository.setShowsFolderUri(uri)
                 _state.update { it.copy(showsFolderUri = uri) }
             }
-            is SettingsAction.OnAnimeFolderSelected -> setFolder(action.uri) { uri ->
-                settingsRepository.setAnimeFolderUri(uri)
-                _state.update { it.copy(animeFolderUri = uri) }
-            }
 
             is SettingsAction.OnScanLibrary -> triggerScan()
             is SettingsAction.OnClearHistoryClick -> {
@@ -104,7 +98,6 @@ class SettingsViewModel(
             val apiKey = settingsRepository.tmdbApiKey.first()
             val moviesFolderUri = settingsRepository.moviesFolderUri.first()
             val showsFolderUri = settingsRepository.showsFolderUri.first()
-            val animeFolderUri = settingsRepository.animeFolderUri.first()
 
             val lastScanTime = settingsRepository.lastScanTime.first()
 
@@ -114,7 +107,6 @@ class SettingsViewModel(
                     apiKeyInput = apiKey,
                     moviesFolderUri = moviesFolderUri,
                     showsFolderUri = showsFolderUri,
-                    animeFolderUri = animeFolderUri,
 
                     lastScanTime = lastScanTime,
                     isApiKeySaved = apiKey.isNotBlank()

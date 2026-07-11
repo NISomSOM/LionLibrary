@@ -54,5 +54,6 @@ val networkModule = module {
         val retrofit: Retrofit = get()
         retrofit.create(TmdbApiService::class.java)
     }
+
 }
 

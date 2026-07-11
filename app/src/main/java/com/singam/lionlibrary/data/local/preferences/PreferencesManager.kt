@@ -28,10 +28,6 @@ class PreferencesManager(context: Context) {
         prefs[PreferencesKeys.SHOWS_FOLDER_URI] ?: ""
     }
 
-    val animeFolderUri: Flow<String> = dataStore.data.map { prefs ->
-        prefs[PreferencesKeys.ANIME_FOLDER_URI] ?: ""
-    }
-
     val lastScanTime: Flow<Long> = dataStore.data.map { prefs ->
         prefs[PreferencesKeys.LAST_SCAN_TIME] ?: 0L
     }
@@ -47,10 +43,6 @@ class PreferencesManager(context: Context) {
 
     suspend fun setShowsFolderUri(uri: String) {
         dataStore.edit { prefs -> prefs[PreferencesKeys.SHOWS_FOLDER_URI] = uri }
-    }
-
-    suspend fun setAnimeFolderUri(uri: String) {
-        dataStore.edit { prefs -> prefs[PreferencesKeys.ANIME_FOLDER_URI] = uri }
     }
 
     suspend fun setLastScanTime(time: Long) {

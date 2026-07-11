@@ -11,7 +11,7 @@ import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.Season
 import com.singam.lionlibrary.domain.usecase.GetMediaDetailsUseCase
-
+import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
 import com.singam.lionlibrary.domain.usecase.UpdateWatchProgressUseCase
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 
@@ -35,6 +36,7 @@ data class DetailsState(
     val nextEpisodeToWatch: Episode? = null,
     val isMovieWatched: Boolean = false,
     val watchedEpisodeIds: Set<Long> = emptySet(),
+    val episodeProgressMap: Map<Long, Float> = emptyMap(),
     val isLoading: Boolean = true,
     val error: String? = null
 )
@@ -47,12 +49,15 @@ sealed interface DetailsAction {
     data class OnPlayEpisode(val episodeId: Long, val filePath: String) : DetailsAction
     data object OnMarkMovieWatchedToggle : DetailsAction
     data class OnMarkEpisodeWatchedToggle(val episodeId: Long) : DetailsAction
+    data class OnMarkWatchedUpTo(val episode: Episode) : DetailsAction
+    data class OnPlayEpisodeExternal(val episode: Episode) : DetailsAction
 }
 
 
 sealed interface DetailsEvent {
     data class NavigateToPlayer(val mediaType: String, val mediaId: Long) : DetailsEvent
     data class ShowError(val message: String) : DetailsEvent
+    data class LaunchPlayer(val intent: Intent) : DetailsEvent
 }
 
 
@@ -60,7 +65,8 @@ sealed interface DetailsEvent {
 class DetailsViewModel(
     savedStateHandle: SavedStateHandle,
     private val getMediaDetailsUseCase: GetMediaDetailsUseCase,
-    private val updateWatchProgressUseCase: UpdateWatchProgressUseCase
+    private val updateWatchProgressUseCase: UpdateWatchProgressUseCase,
+    private val launchPlayerUseCase: LaunchPlayerUseCase
 ) : ViewModel() {
 
     private val mediaId: Long = savedStateHandle.get<Long>("mediaId") ?: 0L
@@ -132,7 +138,8 @@ class DetailsViewModel(
                 _state.update {
                     it.copy(
                         isMovieWatched = movieProgress?.completed == true,
-                        watchedEpisodeIds = completedEpisodeIds
+                        watchedEpisodeIds = completedEpisodeIds,
+                        episodeProgressMap = progressList.associate { progress -> progress.episodeId to progress.progress }
                     )
                 }
             }
@@ -180,7 +187,8 @@ class DetailsViewModel(
                 if (nextEp != null) {
                     viewModelScope.launch {
                         updateWatchProgressUseCase.markAsStarted(mediaId, nextEp.id)
-                        _events.send(DetailsEvent.NavigateToPlayer(MediaType.TV_SHOW.name, mediaId))
+                        val type = _state.value.media?.mediaType?.name ?: MediaType.TV_SHOW.name
+                        _events.send(DetailsEvent.NavigateToPlayer(type, nextEp.id))
                     }
                 } else {
                     viewModelScope.launch { _events.send(DetailsEvent.ShowError("No episode available to resume")) }
@@ -189,7 +197,8 @@ class DetailsViewModel(
             is DetailsAction.OnPlayEpisode -> {
                 viewModelScope.launch {
                     updateWatchProgressUseCase.markAsStarted(mediaId, action.episodeId)
-                    _events.send(DetailsEvent.NavigateToPlayer(MediaType.TV_SHOW.name, mediaId))
+                    val type = _state.value.media?.mediaType?.name ?: MediaType.TV_SHOW.name
+                    _events.send(DetailsEvent.NavigateToPlayer(type, action.episodeId))
                 }
             }
             is DetailsAction.OnMarkMovieWatchedToggle -> {
@@ -207,6 +216,38 @@ class DetailsViewModel(
                         updateWatchProgressUseCase.markAsUnwatched(mediaId, action.episodeId)
                     } else {
                         updateWatchProgressUseCase.markAsWatched(mediaId, action.episodeId)
+                    }
+                }
+            }
+            is DetailsAction.OnMarkWatchedUpTo -> {
+                viewModelScope.launch {
+                    val allEpisodesFlow = getMediaDetailsUseCase.getAllEpisodesForShow(mediaId)
+                    val allEpisodes = allEpisodesFlow.firstOrNull() ?: return@launch
+                    
+                    val targetSeason = action.episode.seasonNumber
+                    val targetEpisode = action.episode.episodeNumber
+                    
+                    allEpisodes.forEach { ep ->
+                        if (ep.seasonNumber < targetSeason || (ep.seasonNumber == targetSeason && ep.episodeNumber <= targetEpisode)) {
+                            updateWatchProgressUseCase.markAsWatched(mediaId, ep.id)
+                        }
+                    }
+                }
+            }
+            is DetailsAction.OnPlayEpisodeExternal -> {
+                val path = action.episode.filePath
+                if (path != null) {
+                    viewModelScope.launch {
+                        try {
+                            val intent = launchPlayerUseCase(Uri.parse(path), 0L)
+                            _events.send(DetailsEvent.LaunchPlayer(intent))
+                        } catch (e: Exception) {
+                            _events.send(DetailsEvent.ShowError("Failed to launch external player"))
+                        }
+                    }
+                } else {
+                    viewModelScope.launch {
+                        _events.send(DetailsEvent.ShowError("File path not found"))
                     }
                 }
             }

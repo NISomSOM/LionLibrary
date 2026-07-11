@@ -38,6 +38,9 @@ fun LionLibraryNavHost(
                 },
                 onNavigateToShowDetails = { mediaId ->
                     navController.navigate(Routes.SHOW_DETAILS.replace("{mediaId}", mediaId.toString()))
+                },
+                onNavigateToPlayer = { mediaType, mediaId ->
+                    navController.navigate(Routes.player(mediaType, mediaId))
                 }
             )
         }

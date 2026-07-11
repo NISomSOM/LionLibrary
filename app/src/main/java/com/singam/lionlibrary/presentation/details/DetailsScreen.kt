@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,6 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -34,6 +37,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
@@ -43,6 +47,7 @@ import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,6 +72,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.singam.lionlibrary.domain.model.Episode
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.presentation.components.EpisodeCard
 import org.koin.androidx.compose.koinViewModel
@@ -90,6 +96,9 @@ fun DetailsRoot(
                 is DetailsEvent.ShowError -> {
                     snackbarHostState.showSnackbar(event.message)
                 }
+                is DetailsEvent.LaunchPlayer -> {
+                    context.startActivity(event.intent)
+                }
             }
         }
     }
@@ -108,6 +117,9 @@ fun DetailsScreen(
     state: DetailsState,
     onAction: (DetailsAction) -> Unit
 ) {
+    var selectedEpisodeForOptions by remember { mutableStateOf<Episode?>(null) }
+    val sheetState = rememberModalBottomSheetState()
+
     if (state.isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -129,6 +141,76 @@ fun DetailsScreen(
         targetValue = if (showTopBarBackground) 1f else 0f,
         label = "logoAlpha"
     )
+
+    selectedEpisodeForOptions?.let { episode ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedEpisodeForOptions = null },
+            sheetState = sheetState,
+            containerColor = Color(0xFF1E1E1E)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp)
+            ) {
+                // Header (Thumbnail + Title)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val imagePath = episode.thumbnailPath
+                    if (imagePath != null) {
+                        AsyncImage(
+                            model = File(imagePath),
+                            contentDescription = episode.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .width(125.dp)
+                                .height(70.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = episode.title ?: "Episode ${episode.episodeNumber}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Season ${episode.seasonNumber}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.Gray
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Options
+                EpisodeOptionItem(
+                    icon = Icons.Default.CheckCircle,
+                    text = "Mark as watched upto here",
+                    onClick = {
+                        selectedEpisodeForOptions = null
+                        onAction(DetailsAction.OnMarkWatchedUpTo(episode))
+                    }
+                )
+                EpisodeOptionItem(
+                    icon = Icons.Default.PlayArrow,
+                    text = "Play in external player",
+                    onClick = {
+                        selectedEpisodeForOptions = null
+                        onAction(DetailsAction.OnPlayEpisodeExternal(episode))
+                    },
+                    iconTint = Color(0xFFE5B13A)
+                )
+            }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -402,8 +484,14 @@ fun DetailsScreen(
                 EpisodeCard(
                     episode = episode,
                     isWatched = state.watchedEpisodeIds.contains(episode.id),
+                    progress = state.episodeProgressMap[episode.id],
                     onMarkWatched = { onAction(DetailsAction.OnMarkEpisodeWatchedToggle(it)) },
-                    onClick = { onAction(DetailsAction.OnPlayEpisode(episode.id, episode.filePath)) },
+                    onClick = {
+                        if (episode.filePath != null) {
+                            onAction(DetailsAction.OnPlayEpisode(episode.id, episode.filePath))
+                        }
+                    },
+                    onLongClick = { selectedEpisodeForOptions = episode },
                     modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp)
                 )
             }
@@ -445,6 +533,36 @@ fun DetailsScreen(
                 containerColor = topBarColor,
                 titleContentColor = Color.White
             )
+        )
+    }
+}
+
+@Composable
+private fun EpisodeOptionItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    iconTint: Color = Color.White
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = text,
+            tint = iconTint,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(24.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White
         )
     }
 }

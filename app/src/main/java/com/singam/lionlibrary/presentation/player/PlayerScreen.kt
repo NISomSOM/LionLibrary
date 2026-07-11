@@ -17,13 +17,30 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -112,7 +129,7 @@ fun PlayerRoot(
 
     PlayerScreen(
         state = state,
-        player = viewModel.player,
+        viewModel = viewModel,
         onAction = viewModel::onAction,
         onBack = { navController.popBackStack() }
     )
@@ -122,16 +139,28 @@ fun PlayerRoot(
 @Composable
 fun PlayerScreen(
     state: PlayerState,
-    player: androidx.media3.common.Player,
+    viewModel: PlayerViewModel,
     onAction: (PlayerAction) -> Unit,
     onBack: () -> Unit
 ) {
+    val player = viewModel.player
     val context = LocalContext.current
     val activity = context.findActivity()
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     
     var showControls by remember { mutableStateOf(true) }
-    var showTracksSheet by remember { mutableStateOf(false) }
+    var showAudioSheet by remember { mutableStateOf(false) }
+    var showSubtitleSheet by remember { mutableStateOf(false) }
+    
+    var showLeftSeekFeedback by remember { mutableStateOf(false) }
+    var showRightSeekFeedback by remember { mutableStateOf(false) }
+
+    LaunchedEffect(showLeftSeekFeedback) {
+        if (showLeftSeekFeedback) { delay(500); showLeftSeekFeedback = false }
+    }
+    LaunchedEffect(showRightSeekFeedback) {
+        if (showRightSeekFeedback) { delay(500); showRightSeekFeedback = false }
+    }
     
     // Auto-hide controls
     LaunchedEffect(showControls, state.isPlaying) {
@@ -195,18 +224,62 @@ fun PlayerScreen(
                         )
                     }
                     .pointerInput(Unit) {
-                        detectTapGestures(
-                            onDoubleTap = { onAction(PlayerAction.OnSeekBackward) },
-                            onTap = { showControls = !showControls }
+                        var initialPosition = 0L
+                        detectHorizontalDragGestures(
+                            onDragStart = { 
+                                initialPosition = state.currentPositionMs
+                                showControls = true
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                val fullWidth = size.width * 3f
+                                val dragDeltaMs = (dragAmount / fullWidth) * state.durationMs * 0.5f
+                                val newPosition = (initialPosition + dragDeltaMs.toLong()).coerceIn(0L, state.durationMs)
+                                onAction(PlayerAction.OnScrub(newPosition))
+                                initialPosition = newPosition
+                            },
+                            onDragEnd = { onAction(PlayerAction.OnScrubEnd) },
+                            onDragCancel = { onAction(PlayerAction.OnScrubEnd) }
                         )
                     }
-            )
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = { 
+                                showLeftSeekFeedback = true
+                                onAction(PlayerAction.OnSeekBackward) 
+                            },
+                            onTap = { showControls = !showControls }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                SeekFeedback(visible = showLeftSeekFeedback, isForward = false)
+            }
 
             // Middle Third - Just Tap for Controls & Scrubbing
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
+                    .pointerInput(Unit) {
+                        var initialPosition = 0L
+                        detectHorizontalDragGestures(
+                            onDragStart = { 
+                                initialPosition = state.currentPositionMs
+                                showControls = true
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                val fullWidth = size.width * 3f
+                                val dragDeltaMs = (dragAmount / fullWidth) * state.durationMs * 0.5f
+                                val newPosition = (initialPosition + dragDeltaMs.toLong()).coerceIn(0L, state.durationMs)
+                                onAction(PlayerAction.OnScrub(newPosition))
+                                initialPosition = newPosition
+                            },
+                            onDragEnd = { onAction(PlayerAction.OnScrubEnd) },
+                            onDragCancel = { onAction(PlayerAction.OnScrubEnd) }
+                        )
+                    }
                     .pointerInput(Unit) {
                         detectTapGestures(onTap = { showControls = !showControls })
                     }
@@ -234,37 +307,38 @@ fun PlayerScreen(
                         )
                     }
                     .pointerInput(Unit) {
-                        detectTapGestures(
-                            onDoubleTap = { onAction(PlayerAction.OnSeekForward) },
-                            onTap = { showControls = !showControls }
+                        var initialPosition = 0L
+                        detectHorizontalDragGestures(
+                            onDragStart = { 
+                                initialPosition = state.currentPositionMs
+                                showControls = true
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                val fullWidth = size.width * 3f
+                                val dragDeltaMs = (dragAmount / fullWidth) * state.durationMs * 0.5f
+                                val newPosition = (initialPosition + dragDeltaMs.toLong()).coerceIn(0L, state.durationMs)
+                                onAction(PlayerAction.OnScrub(newPosition))
+                                initialPosition = newPosition
+                            },
+                            onDragEnd = { onAction(PlayerAction.OnScrubEnd) },
+                            onDragCancel = { onAction(PlayerAction.OnScrubEnd) }
                         )
                     }
-            )
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = { 
+                                showRightSeekFeedback = true
+                                onAction(PlayerAction.OnSeekForward) 
+                            },
+                            onTap = { showControls = !showControls }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                SeekFeedback(visible = showRightSeekFeedback, isForward = true)
+            }
         }
-
-        // Horizontal Drag for Scrubbing (Full Screen Width)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    var initialPosition = 0L
-                    detectHorizontalDragGestures(
-                        onDragStart = { 
-                            initialPosition = state.currentPositionMs
-                            showControls = true
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            val dragDeltaMs = (dragAmount / size.width) * state.durationMs * 0.5f // Scrub speed
-                            val newPosition = (initialPosition + dragDeltaMs.toLong()).coerceIn(0L, state.durationMs)
-                            onAction(PlayerAction.OnScrub(newPosition))
-                            initialPosition = newPosition
-                        },
-                        onDragEnd = { onAction(PlayerAction.OnScrubEnd) },
-                        onDragCancel = { onAction(PlayerAction.OnScrubEnd) }
-                    )
-                }
-        )
 
         // Controls Overlay
         AnimatedVisibility(
@@ -282,31 +356,38 @@ fun PlayerScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(start = 32.dp, top = 24.dp, end = 32.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = state.title, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(text = state.title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         if (state.subtitle.isNotBlank()) {
-                            Text(text = state.subtitle, color = Color.LightGray, style = MaterialTheme.typography.bodyMedium)
+                            Text(text = state.subtitle, color = Color.LightGray, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                         }
                     }
                     
-                    if (state.isExternalFallbackLoading) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                    } else {
-                        IconButton(onClick = { onAction(PlayerAction.OnExternalFallback) }) {
-                            Icon(Icons.Default.OpenInNew, contentDescription = "Open External", tint = Color.White)
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        if (state.isExternalFallbackLoading) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp).padding(12.dp))
+                        } else {
+                            IconButton(
+                                onClick = { onAction(PlayerAction.OnExternalFallback) },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(Color(0x80000000), CircleShape)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open External", tint = Color.White)
+                            }
                         }
-                    }
-                    
-                    // Tracks Button (Not fully implemented yet, but UI is there)
-                    IconButton(onClick = { showTracksSheet = true }) {
-                        Icon(Icons.Default.Subtitles, contentDescription = "Tracks", tint = Color.White)
+                        
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(Color(0x80000000), CircleShape)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
                     }
                 }
 
@@ -314,19 +395,19 @@ fun PlayerScreen(
                 Row(
                     modifier = Modifier.align(Alignment.Center),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(32.dp)
+                    horizontalArrangement = Arrangement.spacedBy(48.dp)
                 ) {
-                    if (state.hasPrevious) {
-                        IconButton(onClick = { onAction(PlayerAction.OnPlayPrevious) }, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White, modifier = Modifier.fillMaxSize())
-                        }
-                    }
-                    
-                    IconButton(onClick = { onAction(PlayerAction.OnSeekBackward) }, modifier = Modifier.size(56.dp)) {
+                    IconButton(
+                        onClick = { onAction(PlayerAction.OnSeekBackward) }, 
+                        modifier = Modifier.size(64.dp)
+                    ) {
                         Icon(Icons.Default.Replay10, contentDescription = "Rewind 10s", tint = Color.White, modifier = Modifier.fillMaxSize())
                     }
 
-                    IconButton(onClick = { onAction(PlayerAction.OnPlayPause) }, modifier = Modifier.size(80.dp)) {
+                    IconButton(
+                        onClick = { onAction(PlayerAction.OnPlayPause) }, 
+                        modifier = Modifier.size(96.dp)
+                    ) {
                         Icon(
                             imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (state.isPlaying) "Pause" else "Play",
@@ -335,39 +416,28 @@ fun PlayerScreen(
                         )
                     }
 
-                    IconButton(onClick = { onAction(PlayerAction.OnSeekForward) }, modifier = Modifier.size(56.dp)) {
+                    IconButton(
+                        onClick = { onAction(PlayerAction.OnSeekForward) }, 
+                        modifier = Modifier.size(64.dp)
+                    ) {
                         Icon(Icons.Default.Forward10, contentDescription = "Forward 10s", tint = Color.White, modifier = Modifier.fillMaxSize())
-                    }
-                    
-                    if (state.hasNext) {
-                        IconButton(onClick = { onAction(PlayerAction.OnPlayNext) }, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.fillMaxSize())
-                        }
                     }
                 }
 
-                // Bottom Bar (Seek + Skip 90s)
+                // Bottom Bar (Seekbar + Pill)
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                        .padding(horizontal = 32.dp, vertical = 24.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(onClick = { onAction(PlayerAction.OnSeek(state.currentPositionMs + 90_000)) }) {
-                            Text("+90s", color = Color.White)
-                        }
-                    }
-                    
+                    // Seekbar Row
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(text = formatTime(state.currentPositionMs), color = Color.White, style = MaterialTheme.typography.bodySmall)
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = formatTime(state.currentPositionMs), color = Color.White, style = MaterialTheme.typography.labelMedium)
+                        Spacer(modifier = Modifier.width(16.dp))
                         Slider(
                             value = if (state.durationMs > 0) state.currentPositionMs.toFloat() / state.durationMs else 0f,
                             onValueChange = { percent ->
@@ -376,37 +446,158 @@ fun PlayerScreen(
                             onValueChangeFinished = {
                                 onAction(PlayerAction.OnScrubEnd)
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).height(24.dp),
                             colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.primary,
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                                thumbColor = Color(0xFFE58B20),
+                                activeTrackColor = Color(0xFFE58B20),
+                                inactiveTrackColor = Color(0xFF3B3346)
                             )
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = formatTime(state.durationMs), color = Color.White, style = MaterialTheme.typography.bodySmall)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(text = formatTime(state.durationMs), color = Color.White, style = MaterialTheme.typography.labelMedium)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Bottom Pill Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .background(Color(0xFF0F0F0F), androidx.compose.foundation.shape.RoundedCornerShape(50))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { 
+                                val target = (state.currentPositionMs + 90_000).coerceAtMost(state.durationMs)
+                                onAction(PlayerAction.OnSeek(target)) 
+                            }) {
+                                Text("+90s", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TextButton(onClick = { showSubtitleSheet = true }) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Subtitles, contentDescription = "Subs", tint = Color.White, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Subs", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TextButton(onClick = { showAudioSheet = true }) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Audiotrack, contentDescription = "Audio", tint = Color.White, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Audio", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // Resume Prompt
-        if (state.showResumePrompt) {
-            Box(
+        // Small "Start Over" Prompt
+        LaunchedEffect(state.showResumePrompt) {
+            if (state.showResumePrompt) {
+                delay(5000)
+                if (state.showResumePrompt) {
+                    onAction(PlayerAction.OnDismissResumePrompt)
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = state.showResumePrompt,
+            enter = fadeIn() + androidx.compose.animation.slideInHorizontally(),
+            exit = fadeOut() + androidx.compose.animation.slideOutHorizontally(),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 32.dp, bottom = 240.dp)
+        ) {
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f)),
-                contentAlignment = Alignment.Center
+                    .background(Color(0xFF1E1E1E).copy(alpha = 0.9f), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Resume from ${formatTime(state.resumePositionMs)}?", color = Color.White, style = MaterialTheme.typography.titleLarge)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Button(onClick = { onAction(PlayerAction.OnDismissResumePrompt) }, colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) {
-                            Text("Start Over", color = Color.White)
-                        }
-                        Button(onClick = { onAction(PlayerAction.OnResumePlayback) }) {
-                            Text("Resume", color = Color.White)
+                Text(
+                    text = "Resumed from ${formatTime(state.resumePositionMs)}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Button(
+                    onClick = { onAction(PlayerAction.OnResumePlayback) }, // "Start Over"
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Text("Start Over", style = MaterialTheme.typography.labelMedium)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                IconButton(
+                    onClick = { onAction(PlayerAction.OnDismissResumePrompt) },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = Color.Gray)
+                }
+            }
+        }
+    }
+
+    if (showAudioSheet) {
+        val tracks = viewModel.getAvailableTracks()
+        ModalBottomSheet(
+            onDismissRequest = { showAudioSheet = false },
+            containerColor = Color(0xFF19181A),
+            contentWindowInsets = @Composable { androidx.compose.foundation.layout.WindowInsets(0) },
+            dragHandle = { BottomSheetDefaults.DragHandle(modifier = Modifier.padding(top = 8.dp, bottom = 0.dp)) }
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item { 
+                    Text(
+                        "Audio Tracks", 
+                        style = MaterialTheme.typography.titleLarge, 
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 0.dp)
+                    ) 
+                }
+                val audioGroups = tracks.groups.filter { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO }
+                audioGroups.forEach { group ->
+                    items(group.length) { i ->
+                        val format = group.getTrackFormat(i)
+                        val isSelected = group.isTrackSelected(i)
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                .background(if (isSelected) Color(0xFF4A3A22) else Color(0xFF262524))
+                                .clickable {
+                                    player.trackSelectionParameters = player.trackSelectionParameters
+                                        .buildUpon()
+                                        .setOverrideForType(androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, i))
+                                        .build()
+                                    showAudioSheet = false
+                                }
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = format.language ?: format.label ?: "Audio Track ${i + 1}", 
+                                modifier = Modifier.weight(1f),
+                                color = Color.White,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
                         }
                     }
                 }
@@ -414,16 +605,89 @@ fun PlayerScreen(
         }
     }
 
-    if (showTracksSheet) {
+    if (showSubtitleSheet) {
+        val tracks = viewModel.getAvailableTracks()
         ModalBottomSheet(
-            onDismissRequest = { showTracksSheet = false },
-            containerColor = MaterialTheme.colorScheme.surface
+            onDismissRequest = { showSubtitleSheet = false },
+            containerColor = Color(0xFF19181A),
+            contentWindowInsets = @Composable { androidx.compose.foundation.layout.WindowInsets(0) },
+            dragHandle = { BottomSheetDefaults.DragHandle(modifier = Modifier.padding(top = 8.dp, bottom = 0.dp)) }
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Tracks", style = MaterialTheme.typography.titleLarge)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Track selection will be fully implemented in a future update.", style = MaterialTheme.typography.bodyMedium)
-                Spacer(modifier = Modifier.height(32.dp))
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item { 
+                    Text(
+                        "Subtitles", 
+                        style = MaterialTheme.typography.titleLarge, 
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 0.dp)
+                    ) 
+                }
+                
+                // Off option
+                item {
+                    val isSubtitlesDisabled = player.trackSelectionParameters.disabledTrackTypes.contains(androidx.media3.common.C.TRACK_TYPE_TEXT)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                            .background(if (isSubtitlesDisabled) Color(0xFF4A3A22) else Color(0xFF262524))
+                            .clickable {
+                                player.trackSelectionParameters = player.trackSelectionParameters
+                                    .buildUpon()
+                                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+                                    .build()
+                                showSubtitleSheet = false
+                            }
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Off", 
+                            modifier = Modifier.weight(1f),
+                            color = Color.White,
+                            fontWeight = if (isSubtitlesDisabled) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+
+                val textGroups = tracks.groups.filter { it.type == androidx.media3.common.C.TRACK_TYPE_TEXT }
+                textGroups.forEach { group ->
+                    items(group.length) { i ->
+                        val format = group.getTrackFormat(i)
+                        val isSelected = group.isTrackSelected(i) && !player.trackSelectionParameters.disabledTrackTypes.contains(androidx.media3.common.C.TRACK_TYPE_TEXT)
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                .background(if (isSelected) Color(0xFF4A3A22) else Color(0xFF262524))
+                                .clickable {
+                                    player.trackSelectionParameters = player.trackSelectionParameters
+                                        .buildUpon()
+                                        .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+                                        .setOverrideForType(androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, i))
+                                        .build()
+                                    showSubtitleSheet = false
+                                }
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = format.language ?: format.label ?: "Subtitle Track ${i + 1}", 
+                                modifier = Modifier.weight(1f),
+                                color = Color.White,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -439,5 +703,31 @@ private fun formatTime(ms: Long): String {
         String.format("%d:%02d:%02d", hours, minutes, seconds)
     } else {
         String.format("%02d:%02d", minutes, seconds)
+    }
+}
+
+@Composable
+private fun SeekFeedback(
+    visible: Boolean,
+    isForward: Boolean
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut()
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = if (isForward) Icons.Default.FastForward else Icons.Default.FastRewind, 
+                contentDescription = null, 
+                tint = Color.White, 
+                modifier = Modifier.size(48.dp)
+            )
+            Text(
+                text = if (isForward) "+10s" else "-10s", 
+                color = Color.White, 
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
     }
 }

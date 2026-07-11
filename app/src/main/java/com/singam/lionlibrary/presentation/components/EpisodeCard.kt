@@ -1,7 +1,7 @@
 package com.singam.lionlibrary.presentation.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,14 +39,19 @@ import java.io.File
 fun EpisodeCard(
     episode: Episode,
     isWatched: Boolean,
+    progress: Float?,
     onMarkWatched: (Long) -> Unit,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .background(Color.Transparent)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
@@ -73,16 +78,28 @@ fun EpisodeCard(
                     Box(modifier = Modifier.fillMaxSize().background(Color.DarkGray))
                 }
                 
-                // Play Icon Overlay (bottom-left)
+                // Play Icon Overlay (center)
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = "Play",
                     tint = Color.White,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.Center)
                         .padding(4.dp)
-                        .size(24.dp)
+                        .size(32.dp)
                 )
+
+                // Progress Bar Overlay (bottom)
+                val progressValue = if (isWatched) 1f else (progress ?: 0f)
+                if (progressValue > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth(progressValue)
+                            .height(4.dp)
+                            .background(Color(0xFFE5B13A))
+                    )
+                }
             }
 
             // Middle: Title & Subtitle

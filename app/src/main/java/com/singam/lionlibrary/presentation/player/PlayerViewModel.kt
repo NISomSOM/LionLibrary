@@ -84,7 +84,19 @@ class PlayerViewModel(
     private val _events = Channel<PlayerEvent>()
     val events = _events.receiveAsFlow()
 
-    val player: ExoPlayer = ExoPlayer.Builder(application).build()
+    val player: ExoPlayer = ExoPlayer.Builder(
+        application,
+        androidx.media3.exoplayer.DefaultRenderersFactory(application).apply {
+            setEnableDecoderFallback(true)
+            setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        }
+    ).build().apply {
+        trackSelectionParameters = trackSelectionParameters
+            .buildUpon()
+            .setPreferredTextLanguage("en")
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+            .build()
+    }
 
     private var uiUpdateJob: Job? = null
     private var persistenceJob: Job? = null
@@ -120,6 +132,7 @@ class PlayerViewModel(
                     _state.update { it.copy(durationMs = player.duration.coerceAtLeast(0L)) }
                 } else if (playbackState == Player.STATE_ENDED) {
                     persistProgress(markAsCompleted = true)
+                    onAction(PlayerAction.OnPlayNext)
                 }
             }
         })
@@ -187,10 +200,12 @@ class PlayerViewModel(
         player.prepare()
         
         viewModelScope.launch {
-            val progressId = if (mediaType == MediaType.MOVIE) 0L else mediaId
+            val progressId = if (mediaType == MediaType.MOVIE) 0L else (currentEpisode?.id ?: mediaId)
             val mediaIdToUse = if (mediaType == MediaType.MOVIE) mediaId else showIdForEpisode
             val watchProgress = watchProgressDao.getProgress(mediaIdToUse, progressId)
             if (watchProgress != null && watchProgress.lastPositionMs > 5000L && !watchProgress.completed) {
+                player.seekTo(watchProgress.lastPositionMs)
+                player.playWhenReady = true
                 _state.update { 
                     it.copy(
                         showResumePrompt = true, 
@@ -212,6 +227,8 @@ class PlayerViewModel(
             hasPrevious = prev != null
         ) }
     }
+
+    fun getAvailableTracks(): androidx.media3.common.Tracks = player.currentTracks
 
     fun onAction(action: PlayerAction) {
         when (action) {
@@ -244,7 +261,7 @@ class PlayerViewModel(
                 _state.update { it.copy(showControls = action.isVisible) }
             }
             is PlayerAction.OnPlayNext -> {
-                if (mediaType == MediaType.TV_SHOW && currentEpisode != null) {
+                if (mediaType != MediaType.MOVIE && currentEpisode != null) {
                     viewModelScope.launch {
                         val next = episodeDao.getNextEpisode(showIdForEpisode, currentEpisode!!.seasonNumber, currentEpisode!!.episodeNumber)
                         next?.let { playNewEpisode(it) }
@@ -252,7 +269,7 @@ class PlayerViewModel(
                 }
             }
             is PlayerAction.OnPlayPrevious -> {
-                if (mediaType == MediaType.TV_SHOW && currentEpisode != null) {
+                if (mediaType != MediaType.MOVIE && currentEpisode != null) {
                     viewModelScope.launch {
                         val prev = episodeDao.getPreviousEpisode(showIdForEpisode, currentEpisode!!.seasonNumber, currentEpisode!!.episodeNumber)
                         prev?.let { playNewEpisode(it) }
@@ -264,12 +281,11 @@ class PlayerViewModel(
             }
             is PlayerAction.OnDismissResumePrompt -> {
                 _state.update { it.copy(showResumePrompt = false) }
-                player.seekTo(0)
-                player.playWhenReady = true
             }
             is PlayerAction.OnResumePlayback -> {
+                // Now "Start Over" since we already resumed by default
                 _state.update { it.copy(showResumePrompt = false) }
-                player.seekTo(_state.value.resumePositionMs)
+                player.seekTo(0)
                 player.playWhenReady = true
             }
         }

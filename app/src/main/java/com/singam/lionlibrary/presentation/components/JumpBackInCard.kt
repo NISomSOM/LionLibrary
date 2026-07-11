@@ -1,13 +1,15 @@
 package com.singam.lionlibrary.presentation.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,18 +30,28 @@ import java.io.File
 fun JumpBackInCard(
     item: JumpBackInItem,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
-            .width(120.dp)
-            .aspectRatio(2f / 3f)
+            .width(260.dp)
+            .aspectRatio(16f / 9f)
             .clip(RoundedCornerShape(8.dp))
-            .clickable { onClick() }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
     ) {
-        if (item.posterPath != null) {
+        val imagePath = if (item.mediaType == com.singam.lionlibrary.domain.model.MediaType.MOVIE) {
+            item.backdropPath ?: item.posterPath
+        } else {
+            item.thumbnailPath ?: item.backdropPath ?: item.posterPath
+        }
+
+        if (imagePath != null) {
             AsyncImage(
-                model = File(item.posterPath),
+                model = File(imagePath),
                 contentDescription = item.mediaTitle,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -63,12 +75,29 @@ fun JumpBackInCard(
                     )
                 )
         )
+        
+        if (item.isNextUp) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "Next Up",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White
+                )
+            }
+        }
 
         androidx.compose.foundation.layout.Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
                 .padding(8.dp)
+                .padding(bottom = 4.dp)
         ) {
             if (item.mediaType != com.singam.lionlibrary.domain.model.MediaType.MOVIE && item.seasonNumber != null && item.episodeNumber != null) {
                 Text(
@@ -93,6 +122,16 @@ fun JumpBackInCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+
+        if (item.progress != null && item.progress > 0f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth(item.progress)
+                    .height(4.dp)
+                    .background(Color(0xFFE5B13A))
+            )
         }
     }
 }

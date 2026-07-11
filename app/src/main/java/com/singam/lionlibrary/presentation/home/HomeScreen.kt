@@ -21,13 +21,17 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -38,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.singam.lionlibrary.domain.model.MediaItem
@@ -47,6 +52,14 @@ import com.singam.lionlibrary.presentation.components.JumpBackInCard
 import com.singam.lionlibrary.presentation.components.MediaCard
 import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.ui.draw.clip
 import java.io.File
 
 @androidx.compose.foundation.ExperimentalFoundationApi
@@ -55,7 +68,8 @@ fun HomeRoot(
     viewModel: HomeViewModel = koinViewModel(),
     snackbarHostState: SnackbarHostState,
     onNavigateToMovieDetails: (Long) -> Unit,
-    onNavigateToShowDetails: (Long) -> Unit
+    onNavigateToShowDetails: (Long) -> Unit,
+    onNavigateToPlayer: (String, Long) -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -66,6 +80,7 @@ fun HomeRoot(
             when (event) {
                 is HomeEvent.NavigateToMovieDetails -> onNavigateToMovieDetails(event.mediaId)
                 is HomeEvent.NavigateToShowDetails -> onNavigateToShowDetails(event.mediaId)
+                is HomeEvent.NavigateToPlayer -> onNavigateToPlayer(event.mediaType, event.mediaId)
                 is HomeEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
                 is HomeEvent.LaunchPlayer -> {
                     try {
@@ -87,12 +102,16 @@ fun HomeRoot(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @androidx.compose.foundation.ExperimentalFoundationApi
 @Composable
 fun HomeScreen(
     state: HomeState,
     onAction: (HomeAction) -> Unit
 ) {
+    var selectedJumpBackInItem by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<JumpBackInItem?>(null) }
+    val sheetState = rememberModalBottomSheetState()
+
     if (state.isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -157,7 +176,8 @@ fun HomeScreen(
                 JumpBackInRow(
                     title = "Jump Back In",
                     items = state.jumpBackInItems,
-                    onItemClick = { onAction(HomeAction.OnJumpBackInClick(it.filePath ?: "")) }
+                    onItemClick = { onAction(HomeAction.OnJumpBackInClick(it)) },
+                    onItemLongClick = { selectedJumpBackInItem = it }
                 )
             }
         }
@@ -218,6 +238,130 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    selectedJumpBackInItem?.let { item ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedJumpBackInItem = null },
+            sheetState = sheetState,
+            containerColor = Color(0xFF1E1E1E)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp)
+            ) {
+                // Header (Thumbnail + Title)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val imagePath = if (item.mediaType == MediaType.MOVIE) {
+                        item.posterPath ?: item.backdropPath
+                    } else {
+                        item.thumbnailPath ?: item.backdropPath ?: item.posterPath
+                    }
+                    if (imagePath != null) {
+                        AsyncImage(
+                            model = File(imagePath),
+                            contentDescription = item.mediaTitle,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .width(125.dp)
+                                .height(70.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = item.mediaTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        if (item.mediaType != MediaType.MOVIE) {
+                            Text(
+                                text = "S${item.seasonNumber}E${item.episodeNumber} • ${item.episodeTitle ?: ""}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Options
+                JumpBackInOptionItem(
+                    icon = Icons.Default.Info,
+                    text = "Go to details",
+                    onClick = {
+                        selectedJumpBackInItem = null
+                        onAction(HomeAction.OnMediaClick(item.mediaId, item.mediaType))
+                    }
+                )
+                JumpBackInOptionItem(
+                    icon = Icons.Default.PlayArrow,
+                    text = "Play in external player",
+                    onClick = {
+                        selectedJumpBackInItem = null
+                        onAction(HomeAction.OnPlayExternal(item))
+                    },
+                    iconTint = Color(0xFFE5B13A)
+                )
+                JumpBackInOptionItem(
+                    icon = Icons.Default.Refresh,
+                    text = "Start from beginning",
+                    onClick = {
+                        selectedJumpBackInItem = null
+                        onAction(HomeAction.OnStartFromBeginning(item))
+                    },
+                    iconTint = Color(0xFFE5B13A)
+                )
+                JumpBackInOptionItem(
+                    icon = Icons.Default.Delete,
+                    text = "Remove",
+                    onClick = {
+                        selectedJumpBackInItem = null
+                        onAction(HomeAction.OnRemoveWatchProgress(item))
+                    },
+                    iconTint = Color(0xFFE5B13A)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun JumpBackInOptionItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    iconTint: Color = Color.White
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = text,
+            tint = iconTint,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(24.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White
+        )
     }
 }
 
@@ -403,7 +547,8 @@ fun MediaRow(
 fun JumpBackInRow(
     title: String,
     items: List<JumpBackInItem>,
-    onItemClick: (JumpBackInItem) -> Unit
+    onItemClick: (JumpBackInItem) -> Unit,
+    onItemLongClick: (JumpBackInItem) -> Unit = {}
 ) {
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
         Text(
@@ -419,7 +564,8 @@ fun JumpBackInRow(
             items(items, key = { "${it.mediaId}-${it.episodeId}" }) { item ->
                 JumpBackInCard(
                     item = item,
-                    onClick = { onItemClick(item) }
+                    onClick = { onItemClick(item) },
+                    onLongClick = { onItemLongClick(item) }
                 )
             }
         }

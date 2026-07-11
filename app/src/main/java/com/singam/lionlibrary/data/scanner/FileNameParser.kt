@@ -123,7 +123,10 @@ class FileNameParser {
     }
 
     fun parseSeasonAndEpisodeNumbers(filename: String): Pair<Int?, List<Int>> {
-        standardEpisodePattern.find(filename)?.let { match ->
+        // Strip trailing version markers (e.g. v2, v3) from standard episode tokens before matching
+        val sanitized = filename.replace(Regex("""v\d+\b""", RegexOption.IGNORE_CASE), "")
+
+        standardEpisodePattern.find(sanitized)?.let { match ->
             val seasonStr = match.groupValues[1]
             val start = match.groupValues[2].toInt()
             val endStr = match.groupValues[3]
@@ -133,7 +136,7 @@ class FileNameParser {
             return Pair(season, eps)
         }
 
-        sceneEpisodePattern.find(filename)?.let { match ->
+        sceneEpisodePattern.find(sanitized)?.let { match ->
             val seasonStr = match.groupValues[1]
             val start = match.groupValues[2].toInt()
             val endStr = match.groupValues[3]

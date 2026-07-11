@@ -121,10 +121,13 @@ fun JumpBackInEntity.toJumpBackInItem(): JumpBackInItem = JumpBackInItem(
     mediaType = MediaType.valueOf(mediaType),
     mediaTitle = mediaTitle,
     posterPath = posterPath,
+    backdropPath = backdropPath,
     episodeId = episodeId,
     episodeTitle = episodeTitle,
     seasonNumber = seasonNumber,
     episodeNumber = episodeNumber,
+    thumbnailPath = thumbnailPath,
+    progress = progress,
     filePath = filePath,
     lastWatched = lastWatched
 )

@@ -14,7 +14,7 @@ class FolderScanner(
     private val parser: FileNameParser
 ) {
 
-    private val seasonPattern1 = Regex("""(?:^|\s)Season\s+(\d+)""", RegexOption.IGNORE_CASE)
+    private val seasonPattern1 = Regex("""(?:^|\s)Season\s*(\d+)""", RegexOption.IGNORE_CASE)
     private val seasonPattern2 = Regex("""(?:^|\s)S(\d+)(?:\s|$)""", RegexOption.IGNORE_CASE)
     private val specialsPattern = Regex("""^Specials$""", RegexOption.IGNORE_CASE)
 
@@ -91,8 +91,7 @@ class FolderScanner(
                                 
                                 for (video in subEntry.listFiles().filter { it.isFile && isVideoFile(it.name) }) {
                                     val nameWithoutExt = video.name!!.substringBeforeLast('.')
-                                    val (parsedSeason, epNums) = parser.parseSeasonAndEpisodeNumbers(nameWithoutExt)
-                                    val finalSeason = parsedSeason ?: seasonNum
+                                    val (_, epNums) = parser.parseSeasonAndEpisodeNumbers(nameWithoutExt)
                                     for (epNum in epNums) {
                                         eps.add(EpisodeFile(video.uri, epNum))
                                     }

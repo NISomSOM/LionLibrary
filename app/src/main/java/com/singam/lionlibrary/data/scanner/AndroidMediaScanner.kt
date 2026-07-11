@@ -45,6 +45,7 @@ class AndroidMediaScanner(
 ) : ScanLibraryUseCase {
 
     private val showLocks = ConcurrentHashMap<Int, Mutex>()
+    private val movieLocks = ConcurrentHashMap<Int, Mutex>()
     private val seasonLocks = ConcurrentHashMap<Pair<Long, Int>, Mutex>()
     
 
@@ -247,7 +248,7 @@ class AndroidMediaScanner(
         fileUri: String,
         apiKey: String
     ): MediaEntity? {
-        val searchResult = tmdbApiService.searchMovie(apiKey, parsed.title, parsed.year)
+        val searchResult = withRetry { tmdbApiService.searchMovie(apiKey, parsed.title, parsed.year) }
         var firstResult = searchResult.results.firstOrNull()
         
         var tmdbYear = firstResult?.releaseDate?.take(4)?.toIntOrNull()
@@ -257,7 +258,7 @@ class AndroidMediaScanner(
 
         if (firstResult != null && confidence < Constants.MATCH_CONFIDENCE_THRESHOLD) {
             try {
-                val altTitles = tmdbApiService.getMovieAlternativeTitles(firstResult.id, apiKey)
+                val altTitles = withRetry { tmdbApiService.getMovieAlternativeTitles(firstResult.id, apiKey) }
                 val aliases = altTitles.titles ?: altTitles.results ?: emptyList()
                 val hasMatch = aliases.any { alias ->
                     ConfidenceScorer.computeConfidence(parsed.title, alias.title, parsed.year, tmdbYear) >= Constants.MATCH_CONFIDENCE_THRESHOLD
@@ -275,10 +276,12 @@ class AndroidMediaScanner(
             return null
         }
 
-        val existing = mediaDao.getByTmdbId(firstResult.id)
-        if (existing != null) return null
+        val lock = movieLocks.computeIfAbsent(firstResult.id) { Mutex() }
+        return lock.withLock {
+            val existing = mediaDao.getByTmdbId(firstResult.id)
+            if (existing != null) return@withLock null
 
-        val details = tmdbApiService.getMovieDetails(firstResult.id, apiKey)
+            val details = withRetry { tmdbApiService.getMovieDetails(firstResult.id, apiKey) }
 
         val posterPath = details.posterPath?.let { path ->
             imageCacheManager.cachePoster(path, "movie_${details.id}_poster.jpg")
@@ -288,7 +291,7 @@ class AndroidMediaScanner(
         }
 
         val images = try {
-            tmdbApiService.getMovieImages(details.id, apiKey)
+            withRetry { tmdbApiService.getMovieImages(details.id, apiKey) }
         } catch (e: Exception) {
             null
         }
@@ -305,13 +308,14 @@ class AndroidMediaScanner(
             backdropLocalPath = backdropPath,
             filePath = fileUri
         ).copy(logoPath = logoLocalPath)
+        }
     }
 
     private suspend fun processShow(
         parsed: MediaCandidate.Show,
         apiKey: String
     ): Flow<FileResult> = flow {
-        val searchResult = tmdbApiService.searchTv(apiKey, parsed.title)
+        val searchResult = withRetry { tmdbApiService.searchTv(apiKey, parsed.title) }
         var firstResult = searchResult.results.firstOrNull()
         
         var tmdbYear = firstResult?.firstAirDate?.take(4)?.toIntOrNull()
@@ -321,7 +325,7 @@ class AndroidMediaScanner(
 
         if (firstResult != null && confidence < Constants.MATCH_CONFIDENCE_THRESHOLD) {
             try {
-                val altTitles = tmdbApiService.getTvAlternativeTitles(firstResult.id, apiKey)
+                val altTitles = withRetry { tmdbApiService.getTvAlternativeTitles(firstResult.id, apiKey) }
                 val aliases = altTitles.titles ?: altTitles.results ?: emptyList()
                 val hasMatch = aliases.any { alias ->
                     ConfidenceScorer.computeConfidence(parsed.title, alias.title, null, tmdbYear) >= Constants.MATCH_CONFIDENCE_THRESHOLD
@@ -394,7 +398,7 @@ class AndroidMediaScanner(
             val existingByTmdb = mediaDao.getByTmdbId(tmdbId)
             if (existingByTmdb != null) return@withLock existingByTmdb.id
 
-            val details = tmdbApiService.getTvDetails(tmdbId, apiKey)
+            val details = withRetry { tmdbApiService.getTvDetails(tmdbId, apiKey) }
             val finalMediaType = details.inferMediaType()
 
             val posterPath = details.posterPath?.let { path ->
@@ -405,7 +409,7 @@ class AndroidMediaScanner(
             }
 
             val images = try {
-                tmdbApiService.getTvImages(tmdbId, apiKey)
+                withRetry { tmdbApiService.getTvImages(tmdbId, apiKey) }
             } catch (e: Exception) {
                 null
             }
@@ -436,7 +440,7 @@ class AndroidMediaScanner(
             val existing = seasonDao.getByShowAndSeason(showId, seasonNumber)
 
             val seasonDetails = try {
-                tmdbApiService.getSeasonDetails(tmdbId, seasonNumber, apiKey)
+                withRetry { tmdbApiService.getSeasonDetails(tmdbId, seasonNumber, apiKey) }
             } catch (e: Exception) {
                 null
             }

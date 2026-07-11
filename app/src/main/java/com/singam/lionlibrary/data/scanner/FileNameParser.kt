@@ -14,7 +14,8 @@ class FileNameParser {
     private val editionPattern = Regex("""\b(Extended|Director'?s?\s?Cut|Unrated|Remastered|Theatrical|Uncut|Special\s?Edition|IMAX)\b""", RegexOption.IGNORE_CASE)
     private val properRepackPattern = Regex("""\b(PROPER|REPACK|INTERNAL|LIMITED)\b""", RegexOption.IGNORE_CASE)
     private val partPattern = Regex("""\bPart\s?\d\b|\bCD\d\b|\bDisc\s?\d\b""", RegexOption.IGNORE_CASE)
-    private val siteSuffixPattern = Regex("""[- ]?4kHdHub\s?Com|[- ]?YIFY|[- ]?RARBG|\bcom[- ]3[- ]001\b|[- ]?E\s?Com\b""", RegexOption.IGNORE_CASE)
+    private val trailingGroupPattern = Regex("""-[A-Za-z0-9]+$""")
+    private val siteSuffixPattern = Regex("""[- ]?\b[A-Za-z0-9]+\s?Com\b""", RegexOption.IGNORE_CASE)
     private val langPattern = Regex("""\b(ENG|JPN|Hindi|Multi-?Sub|Hin|Eng)\b""", RegexOption.IGNORE_CASE)
 
     // Episode markers
@@ -40,11 +41,8 @@ class FileNameParser {
         // Remove stray (Part 1+2+3) etc.
         clean = clean.replace(Regex("""\(Part.*?\)""", RegexOption.IGNORE_CASE), " ")
         
-        // Remove known dash-suffixed release groups
-        clean = clean.replace(Regex("""-(?:EMBER|FENiX|YIFY|RARBG|playWEB.*?|YOGI|LUMiX|Judas|Trix|Anime Time)\b""", RegexOption.IGNORE_CASE), " ")
-
-        // Normalize separators
-        clean = clean.replace('.', ' ').replace('_', ' ').replace('-', ' ')
+        // Normalize separators (preserve dash for trailing group pattern)
+        clean = clean.replace('.', ' ').replace('_', ' ')
         
         clean = resPattern.replace(clean, "")
         clean = sourcePattern.replace(clean, "")
@@ -63,6 +61,12 @@ class FileNameParser {
         // Remove trailing empty parens and standalone dashes
         clean = clean.replace(Regex("""\(\s*\)"""), "")
         clean = clean.replace(Regex("""-+$"""), "")
+        
+        clean = clean.trim()
+        clean = clean.replace(trailingGroupPattern, "")
+        
+        // Normalize remaining dashes
+        clean = clean.replace('-', ' ')
         
         return clean.replace(Regex("""\s+"""), " ").trim()
     }

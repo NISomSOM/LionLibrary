@@ -36,7 +36,7 @@ val dataModule = module {
     singleOf(::DataStoreSettingsRepository) bind SettingsRepository::class
 
     single {
-        AndroidMediaScanner(get(), get(), get(), get(), get(), get(), get(), get())
+        AndroidMediaScanner(androidContext(), get(), get(), get(), get(), get(), get(), get(), get())
     } bind ScanLibraryUseCase::class
 
     single { AndroidLaunchPlayerUseCase(androidContext()) } bind LaunchPlayerUseCase::class

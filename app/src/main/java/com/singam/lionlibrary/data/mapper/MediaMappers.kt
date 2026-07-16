@@ -40,7 +40,8 @@ fun MediaEntity.toMediaItem(): MediaItem = MediaItem(
     certification = certification,
     lastUpdated = lastUpdated,
     filePath = filePath,
-    logoPath = logoPath
+    logoPath = logoPath,
+    preferredEngine = preferredEngine
 )
 
 fun MediaItem.toMediaEntity(): MediaEntity = MediaEntity(
@@ -61,7 +62,8 @@ fun MediaItem.toMediaEntity(): MediaEntity = MediaEntity(
     certification = certification,
     lastUpdated = lastUpdated,
     filePath = filePath,
-    logoPath = logoPath
+    logoPath = logoPath,
+    preferredEngine = preferredEngine
 )
 
 fun EpisodeEntity.toEpisode(): Episode = Episode(
@@ -74,7 +76,8 @@ fun EpisodeEntity.toEpisode(): Episode = Episode(
     runtime = runtime,
     airDate = airDate,
     thumbnailPath = thumbnailPath,
-    filePath = filePath
+    filePath = filePath,
+    preferredEngine = preferredEngine
 )
 
 fun Episode.toEpisodeEntity(): EpisodeEntity = EpisodeEntity(
@@ -87,7 +90,8 @@ fun Episode.toEpisodeEntity(): EpisodeEntity = EpisodeEntity(
     runtime = runtime,
     airDate = airDate,
     thumbnailPath = thumbnailPath,
-    filePath = filePath
+    filePath = filePath,
+    preferredEngine = preferredEngine
 )
 
 fun SeasonEntity.toSeason(): Season = Season(
@@ -138,7 +142,8 @@ fun MovieDetailsDto.toMediaEntity(
     confidence: Float,
     posterLocalPath: String?,
     backdropLocalPath: String?,
-    filePath: String? = null
+    filePath: String? = null,
+    preferredEngine: String = "EXOPLAYER"
 ): MediaEntity = MediaEntity(
     tmdbId = id,
     title = title,
@@ -155,14 +160,16 @@ fun MovieDetailsDto.toMediaEntity(
     duration = runtime,
     certification = releaseDates?.results?.find { it.iso31661 == "US" }?.releaseDates?.firstOrNull { !it.certification.isNullOrBlank() }?.certification,
     lastUpdated = System.currentTimeMillis(),
-    filePath = filePath
+    filePath = filePath,
+    preferredEngine = preferredEngine
 )
 
 fun TvDetailsDto.toMediaEntity(
     mediaType: MediaType,
     confidence: Float,
     posterLocalPath: String?,
-    backdropLocalPath: String?
+    backdropLocalPath: String?,
+    preferredEngine: String = "EXOPLAYER"
 ): MediaEntity = MediaEntity(
     tmdbId = id,
     title = name,
@@ -179,6 +186,7 @@ fun TvDetailsDto.toMediaEntity(
     duration = episodeRunTime?.firstOrNull(),
     certification = contentRatings?.results?.find { it.iso31661 == "US" }?.rating,
     lastUpdated = System.currentTimeMillis(),
-    logoPath = null
+    logoPath = null,
+    preferredEngine = preferredEngine
 )
 

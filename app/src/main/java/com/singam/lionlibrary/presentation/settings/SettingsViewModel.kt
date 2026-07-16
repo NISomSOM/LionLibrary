@@ -29,7 +29,8 @@ data class SettingsState(
     val isScanning: Boolean = false,
     val scanProgress: ScanProgress? = null,
     val showClearHistoryDialog: Boolean = false,
-    val isApiKeySaved: Boolean = false
+    val isApiKeySaved: Boolean = false,
+    val forceLibVlc: Boolean = false
 )
 
 
@@ -43,6 +44,7 @@ sealed interface SettingsAction {
     data object OnClearHistoryClick : SettingsAction
     data object OnConfirmClearHistory : SettingsAction
     data object OnDismissClearHistoryDialog : SettingsAction
+    data class OnForceLibVlcToggle(val enabled: Boolean) : SettingsAction
 }
 
 
@@ -90,6 +92,7 @@ class SettingsViewModel(
             is SettingsAction.OnDismissClearHistoryDialog -> {
                 _state.update { it.copy(showClearHistoryDialog = false) }
             }
+            is SettingsAction.OnForceLibVlcToggle -> toggleForceLibVlc(action.enabled)
         }
     }
 
@@ -111,6 +114,11 @@ class SettingsViewModel(
                     lastScanTime = lastScanTime,
                     isApiKeySaved = apiKey.isNotBlank()
                 )
+            }
+
+            // Load forceLibVlc separately (flow-based)
+            settingsRepository.forceLibVlc.first().let { forced ->
+                _state.update { it.copy(forceLibVlc = forced) }
             }
         }
     }
@@ -178,6 +186,13 @@ class SettingsViewModel(
             watchProgressRepository.clearAll()
             _state.update { it.copy(showClearHistoryDialog = false) }
             _events.send(SettingsEvent.ShowSnackbar("Watch history cleared"))
+        }
+    }
+
+    private fun toggleForceLibVlc(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setForceLibVlc(enabled)
+            _state.update { it.copy(forceLibVlc = enabled) }
         }
     }
 }

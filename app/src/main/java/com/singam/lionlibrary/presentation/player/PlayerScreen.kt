@@ -55,6 +55,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.PlayerView
 import androidx.navigation.NavHostController
+import com.singam.lionlibrary.presentation.player.engine.EngineType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -143,7 +144,7 @@ fun PlayerScreen(
     onAction: (PlayerAction) -> Unit,
     onBack: () -> Unit
 ) {
-    val player = viewModel.player
+    val engine = viewModel.engine
     val context = LocalContext.current
     val activity = context.findActivity()
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
@@ -175,20 +176,43 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // ExoPlayer Surface
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    this.player = player
-                    useController = false
-                    layoutParams = android.view.ViewGroup.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+        // Video Surface — branched by engine type so each AndroidView has the
+        // correct native View type. DO NOT merge into a single generic AndroidView.
+        when (state.engineType) {
+            EngineType.EXOPLAYER -> {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            useController = false
+                            layoutParams = android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        }
+                    },
+                    update = { view ->
+                        engine?.attachToView(view as android.view.ViewGroup)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            EngineType.LIBVLC -> {
+                AndroidView(
+                    factory = { ctx ->
+                        org.videolan.libvlc.util.VLCVideoLayout(ctx).apply {
+                            layoutParams = android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        }
+                    },
+                    update = { view ->
+                        engine?.attachToView(view as android.view.ViewGroup)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
 
         // Gesture Overlay
         Row(modifier = Modifier.fillMaxSize()) {
@@ -502,7 +526,7 @@ fun PlayerScreen(
     }
 
     if (showAudioSheet) {
-        val tracks = viewModel.getAvailableTracks()
+        val audioTracks = viewModel.getAudioTracks()
         ModalBottomSheet(
             onDismissRequest = { showAudioSheet = false },
             containerColor = Color(0xFF19181A),
@@ -516,43 +540,34 @@ fun PlayerScreen(
                     .padding(bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item { 
+                item {
                     Text(
-                        "Audio Tracks", 
-                        style = MaterialTheme.typography.titleLarge, 
+                        "Audio Tracks",
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                         modifier = Modifier.padding(bottom = 0.dp)
-                    ) 
+                    )
                 }
-                val audioGroups = tracks.groups.filter { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO }
-                audioGroups.forEach { group ->
-                    items(group.length) { i ->
-                        val format = group.getTrackFormat(i)
-                        val isSelected = group.isTrackSelected(i)
-                        
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                                .background(if (isSelected) Color(0xFF4A3A22) else Color(0xFF262524))
-                                .clickable {
-                                    player.trackSelectionParameters = player.trackSelectionParameters
-                                        .buildUpon()
-                                        .setOverrideForType(androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, i))
-                                        .build()
-                                    showAudioSheet = false
-                                }
-                                .padding(horizontal = 16.dp, vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = format.language ?: format.label ?: "Audio Track ${i + 1}", 
-                                modifier = Modifier.weight(1f),
-                                color = Color.White,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
+                items(audioTracks) { track ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                            .background(if (track.isSelected) Color(0xFF4A3A22) else Color(0xFF262524))
+                            .clickable {
+                                viewModel.selectAudioTrack(track.id)
+                                showAudioSheet = false
+                            }
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = track.label,
+                            modifier = Modifier.weight(1f),
+                            color = Color.White,
+                            fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
                     }
                 }
             }
@@ -560,7 +575,8 @@ fun PlayerScreen(
     }
 
     if (showSubtitleSheet) {
-        val tracks = viewModel.getAvailableTracks()
+        val subtitleTracks = viewModel.getSubtitleTracks()
+        val isSubtitlesOff = subtitleTracks.none { it.isSelected }
         ModalBottomSheet(
             onDismissRequest = { showSubtitleSheet = false },
             containerColor = Color(0xFF19181A),
@@ -574,72 +590,58 @@ fun PlayerScreen(
                     .padding(bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item { 
+                item {
                     Text(
-                        "Subtitles", 
-                        style = MaterialTheme.typography.titleLarge, 
+                        "Subtitles",
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                         modifier = Modifier.padding(bottom = 0.dp)
-                    ) 
+                    )
                 }
-                
+
                 // Off option
                 item {
-                    val isSubtitlesDisabled = player.trackSelectionParameters.disabledTrackTypes.contains(androidx.media3.common.C.TRACK_TYPE_TEXT)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                            .background(if (isSubtitlesDisabled) Color(0xFF4A3A22) else Color(0xFF262524))
+                            .background(if (isSubtitlesOff) Color(0xFF4A3A22) else Color(0xFF262524))
                             .clickable {
-                                player.trackSelectionParameters = player.trackSelectionParameters
-                                    .buildUpon()
-                                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
-                                    .build()
+                                viewModel.selectSubtitleTrack(null)
                                 showSubtitleSheet = false
                             }
                             .padding(horizontal = 16.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Off", 
+                            text = "Off",
                             modifier = Modifier.weight(1f),
                             color = Color.White,
-                            fontWeight = if (isSubtitlesDisabled) FontWeight.Bold else FontWeight.Normal
+                            fontWeight = if (isSubtitlesOff) FontWeight.Bold else FontWeight.Normal
                         )
                     }
                 }
 
-                val textGroups = tracks.groups.filter { it.type == androidx.media3.common.C.TRACK_TYPE_TEXT }
-                textGroups.forEach { group ->
-                    items(group.length) { i ->
-                        val format = group.getTrackFormat(i)
-                        val isSelected = group.isTrackSelected(i) && !player.trackSelectionParameters.disabledTrackTypes.contains(androidx.media3.common.C.TRACK_TYPE_TEXT)
-                        
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                                .background(if (isSelected) Color(0xFF4A3A22) else Color(0xFF262524))
-                                .clickable {
-                                    player.trackSelectionParameters = player.trackSelectionParameters
-                                        .buildUpon()
-                                        .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
-                                        .setOverrideForType(androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, i))
-                                        .build()
-                                    showSubtitleSheet = false
-                                }
-                                .padding(horizontal = 16.dp, vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = format.language ?: format.label ?: "Subtitle Track ${i + 1}", 
-                                modifier = Modifier.weight(1f),
-                                color = Color.White,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
+                items(subtitleTracks) { track ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                            .background(if (track.isSelected) Color(0xFF4A3A22) else Color(0xFF262524))
+                            .clickable {
+                                viewModel.selectSubtitleTrack(track.id)
+                                showSubtitleSheet = false
+                            }
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = track.label,
+                            modifier = Modifier.weight(1f),
+                            color = Color.White,
+                            fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
                     }
                 }
             }

@@ -19,5 +19,8 @@ class DataStoreSettingsRepository(
     override suspend fun setShowsFolderUri(uri: String) = preferencesManager.setShowsFolderUri(uri)
 
     override suspend fun setLastScanTime(time: Long) = preferencesManager.setLastScanTime(time)
+
+    override val forceLibVlc: Flow<Boolean> = preferencesManager.forceLibVlc
+    override suspend fun setForceLibVlc(enabled: Boolean) = preferencesManager.setForceLibVlc(enabled)
 }
 

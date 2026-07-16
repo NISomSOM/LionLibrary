@@ -49,5 +49,13 @@ class PreferencesManager(context: Context) {
         dataStore.edit { prefs -> prefs[PreferencesKeys.LAST_SCAN_TIME] = time }
     }
 
+    val forceLibVlc: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferencesKeys.FORCE_LIBVLC] ?: false
+    }
+
+    suspend fun setForceLibVlc(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[PreferencesKeys.FORCE_LIBVLC] = enabled }
+    }
+
 }
 

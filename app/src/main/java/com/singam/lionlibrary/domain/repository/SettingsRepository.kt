@@ -15,5 +15,8 @@ interface SettingsRepository {
     suspend fun setShowsFolderUri(uri: String)
 
     suspend fun setLastScanTime(time: Long)
+
+    val forceLibVlc: Flow<Boolean>
+    suspend fun setForceLibVlc(enabled: Boolean)
 }
 

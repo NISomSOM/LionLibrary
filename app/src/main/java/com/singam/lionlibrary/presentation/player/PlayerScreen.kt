@@ -75,6 +75,8 @@ fun PlayerRoot(
     val context = LocalContext.current
     val activity = context.findActivity()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // Handle Orientation and System Bars
     DisposableEffect(activity) {
@@ -122,7 +124,12 @@ fun PlayerRoot(
                     }
                 }
                 is PlayerEvent.ShowError -> {
-                    // toast or something, but player is fullscreen
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = event.message,
+                            duration = SnackbarDuration.Long
+                        )
+                    }
                 }
             }
         }
@@ -132,7 +139,8 @@ fun PlayerRoot(
         state = state,
         viewModel = viewModel,
         onAction = viewModel::onAction,
-        onBack = { navController.popBackStack() }
+        onBack = { navController.popBackStack() },
+        snackbarHostState = snackbarHostState
     )
 }
 
@@ -142,7 +150,8 @@ fun PlayerScreen(
     state: PlayerState,
     viewModel: PlayerViewModel,
     onAction: (PlayerAction) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() }
 ) {
     val engine = viewModel.engine
     val context = LocalContext.current
@@ -522,6 +531,20 @@ fun PlayerScreen(
             }
         }
 
+        // Snackbar for error messages (positioned above bottom controls)
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 140.dp) // above seekbar + pill
+        ) { snackbarData ->
+            Snackbar(
+                snackbarData = snackbarData,
+                containerColor = Color(0xFF2D2D2D),
+                contentColor = Color.White,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+            )
+        }
 
     }
 

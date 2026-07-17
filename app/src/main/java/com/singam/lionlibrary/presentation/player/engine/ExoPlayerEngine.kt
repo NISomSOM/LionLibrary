@@ -178,6 +178,13 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
         return result
     }
 
+    override fun resetToDefaultTrackSelection() {
+        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .build()
+    }
+
     override fun selectSubtitleTrack(id: String?) {
         if (id == null) {
             // Disable subtitles

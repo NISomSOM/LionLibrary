@@ -72,6 +72,13 @@ interface LionPlayerEngine {
     fun getSubtitleTracks(): List<EngineTrackInfo>
 
     /**
+     * Clears any track selection overrides, reverting to the engine's
+     * default track selection. Used by the recovery path when a manually-
+     * selected audio track causes a playback error.
+     */
+    fun resetToDefaultTrackSelection()
+
+    /**
      * Selects a subtitle track by [id], or pass `null` to disable subtitles.
      */
     fun selectSubtitleTrack(id: String?)

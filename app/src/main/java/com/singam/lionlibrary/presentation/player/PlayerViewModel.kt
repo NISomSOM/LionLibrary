@@ -165,11 +165,37 @@ class PlayerViewModel(
                     stopPersistenceJob()
                 }
 
-                // Surface engine errors to the existing playbackFailed UI
+                // Surface engine errors — recover by reverting to default track selection
                 engineState.error?.let { errorMsg ->
-                    // error is non-null — the existing external-fallback UI will surface this
-                    // via the isExternalFallbackLoading flag being cleared and the error available
-                    // in state. No new UI needed — the existing OnExternalFallback button handles it.
+                    viewModelScope.launch {
+                        val recoveryPositionMs = _state.value.currentPositionMs
+                        val filePath = if (mediaType == MediaType.MOVIE) {
+                            currentMedia?.filePath
+                        } else {
+                            currentEpisode?.filePath
+                        }
+                        val subtitlePath = if (mediaType == MediaType.MOVIE) {
+                            currentMedia?.externalSubtitlePath
+                        } else {
+                            currentEpisode?.externalSubtitlePath
+                        }
+
+                        engine?.resetToDefaultTrackSelection()
+                        if (filePath != null) {
+                            engine?.setMedia(
+                                Uri.parse(filePath),
+                                subtitlePath?.let { Uri.parse(it) }
+                            )
+                            engine?.seekTo(recoveryPositionMs)
+                            engine?.play()
+                        }
+                        _events.send(
+                            PlayerEvent.ShowError(
+                                "That audio track isn't supported on this device. " +
+                                    "Reverted to the default track."
+                            )
+                        )
+                    }
                 }
             }
         }

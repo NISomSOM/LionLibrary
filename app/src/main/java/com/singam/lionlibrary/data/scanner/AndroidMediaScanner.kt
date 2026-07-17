@@ -507,7 +507,7 @@ class AndroidMediaScanner(
      * If all video/audio tracks are hardware-decodable → EXOPLAYER.
      * Otherwise → LIBVLC (which has its own software decoders).
      */
-    private fun determineEngine(uri: Uri): String {
+    private suspend fun determineEngine(uri: Uri): String {
         return if (CodecCapabilityChecker.canHardwareDecode(context, uri)) {
             EngineType.EXOPLAYER.name
         } else {

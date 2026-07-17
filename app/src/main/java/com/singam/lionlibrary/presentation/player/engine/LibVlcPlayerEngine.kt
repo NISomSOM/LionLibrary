@@ -282,6 +282,12 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         }
     }
 
+    override fun resetToDefaultTrackSelection() {
+        // No-op for libVLC — it handles unsupported audio tracks gracefully
+        // with its own software decoder stack, so this recovery path is
+        // unnecessary. Kept as no-op to satisfy the interface contract.
+    }
+
     override fun selectSubtitleTrack(id: String?) {
         // null → disable subtitles (VLC id = -1)
         mediaPlayer.spuTrack = id?.toIntOrNull() ?: -1

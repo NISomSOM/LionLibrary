@@ -140,6 +140,14 @@ class AndroidMediaScanner(
 
         var abortStatus: ScanStatus? = null
 
+        // Initialize the shared ExoPlayer probe instance on the main
+        // thread (ExoPlayer requires main-thread construction), then
+        // reuse it for every file in the scan session.
+        kotlinx.coroutines.withContext(Dispatchers.Main) {
+            CodecCapabilityChecker.initialize(context)
+        }
+        try {
+
         allCandidates
             .asFlow()
             .flatMapMerge(concurrency = Constants.SCAN_CONCURRENCY) { candidate ->
@@ -217,6 +225,14 @@ class AndroidMediaScanner(
 
         flushMedia()
         flushEpisodes()
+
+        } finally {
+            // Always release the probe player, even on error/cancellation.
+            // Must run on main thread (ExoPlayer requirement).
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                CodecCapabilityChecker.shutdown()
+            }
+        }
 
         if (abortStatus != null) return@flow
 

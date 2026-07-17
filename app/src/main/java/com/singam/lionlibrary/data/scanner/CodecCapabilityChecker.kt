@@ -2,279 +2,275 @@ package com.singam.lionlibrary.data.scanner
 
 import android.content.Context
 import android.media.MediaCodecList
-import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import android.util.Log
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import org.videolan.libvlc.LibVLC
-import org.videolan.libvlc.Media
-import org.videolan.libvlc.interfaces.IMedia
 import kotlin.coroutines.resume
 
 /**
  * Correctness-first codec probe that determines whether Android's
  * hardware decoders can handle **every** track in a given media file.
  *
- * **Video** tracks are checked via [MediaExtractor] + [MediaCodecList]
- * (reliable for video codec profiles).
+ * Uses a headless [ExoPlayer] instance to `prepare()` the media and
+ * then inspects all track groups — including every audio track in MKV
+ * containers. ExoPlayer's own Matroska/WebM extractor reliably
+ * enumerates ALL tracks, unlike Android's [android.media.MediaExtractor]
+ * which often misses secondary audio tracks.
  *
- * **Audio** tracks are checked via a throwaway libVLC parse that
- * exhaustively enumerates ALL audio tracks (including secondary ones
- * that [MediaExtractor] often misses in MKV containers) and compares
- * each codec against a blocklist of formats ExoPlayer cannot decode
- * without the FFmpeg extension.
+ * ## Why ExoPlayer instead of libVLC?
  *
- * If detection has **any** doubt — timeout, exception, unrecognized
- * codec, zero tracks — it fails safe to LIBVLC.
+ * libVLC's native demuxer cannot parse `content://` SAF URIs during
+ * metadata-only operations (returns `ParsedStatus.Skipped` with 0
+ * tracks). ExoPlayer handles SAF URIs natively and its extractors are
+ * the same ones used during actual playback, guaranteeing that what
+ * we detect at scan time matches what the player will encounter.
+ *
+ * ## Lifecycle
+ *
+ * Callers must bracket usage with [initialize] / [shutdown]:
+ *
+ * ```
+ * CodecCapabilityChecker.initialize(context)
+ * try {
+ *     // ... scan files, calling canHardwareDecode() ...
+ * } finally {
+ *     CodecCapabilityChecker.shutdown()
+ * }
+ * ```
+ *
+ * If detection has **any** doubt — timeout, exception, zero tracks —
+ * it fails safe to LIBVLC.
  */
 object CodecCapabilityChecker {
 
     private const val TAG = "CodecCapabilityChecker"
 
+    /** Per-file probe timeout. ExoPlayer prepare is fast (~100-500ms). */
+    private const val PROBE_TIMEOUT_MS = 5_000L
+
     private val codecList by lazy {
         MediaCodecList(MediaCodecList.REGULAR_CODECS)
     }
 
+    /**
+     * Cache for video capability results to avoid repeated MediaCodecList lookups
+     * for common MIME types and profiles.
+     */
+    private val videoCapabilityCache = mutableMapOf<String, Boolean>()
+
     // -----------------------------------------------------------------------
-    // Codec blocklist — audio codecs ExoPlayer cannot decode without the
-    // FFmpeg extension.
-    //
-    // IMedia.Track.codec is a String (the human-readable codec ID from VLC).
-    // IMedia.Track.fourcc is the raw 32-bit FOURCC integer.
-    //
-    // We match on the `codec` string (e.g. "a52 ", "dca ", "ec-3") which
-    // VLC populates from its internal codec mapping tables.
-    //
-    // We ALSO convert `fourcc` to a 4-char string and check that, since
-    // the `codec` field may sometimes contain the same value or a variant.
-    //
-    // IMPORTANT: these must be verified empirically against real files
-    // by checking logcat output from the probe (search for TAG). If a
-    // mismatch is found, update this set — the fail-safe behaviour
-    // (unrecognized FOURCC → LIBVLC) ensures correctness in the meantime.
+    // Shared ExoPlayer probe instance — created on the main thread,
+    // reused across all files in a scan session.
     // -----------------------------------------------------------------------
-    private val UNSUPPORTED_AUDIO_CODECS = setOf(
-        // AC3 (Dolby Digital) — VLC codec strings
-        "a52 ", "a52b", "ac-3", "sac3",
-        // E-AC3 (Dolby Digital Plus)
-        "ec-3", "eac3", "EAC3",
-        // DTS and variants
-        "dts ", "dtsh", "dtsl", "dtse", "DTS ", "dca ",
-        // TrueHD / MLP
-        "trhd", "mlp ", "mlpa",
-        // Common VLC description strings that may appear in the codec field
-        "A52 Audio (Dolby Digital)", "DTS Audio", "DCA (DTS Coherent Acoustics)",
-        "AC-3", "E-AC-3", "MLP (Meridian Lossless Packing)",
-        "TrueHD"
+
+    private var probePlayer: ExoPlayer? = null
+    private var appContext: Context? = null
+    private val probeMutex = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * Initialise the shared probe player. Must be called on the **main
+     * thread** (ExoPlayer requires main-thread construction).
+     *
+     * Safe to call multiple times — only the first call allocates.
+     */
+    fun initialize(context: Context) {
+        if (probePlayer != null) return
+        appContext = context.applicationContext
+        probePlayer = ExoPlayer.Builder(context.applicationContext).build()
+        Log.d(TAG, "Shared ExoPlayer probe instance initialized")
+    }
+
+    /** Release the shared probe player. Call when the scan session ends. */
+    fun shutdown() {
+        probePlayer?.release()
+        probePlayer = null
+        appContext = null
+        Log.d(TAG, "Shared ExoPlayer probe instance released")
+    }
+
+    // -----------------------------------------------------------------------
+    // Audio MIME blocklist — codecs ExoPlayer cannot decode without the
+    // FFmpeg extension. Checked against Format.sampleMimeType.
+    // -----------------------------------------------------------------------
+    private val UNSUPPORTED_AUDIO_MIMES = setOf(
+        MimeTypes.AUDIO_AC3,          // "audio/ac3"
+        MimeTypes.AUDIO_E_AC3,        // "audio/eac3"
+        MimeTypes.AUDIO_E_AC3_JOC,    // "audio/eac3-joc" (Dolby Atmos)
+        MimeTypes.AUDIO_DTS,          // "audio/vnd.dts"
+        MimeTypes.AUDIO_DTS_HD,       // "audio/vnd.dts.hd"
+        MimeTypes.AUDIO_DTS_EXPRESS,  // "audio/vnd.dts.hd;profile=lbr"
+        MimeTypes.AUDIO_TRUEHD,       // "audio/true-hd"
+        "audio/mlp",                  // "audio/mlp"
     )
 
     /**
-     * Returns `true` if every video and audio track in the file at [uri]
-     * can be decoded by Android's built-in decoders (suitable for ExoPlayer).
+     * Checks if the device has a hardware decoder for the given video format.
+     */
+    private fun isVideoHardwareSupported(format: androidx.media3.common.Format): Boolean {
+        val mime = format.sampleMimeType ?: return false
+        
+        // Cache key includes MIME, width, and height
+        val cacheKey = "$mime|${format.width}x${format.height}"
+        videoCapabilityCache[cacheKey]?.let { return it }
+
+        val isSupported = try {
+            // Check if ANY hardware decoder supports this format
+            codecList.codecInfos.any { info ->
+                if (info.isEncoder) return@any false
+                
+                // Hardware acceleration check with API 29 fallback
+                val isHardware = if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    info.isHardwareAccelerated
+                } else {
+                    val name = info.name.lowercase()
+                    !(name.startsWith("omx.google.") || 
+                      name.startsWith("c2.android.") || 
+                      name.startsWith("omx.ffmpeg."))
+                }
+
+                if (!isHardware) return@any false
+                
+                info.supportedTypes.contains(mime) && try {
+                    val caps = info.getCapabilitiesForType(mime)
+                    val mediaFormat = MediaFormat().apply {
+                        setString(MediaFormat.KEY_MIME, mime)
+                        setInteger(MediaFormat.KEY_WIDTH, format.width)
+                        setInteger(MediaFormat.KEY_HEIGHT, format.height)
+                    }
+                    caps.isFormatSupported(mediaFormat)
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        } catch (_: Exception) {
+            false
+        }
+
+        videoCapabilityCache[cacheKey] = isSupported
+        return isSupported
+    }
+
+    /**
+     * Returns `true` if every audio and video track in the file at [uri] can be
+     * decoded by Android's built-in hardware decoders (suitable for ExoPlayer).
      *
      * Returns `false` (→ assign LIBVLC) if:
-     * - Any video track uses an unsupported codec / profile / level
-     * - Any audio track uses a codec in [UNSUPPORTED_AUDIO_CODECS]
+     * - Any audio track uses a MIME type in [UNSUPPORTED_AUDIO_MIMES]
+     * - Any video track has no matching hardware decoder
      * - The file cannot be opened or has no tracks
-     * - The libVLC probe times out (3 s) or throws an exception
+     * - The probe times out or throws an exception
+     * - [initialize] was not called
      * - Any ambiguity at all — fail safe to LIBVLC
      */
-    suspend fun canHardwareDecode(context: Context, uri: Uri): Boolean {
-        // Step 1: Video tracks — MediaExtractor is reliable for this
-        val videoOk = checkVideoTracksViaMediaExtractor(context, uri)
-        if (!videoOk) return false
-
-        // Step 2: Audio tracks — libVLC probe (exhaustive, unlike MediaExtractor)
-        return checkAllAudioTracksViaLibVlc(context, uri)
-    }
-
-    // -----------------------------------------------------------------------
-    // Video: keep MediaExtractor-based check (reliable for video codecs)
-    // -----------------------------------------------------------------------
-
-    private fun checkVideoTracksViaMediaExtractor(context: Context, uri: Uri): Boolean {
-        val extractor = MediaExtractor()
-        return try {
-            extractor.setDataSource(context, uri, null)
-            val trackCount = extractor.trackCount
-            if (trackCount == 0) return false
-
-            for (i in 0 until trackCount) {
-                val format = extractor.getTrackFormat(i)
-                val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
-
-                // Only check video tracks here — audio is handled by the libVLC probe
-                if (!mime.startsWith("video/")) continue
-
-                val decoderName = codecList.findDecoderForFormat(format)
-                if (decoderName == null) {
-                    Log.d(TAG, "No video decoder for MIME=$mime in $uri")
-                    return false
-                }
-            }
-            true
-        } catch (e: Exception) {
-            Log.d(TAG, "MediaExtractor failed for $uri: ${e.message}")
-            false
-        } finally {
-            extractor.release()
+    suspend fun canHardwareDecode(context: Context, uri: Uri): Boolean = probeMutex.withLock {
+        val player = probePlayer
+        if (player == null) {
+            Log.d(TAG, "Probe player not initialized → fail safe to LIBVLC")
+            return false
         }
-    }
 
-    // -----------------------------------------------------------------------
-    // Audio: libVLC probe — exhaustively checks EVERY audio track
-    // -----------------------------------------------------------------------
+        return withTimeoutOrNull(PROBE_TIMEOUT_MS) {
+            // ExoPlayer listener callbacks fire on the main thread.
+            // Use suspendCancellableCoroutine to bridge async → suspend.
+            withContext(Dispatchers.Main) {
+                suspendCancellableCoroutine { cont ->
+                    val listener = object : Player.Listener {
+                        override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                            player.removeListener(this)
+                            
+                            val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                            val videoGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
 
-    /**
-     * Uses a throwaway [LibVLC] + [Media] instance purely for track
-     * enumeration. Parses the container header (no frame decoding) and
-     * checks every audio track's codec against [UNSUPPORTED_AUDIO_CODECS].
-     *
-     * Timeout: 3 seconds. On timeout → returns `false` (fail safe to LIBVLC).
-     *
-     * Resources are released in every code path: success, failure, timeout,
-     * and cancellation.
-     */
-    private suspend fun checkAllAudioTracksViaLibVlc(
-        context: Context,
-        uri: Uri
-    ): Boolean = withTimeoutOrNull(3_000L) {
-        suspendCancellableCoroutine { cont ->
-            var libVLC: LibVLC? = null
-            var media: Media? = null
+                            Log.d(TAG, "Probe: onTracksChanged, groups=${tracks.groups.size} in $uri")
 
-            fun cleanup() {
-                try { media?.release() } catch (_: Exception) {}
-                try { libVLC?.release() } catch (_: Exception) {}
-                media = null
-                libVLC = null
-            }
+                            if (audioGroups.isEmpty() && videoGroups.isEmpty()) {
+                                Log.d(TAG, "Probe: NO TRACKS FOUND in $uri ??? fail safe to LIBVLC")
+                                cleanupAndResume(false)
+                                return
+                            }
 
-            try {
-                libVLC = LibVLC(context, arrayListOf("--no-video", "--no-audio"))
-                media = if (uri.scheme == "content") {
-                    // For content:// URIs, open via FileDescriptor just like
-                    // LibVlcPlayerEngine does for playback.
-                    val pfd = context.contentResolver.openFileDescriptor(uri, "r")
-                    if (pfd == null) {
-                        cleanup()
-                        if (cont.isActive) cont.resume(false)
-                        return@suspendCancellableCoroutine
-                    }
-                    // Note: Media() copies the fd internally, so we can close pfd
-                    // after creating the Media object.
-                    val m = Media(libVLC!!, pfd.fileDescriptor)
-                    pfd.close()
-                    m
-                } else {
-                    Media(libVLC!!, uri)
-                }
+                            var allTracksSupported = true
 
-                // Set event listener BEFORE calling parse.
-                // IMedia.Event.ParsedChanged (int = 3) fires when parsing completes.
-                media!!.setEventListener { event ->
-                    if (event.type == IMedia.Event.ParsedChanged) {
-                        val m = media ?: return@setEventListener
-                        val trackCount = m.trackCount
-
-                        // Zero tracks found → ambiguous, fail safe
-                        if (trackCount == 0) {
-                            Log.d(TAG, "libVLC probe: 0 tracks for $uri → fail safe")
-                            cleanup()
-                            if (cont.isActive) cont.resume(false)
-                            return@setEventListener
-                        }
-
-                        var audioTrackCount = 0
-                        var allSupported = true
-
-                        for (i in 0 until trackCount) {
-                            val track = m.getTrack(i) ?: continue
-                            // IMedia.Track.type is int; IMedia.Track.Type.Audio = 0
-                            if (track.type == IMedia.Track.Type.Audio) {
-                                audioTrackCount++
-                                // track.codec is a String (e.g. "a52 ", "mpga")
-                                // track.fourcc is the raw int FOURCC
-                                val codecStr = track.codec ?: ""
-                                val fourccStr = fourccToString(track.fourcc)
-                                Log.d(
-                                    TAG,
-                                    "libVLC probe: audio track $i " +
-                                        "codec='$codecStr' fourcc='$fourccStr' " +
-                                        "(0x${Integer.toHexString(track.fourcc)}) in $uri"
-                                )
-
-                                if (codecStr in UNSUPPORTED_AUDIO_CODECS ||
-                                    fourccStr in UNSUPPORTED_AUDIO_CODECS
-                                ) {
-                                    allSupported = false
-                                    // Don't break — log ALL tracks for verification
+                            // Validate Video Tracks (Hardware Decoder Check)
+                            for (group in videoGroups) {
+                                for (i in 0 until group.length) {
+                                    val format = group.getTrackFormat(i)
+                                    val mime = format.sampleMimeType ?: ""
+                                    
+                                    Log.d(TAG, "Probe: video track mime='$mime' ${format.width}x${format.height} in $uri")
+                                    
+                                    if (!isVideoHardwareSupported(format)) {
+                                        Log.d(TAG, "Probe: NO HW DECODER for video mime='$mime' -> will assign LIBVLC")
+                                        allTracksSupported = false
+                                    }
                                 }
                             }
+
+                            // Validate Audio Tracks (Blocklist Check)
+                            for (group in audioGroups) {
+                                for (i in 0 until group.length) {
+                                    val format = group.getTrackFormat(i)
+                                    val mime = format.sampleMimeType ?: ""
+                                    val lang = format.language ?: "?"
+
+                                    Log.d(TAG, "Probe: audio track mime='$mime' lang='$lang' in $uri")
+
+                                    if (mime in UNSUPPORTED_AUDIO_MIMES) {
+                                        Log.d(TAG, "Probe: BLOCKED audio mime='$mime' -> will assign LIBVLC")
+                                        allTracksSupported = false
+                                    }
+                                }
+                            }
+
+                            cleanupAndResume(allTracksSupported)
                         }
 
-                        // If we found zero audio tracks specifically, that's fine —
-                        // video-only files work perfectly in ExoPlayer.
-                        val result = if (audioTrackCount == 0) {
-                            Log.d(TAG, "libVLC probe: no audio tracks in $uri (video-only?) → allow EXOPLAYER")
-                            true
-                        } else {
-                            allSupported
+                        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                            player.removeListener(this)
+                            Log.d(TAG, "Probe error for $uri: ${error.message}")
+                            cleanupAndResume(false)
                         }
 
-                        cleanup()
-                        if (cont.isActive) cont.resume(result)
+                        private fun cleanupAndResume(result: Boolean) {
+                            player.stop()
+                            player.clearMediaItems()
+                            if (cont.isActive) cont.resume(result)
+                        }
+                    }
+
+                    // Aggressive reset before starting new prepare
+                    player.stop()
+                    player.clearMediaItems()
+                    
+                    player.addListener(listener)
+                    player.setMediaItem(MediaItem.fromUri(uri))
+                    player.prepare()
+
+                    cont.invokeOnCancellation {
+                        player.removeListener(listener)
+                        player.stop()
+                        player.clearMediaItems()
                     }
                 }
-
-                // IMedia.Parse.ParseLocal = 0, IMedia.Parse.FetchLocal = 2
-                // parse() returns true if parsing was started successfully.
-                val parseStarted = media!!.parse(
-                    IMedia.Parse.ParseLocal or IMedia.Parse.FetchLocal
-                )
-                if (!parseStarted) {
-                    Log.d(TAG, "libVLC probe: parse() returned false for $uri → fail safe")
-                    cleanup()
-                    if (cont.isActive) cont.resume(false)
-                }
-
-                cont.invokeOnCancellation {
-                    cleanup()
-                }
-            } catch (e: Exception) {
-                Log.d(TAG, "libVLC probe exception for $uri: ${e.message}")
-                cleanup()
-                if (cont.isActive) cont.resume(false)
             }
+        } ?: run {
+            Log.d(TAG, "Probe timed out for $uri → fail safe to LIBVLC")
+            // Clean up the player on timeout
+            withContext(Dispatchers.Main) {
+                player.stop()
+                player.clearMediaItems()
+            }
+            false
         }
-    } ?: run {
-        // withTimeoutOrNull returned null → 3-second timeout expired
-        Log.d(TAG, "libVLC probe timed out → fail safe to LIBVLC")
-        false
-    }
-
-    // -----------------------------------------------------------------------
-    // FOURCC helper
-    // -----------------------------------------------------------------------
-
-    /**
-     * Converts a VLC integer FOURCC to its 4-character string representation.
-     *
-     * On little-endian (Android ARM/x86), VLC_FOURCC(a,b,c,d) is packed as:
-     *   `a | (b << 8) | (c << 16) | (d << 24)`
-     *
-     * So byte 0 (least significant) = 'a', byte 1 = 'b', etc.
-     */
-    private fun fourccToString(fcc: Int): String {
-        return String(
-            charArrayOf(
-                (fcc and 0xFF).toChar(),
-                ((fcc shr 8) and 0xFF).toChar(),
-                ((fcc shr 16) and 0xFF).toChar(),
-                ((fcc shr 24) and 0xFF).toChar()
-            )
-        )
     }
 }

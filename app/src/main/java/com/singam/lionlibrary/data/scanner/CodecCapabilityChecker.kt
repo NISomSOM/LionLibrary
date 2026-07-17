@@ -8,20 +8,19 @@ import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import kotlinx.coroutines.Dispatchers
+import androidx.media3.common.TrackGroup
+import androidx.media3.exoplayer.MetadataRetriever
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Correctness-first codec probe that determines whether Android's
  * hardware decoders can handle **every** track in a given media file.
  *
- * Uses a headless [ExoPlayer] instance to `prepare()` the media and
+ * Uses a headless [MetadataRetriever] instance to `prepare()` the media and
  * then inspects all track groups — including every audio track in MKV
  * containers. ExoPlayer's own Matroska/WebM extractor reliably
  * enumerates ALL tracks, unlike Android's [android.media.MediaExtractor]
@@ -37,17 +36,6 @@ import kotlin.coroutines.resume
  *
  * ## Lifecycle
  *
- * Callers must bracket usage with [initialize] / [shutdown]:
- *
- * ```
- * CodecCapabilityChecker.initialize(context)
- * try {
- *     // ... scan files, calling canHardwareDecode() ...
- * } finally {
- *     CodecCapabilityChecker.shutdown()
- * }
- * ```
- *
  * If detection has **any** doubt — timeout, exception, zero tracks —
  * it fails safe to LIBVLC.
  */
@@ -55,48 +43,18 @@ object CodecCapabilityChecker {
 
     private const val TAG = "CodecCapabilityChecker"
 
-    /** Per-file probe timeout. ExoPlayer prepare is fast (~100-500ms). */
+    /** Per-file probe timeout. MetadataRetriever is fast (~100-500ms). */
     private const val PROBE_TIMEOUT_MS = 5_000L
 
-    private val codecList by lazy {
-        MediaCodecList(MediaCodecList.REGULAR_CODECS)
+    private val codecInfos by lazy {
+        MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
     }
 
     /**
      * Cache for video capability results to avoid repeated MediaCodecList lookups
      * for common MIME types and profiles.
      */
-    private val videoCapabilityCache = mutableMapOf<String, Boolean>()
-
-    // -----------------------------------------------------------------------
-    // Shared ExoPlayer probe instance — created on the main thread,
-    // reused across all files in a scan session.
-    // -----------------------------------------------------------------------
-
-    private var probePlayer: ExoPlayer? = null
-    private var appContext: Context? = null
-    private val probeMutex = kotlinx.coroutines.sync.Mutex()
-
-    /**
-     * Initialise the shared probe player. Must be called on the **main
-     * thread** (ExoPlayer requires main-thread construction).
-     *
-     * Safe to call multiple times — only the first call allocates.
-     */
-    fun initialize(context: Context) {
-        if (probePlayer != null) return
-        appContext = context.applicationContext
-        probePlayer = ExoPlayer.Builder(context.applicationContext).build()
-        Log.d(TAG, "Shared ExoPlayer probe instance initialized")
-    }
-
-    /** Release the shared probe player. Call when the scan session ends. */
-    fun shutdown() {
-        probePlayer?.release()
-        probePlayer = null
-        appContext = null
-        Log.d(TAG, "Shared ExoPlayer probe instance released")
-    }
+    private val videoCapabilityCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
     // -----------------------------------------------------------------------
     // Audio MIME blocklist — codecs ExoPlayer cannot decode without the
@@ -125,7 +83,7 @@ object CodecCapabilityChecker {
 
         val isSupported = try {
             // Check if ANY hardware decoder supports this format
-            codecList.codecInfos.any { info ->
+            codecInfos.any { info ->
                 if (info.isEncoder) return@any false
                 
                 // Hardware acceleration check with API 29 fallback
@@ -169,108 +127,85 @@ object CodecCapabilityChecker {
      * - Any video track has no matching hardware decoder
      * - The file cannot be opened or has no tracks
      * - The probe times out or throws an exception
-     * - [initialize] was not called
      * - Any ambiguity at all — fail safe to LIBVLC
      */
-    suspend fun canHardwareDecode(context: Context, uri: Uri): Boolean = probeMutex.withLock {
-        val player = probePlayer
-        if (player == null) {
-            Log.d(TAG, "Probe player not initialized → fail safe to LIBVLC")
-            return false
-        }
-
+    suspend fun canHardwareDecode(context: Context, uri: Uri): Boolean {
         return withTimeoutOrNull(PROBE_TIMEOUT_MS) {
-            // ExoPlayer listener callbacks fire on the main thread.
-            // Use suspendCancellableCoroutine to bridge async → suspend.
-            withContext(Dispatchers.Main) {
-                suspendCancellableCoroutine { cont ->
-                    val listener = object : Player.Listener {
-                        override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                            player.removeListener(this)
-                            
-                            val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-                            val videoGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+            try {
+                val mediaItem = MediaItem.Builder().setUri(uri).build()
+                
+                // Use MetadataRetriever to parse tracks without creating renderers
+                val trackGroups = MetadataRetriever.retrieveMetadata(context, mediaItem).await()
 
-                            Log.d(TAG, "Probe: onTracksChanged, groups=${tracks.groups.size} in $uri")
+                val audioGroups = mutableListOf<TrackGroup>()
+                val videoGroups = mutableListOf<TrackGroup>()
 
-                            if (audioGroups.isEmpty() && videoGroups.isEmpty()) {
-                                Log.d(TAG, "Probe: NO TRACKS FOUND in $uri ??? fail safe to LIBVLC")
-                                cleanupAndResume(false)
-                                return
-                            }
+                for (i in 0 until trackGroups.length) {
+                    val group = trackGroups.get(i)
+                    if (group.type == C.TRACK_TYPE_AUDIO) audioGroups.add(group)
+                    if (group.type == C.TRACK_TYPE_VIDEO) videoGroups.add(group)
+                }
 
-                            var allTracksSupported = true
+                if (audioGroups.isEmpty() && videoGroups.isEmpty()) {
+                    Log.d(TAG, "Probe: NO TRACKS FOUND in $uri ??? fail safe to LIBVLC")
+                    return@withTimeoutOrNull false
+                }
 
-                            // Validate Video Tracks (Hardware Decoder Check)
-                            for (group in videoGroups) {
-                                for (i in 0 until group.length) {
-                                    val format = group.getTrackFormat(i)
-                                    val mime = format.sampleMimeType ?: ""
-                                    
-                                    Log.d(TAG, "Probe: video track mime='$mime' ${format.width}x${format.height} in $uri")
-                                    
-                                    if (!isVideoHardwareSupported(format)) {
-                                        Log.d(TAG, "Probe: NO HW DECODER for video mime='$mime' -> will assign LIBVLC")
-                                        allTracksSupported = false
-                                    }
-                                }
-                            }
+                var allTracksSupported = true
 
-                            // Validate Audio Tracks (Blocklist Check)
-                            for (group in audioGroups) {
-                                for (i in 0 until group.length) {
-                                    val format = group.getTrackFormat(i)
-                                    val mime = format.sampleMimeType ?: ""
-                                    val lang = format.language ?: "?"
-
-                                    Log.d(TAG, "Probe: audio track mime='$mime' lang='$lang' in $uri")
-
-                                    if (mime in UNSUPPORTED_AUDIO_MIMES) {
-                                        Log.d(TAG, "Probe: BLOCKED audio mime='$mime' -> will assign LIBVLC")
-                                        allTracksSupported = false
-                                    }
-                                }
-                            }
-
-                            cleanupAndResume(allTracksSupported)
+                // Validate Video Tracks (Hardware Decoder Check)
+                for (group in videoGroups) {
+                    for (i in 0 until group.length) {
+                        val format = group.getFormat(i)
+                        val mime = format.sampleMimeType ?: ""
+                        
+                        Log.d(TAG, "Probe: video track mime='$mime' ${format.width}x${format.height} in $uri")
+                        
+                        if (!isVideoHardwareSupported(format)) {
+                            Log.d(TAG, "Probe: NO HW DECODER for video mime='$mime' -> will assign LIBVLC")
+                            allTracksSupported = false
                         }
-
-                        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                            player.removeListener(this)
-                            Log.d(TAG, "Probe error for $uri: ${error.message}")
-                            cleanupAndResume(false)
-                        }
-
-                        private fun cleanupAndResume(result: Boolean) {
-                            player.stop()
-                            player.clearMediaItems()
-                            if (cont.isActive) cont.resume(result)
-                        }
-                    }
-
-                    // Aggressive reset before starting new prepare
-                    player.stop()
-                    player.clearMediaItems()
-                    
-                    player.addListener(listener)
-                    player.setMediaItem(MediaItem.fromUri(uri))
-                    player.prepare()
-
-                    cont.invokeOnCancellation {
-                        player.removeListener(listener)
-                        player.stop()
-                        player.clearMediaItems()
                     }
                 }
+
+                // Validate Audio Tracks (Blocklist Check)
+                for (group in audioGroups) {
+                    for (i in 0 until group.length) {
+                        val format = group.getFormat(i)
+                        val mime = format.sampleMimeType ?: ""
+                        val lang = format.language ?: "?"
+
+                        Log.d(TAG, "Probe: audio track mime='$mime' lang='$lang' in $uri")
+
+                        if (mime in UNSUPPORTED_AUDIO_MIMES) {
+                            Log.d(TAG, "Probe: BLOCKED audio mime='$mime' -> will assign LIBVLC")
+                            allTracksSupported = false
+                        }
+                    }
+                }
+
+                allTracksSupported
+            } catch (e: Exception) {
+                Log.d(TAG, "Probe error for $uri: ${e.message}")
+                false
             }
-        } ?: run {
-            Log.d(TAG, "Probe timed out for $uri → fail safe to LIBVLC")
-            // Clean up the player on timeout
-            withContext(Dispatchers.Main) {
-                player.stop()
-                player.clearMediaItems()
-            }
-            false
-        }
+        } ?: false // Timeout returns false
+    }
+
+    /**
+     * Extension to suspend cleanly on Guava's ListenableFuture
+     * without pulling in kotlinx-coroutines-guava dependency.
+     */
+    private suspend fun <T> ListenableFuture<T>.await(): T = suspendCancellableCoroutine { cont ->
+        addListener(
+            {
+                try {
+                    cont.resume(get())
+                } catch (e: Exception) {
+                    cont.resumeWithException(e)
+                }
+            },
+            { command -> command.run() } // direct executor
+        )
     }
 }

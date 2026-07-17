@@ -20,6 +20,11 @@ class LionLibraryApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Initialize LibVLC on a background thread so the 30s fontconfig scan
+        // finishes before the user opens a video.
+        com.singam.lionlibrary.presentation.player.engine.LibVlcProvider.prewarm(this)
+
         startKoin {
             androidLogger(Level.ERROR)
             androidContext(this@LionLibraryApp)

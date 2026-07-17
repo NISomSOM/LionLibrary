@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class PlayerState(
     val title: String = "",
@@ -121,7 +123,7 @@ class PlayerViewModel(
 
         return when (engineType) {
             EngineType.EXOPLAYER -> ExoPlayerEngine(application)
-            EngineType.LIBVLC -> LibVlcPlayerEngine(application)
+            EngineType.LIBVLC -> withContext(Dispatchers.IO) { LibVlcPlayerEngine(application) }
         }
     }
 

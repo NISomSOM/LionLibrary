@@ -50,17 +50,8 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
     // Step 1: Create LibVLC instance with hardware acceleration options
     // NOTE: Do NOT set --vout=android-display here. VLCVideoLayout manages
     // its own vout module internally. Forcing it causes conflicts.
-    private val libVLC: LibVLC = LibVLC(context, arrayListOf(
-        "--no-drop-late-frames",
-        "--no-skip-frames",
-        "--rtsp-tcp",
-        "--aout=opensles",
-        "--audio-time-stretch",
-        "--avcodec-skiploopfilter=0",
-        "--avcodec-skip-frame=0",
-        "--avcodec-skip-idct=0"
-    ))
-
+    private val libVLC: LibVLC = LibVlcProvider.getSharedInstance(context)
+    
     // Step 2: Create MediaPlayer once
     private val mediaPlayer: MediaPlayer = MediaPlayer(libVLC)
 
@@ -327,7 +318,8 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
             }
         } catch (_: Exception) {}
         try { mediaPlayer.release() } catch (_: Exception) {}
-        try { libVLC.release() } catch (_: Exception) {}
+        // DO NOT release libVLC here. It is a shared singleton to keep the 
+        // fontconfig cache alive in memory.
         closePfds()
     }
 

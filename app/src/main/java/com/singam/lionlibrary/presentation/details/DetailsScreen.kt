@@ -219,8 +219,14 @@ fun DetailsScreen(
         }
     }
 
-    val isTwoPane = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact && media.mediaType != MediaType.MOVIE
-    val isLandscapeMode = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded || windowSizeClass.heightSizeClass == WindowHeightSizeClass.Compact
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isTablet = configuration.smallestScreenWidthDp >= 600
+    val isPortrait = configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+    val isLandscapeMode = !isPortrait
+    
+    val isTwoPane = isTablet && isLandscapeMode && media.mediaType != MediaType.MOVIE
+    val isTabletPortrait = isTablet && isPortrait
+    val isTabletPortraitMovie = isTabletPortrait && media.mediaType == MediaType.MOVIE
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (isTwoPane) {
@@ -253,7 +259,8 @@ fun DetailsScreen(
                 contentPadding = PaddingValues(bottom = 32.dp)
             ) {
                 item {
-                    HeroHeaderSection(media, state, isLandscapeMode, onAction)
+                    val heroModifier = if (isTabletPortraitMovie) Modifier.fillParentMaxHeight() else Modifier
+                    HeroHeaderSection(media, state, isLandscapeMode, onAction, heroModifier, isTabletPortraitMovie)
                 }
                 seasonSelectorAndEpisodes(media, state, onAction, { selectedEpisodeForOptions = it })
             }
@@ -313,13 +320,18 @@ private fun HeroHeaderSection(
     media: MediaItem,
     state: DetailsState,
     isLandscapeMode: Boolean,
-    onAction: (DetailsAction) -> Unit
+    onAction: (DetailsAction) -> Unit,
+    modifier: Modifier = Modifier,
+    isTabletPortraitMovie: Boolean = false
 ) {
-    Column {
+    Column(modifier = modifier) {
+        val imageModifier = if (isTabletPortraitMovie) {
+            Modifier.fillMaxWidth().weight(1f)
+        } else {
+            Modifier.fillMaxWidth().aspectRatio(if (isLandscapeMode) 16f / 9f else 3f / 4f)
+        }
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(if (isLandscapeMode) 16f / 9f else 3f / 4f)
+            modifier = imageModifier
         ) {
             // Backdrop Image
             if (media.backdropPath != null) {

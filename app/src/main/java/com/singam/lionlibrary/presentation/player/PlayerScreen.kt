@@ -78,9 +78,8 @@ fun PlayerRoot(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Handle Orientation and System Bars
+    // Handle System Bars
     DisposableEffect(activity) {
-        val originalOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         val window = activity?.window
         var controller: WindowInsetsControllerCompat? = null
         if (window != null) {
@@ -88,10 +87,8 @@ fun PlayerRoot(
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller.hide(WindowInsetsCompat.Type.systemBars())
         }
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 
         onDispose {
-            activity?.requestedOrientation = originalOrientation
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
     }

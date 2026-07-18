@@ -32,6 +32,7 @@ data class MediaEntity(
     val certification: String? = null,
     val lastUpdated: Long,
     val filePath: String? = null,
-    val externalSubtitlePath: String? = null
+    val externalSubtitlePath: String? = null,
+    val preferredEngine: String = "EXOPLAYER"
 )
 

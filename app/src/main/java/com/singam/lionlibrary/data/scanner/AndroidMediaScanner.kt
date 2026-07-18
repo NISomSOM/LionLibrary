@@ -1,5 +1,6 @@
 package com.singam.lionlibrary.data.scanner
 
+import android.content.Context
 import android.net.Uri
 import com.singam.lionlibrary.data.local.db.dao.EpisodeDao
 import com.singam.lionlibrary.data.local.db.dao.MediaDao
@@ -16,6 +17,7 @@ import com.singam.lionlibrary.domain.model.ScanProgress
 import com.singam.lionlibrary.domain.model.ScanStatus
 import com.singam.lionlibrary.domain.repository.SettingsRepository
 import com.singam.lionlibrary.domain.usecase.ScanLibraryUseCase
+import com.singam.lionlibrary.presentation.player.engine.EngineType
 import com.singam.lionlibrary.util.ConfidenceScorer
 import com.singam.lionlibrary.util.Constants
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 class AndroidMediaScanner(
+    private val context: Context,
     private val folderScanner: FolderScanner,
     private val fileNameParser: FileNameParser,
     private val tmdbApiService: TmdbApiService,
@@ -137,6 +140,8 @@ class AndroidMediaScanner(
 
         var abortStatus: ScanStatus? = null
 
+        try {
+
         allCandidates
             .asFlow()
             .flatMapMerge(concurrency = Constants.SCAN_CONCURRENCY) { candidate ->
@@ -212,8 +217,12 @@ class AndroidMediaScanner(
                 }
             }
 
-        flushMedia()
-        flushEpisodes()
+        } finally {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                flushMedia()
+                flushEpisodes()
+            }
+        }
 
         if (abortStatus != null) return@flow
 
@@ -307,7 +316,11 @@ class AndroidMediaScanner(
             posterLocalPath = posterPath,
             backdropLocalPath = backdropPath,
             filePath = fileUri
-        ).copy(logoPath = logoLocalPath, externalSubtitlePath = parsed.subtitleUri?.toString())
+        ).copy(
+            logoPath = logoLocalPath,
+            externalSubtitlePath = parsed.subtitleUri?.toString(),
+            preferredEngine = determineEngine(Uri.parse(fileUri))
+        )
         }
     }
 
@@ -381,7 +394,8 @@ class AndroidMediaScanner(
                     airDate = episodeInfo?.airDate,
                     thumbnailPath = thumbnailPath,
                     filePath = fileUriString,
-                    externalSubtitlePath = ep.subtitleUri?.toString()
+                    externalSubtitlePath = ep.subtitleUri?.toString(),
+                    preferredEngine = determineEngine(ep.uri)
                 )
                 emit(FileResult.Episode(entity))
             }
@@ -488,8 +502,22 @@ class AndroidMediaScanner(
                 certification = null,
                 lastUpdated = System.currentTimeMillis(),
                 filePath = fileUri,
-                externalSubtitlePath = subtitleUriString
+                externalSubtitlePath = subtitleUriString,
+                preferredEngine = determineEngine(Uri.parse(fileUri))
             )
         )
+    }
+
+    /**
+     * Probes the media file's codecs and returns the appropriate engine name.
+     * If all video/audio tracks are hardware-decodable → EXOPLAYER.
+     * Otherwise → LIBVLC (which has its own software decoders).
+     */
+    private suspend fun determineEngine(uri: Uri): String {
+        return if (CodecCapabilityChecker.canHardwareDecode(context, uri)) {
+            EngineType.EXOPLAYER.name
+        } else {
+            EngineType.LIBVLC.name
+        }
     }
 }

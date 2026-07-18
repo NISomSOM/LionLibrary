@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.VideoSettings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Info
@@ -44,6 +45,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -203,6 +205,48 @@ fun SettingsScreen(
             lastScanTime = state.lastScanTime,
             onScan = { onAction(SettingsAction.OnScanLibrary) }
         )
+
+        Spacer(modifier = Modifier.height(20.dp))
+        SectionDivider()
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Playback Engine
+        SectionHeader(
+            title = "Playback",
+            icon = Icons.Filled.VideoSettings,
+            onInfoClick = {
+                infoDialogTitle = "Playback Engine"
+                infoDialogText = "By default, the app automatically selects the best player engine for each file based on codec support. Enable this toggle to always use libVLC, which supports more codecs but may use more battery."
+            }
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(DarkSurfaceVariant)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Always use libVLC",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Bypass automatic engine selection",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextTertiary
+                )
+            }
+            Switch(
+                checked = state.forceLibVlc,
+                onCheckedChange = { onAction(SettingsAction.OnForceLibVlcToggle(it)) }
+            )
+        }
 
         Spacer(modifier = Modifier.height(20.dp))
         SectionDivider()

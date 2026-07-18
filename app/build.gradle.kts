@@ -7,16 +7,12 @@ plugins {
 
 android {
     namespace = "com.singam.lionlibrary"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.singam.lionlibrary"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
@@ -107,6 +103,9 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.common)
+
+    // libVLC (dual-engine player — Phase 2.2)
+    implementation(libs.libvlc.all)
 
     // Testing
     testImplementation(libs.junit)

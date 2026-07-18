@@ -10,5 +10,7 @@ object PreferencesKeys {
     val SHOWS_FOLDER_URI = stringPreferencesKey("shows_folder_uri")
 
     val LAST_SCAN_TIME = longPreferencesKey("last_scan_time")
+
+    val FORCE_LIBVLC = booleanPreferencesKey("force_libvlc")
 }
 

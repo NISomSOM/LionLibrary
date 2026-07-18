@@ -44,7 +44,40 @@ class MainActivity : ComponentActivity() {
                     Routes.SETTINGS
                 )
                 
-                val useNavigationRail = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
+                val isTablet = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
+                val useNavigationRail = isTablet
+
+                androidx.compose.runtime.DisposableEffect(navController, isTablet) {
+                    val listener = androidx.navigation.NavController.OnDestinationChangedListener { _, destination, _ ->
+                        val isPlayer = destination.route?.startsWith("player/") == true
+                        requestedOrientation = if (isPlayer) {
+                            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                        } else {
+                            if (isTablet) {
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                            } else {
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                            }
+                        }
+                    }
+                    navController.addOnDestinationChangedListener(listener)
+                    
+                    // Set initial orientation
+                    val isPlayer = navController.currentDestination?.route?.startsWith("player/") == true
+                    requestedOrientation = if (isPlayer) {
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    } else {
+                        if (isTablet) {
+                            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                        } else {
+                            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        }
+                    }
+
+                    onDispose {
+                        navController.removeOnDestinationChangedListener(listener)
+                    }
+                }
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),

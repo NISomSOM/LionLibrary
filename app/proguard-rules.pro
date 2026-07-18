@@ -35,3 +35,7 @@
 
 # Coil
 -dontwarn coil.**
+
+# libVLC
+-keep class org.videolan.libvlc.** { *; }
+-keepclassmembers class org.videolan.libvlc.** { *; }

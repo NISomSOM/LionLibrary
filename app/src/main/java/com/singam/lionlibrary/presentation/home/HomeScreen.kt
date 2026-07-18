@@ -383,7 +383,11 @@ fun HeroBannerCarousel(
 ) {
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { mediaItems.size })
 
-    val bannerHeight = if (windowSizeClass.widthSizeClass == WindowWidthSizeClass.Compact) 500.dp else 350.dp
+    val bannerHeight = when (windowSizeClass.widthSizeClass) {
+        WindowWidthSizeClass.Compact -> 500.dp
+        WindowWidthSizeClass.Expanded -> 700.dp
+        else -> 500.dp
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()

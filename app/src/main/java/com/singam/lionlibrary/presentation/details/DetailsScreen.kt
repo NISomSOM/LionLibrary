@@ -219,8 +219,8 @@ fun DetailsScreen(
         }
     }
 
-    val isTwoPane = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
-    val isLandscapeMode = windowSizeClass.heightSizeClass == WindowHeightSizeClass.Compact
+    val isTwoPane = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact && media.mediaType != MediaType.MOVIE
+    val isLandscapeMode = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded || windowSizeClass.heightSizeClass == WindowHeightSizeClass.Compact
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (isTwoPane) {
@@ -253,7 +253,7 @@ fun DetailsScreen(
                 contentPadding = PaddingValues(bottom = 32.dp)
             ) {
                 item {
-                    HeroHeaderSection(media, state, false, onAction)
+                    HeroHeaderSection(media, state, isLandscapeMode, onAction)
                 }
                 seasonSelectorAndEpisodes(media, state, onAction, { selectedEpisodeForOptions = it })
             }

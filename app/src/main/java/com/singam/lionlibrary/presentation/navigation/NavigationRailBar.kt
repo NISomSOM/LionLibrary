@@ -25,6 +25,7 @@ fun NavigationRailBar(navController: NavHostController) {
         containerColor = DarkSurface,
         modifier = Modifier.fillMaxHeight()
     ) {
+        androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
         bottomNavItems.forEach { item ->
             val selected = currentRoute == item.route
             NavigationRailItem(
@@ -54,5 +55,6 @@ fun NavigationRailBar(navController: NavHostController) {
                 )
             )
         }
+        androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
     }
 }

@@ -217,10 +217,11 @@ class AndroidMediaScanner(
                 }
             }
 
-        flushMedia()
-        flushEpisodes()
-
         } finally {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                flushMedia()
+                flushEpisodes()
+            }
         }
 
         if (abortStatus != null) return@flow

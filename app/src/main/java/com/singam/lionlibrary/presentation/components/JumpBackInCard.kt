@@ -70,8 +70,13 @@ fun JumpBackInCard(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)),
-                        startY = 100f
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.6f),
+                            Color.Black.copy(alpha = 0.9f)
+                        ),
+                        startY = 0f
                     )
                 )
         )
@@ -115,7 +120,7 @@ fun JumpBackInCard(
             )
             if (item.mediaType != com.singam.lionlibrary.domain.model.MediaType.MOVIE && !item.episodeTitle.isNullOrBlank()) {
                 Text(
-                    text = item.episodeTitle.uppercase(),
+                    text = item.episodeTitle,
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.7f),
                     maxLines = 1,
@@ -128,10 +133,24 @@ fun JumpBackInCard(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .fillMaxWidth(item.progress)
-                    .height(4.dp)
-                    .background(Color(0xFFE5B13A))
-            )
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            ) {
+                // Background track
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                )
+                // Progress
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(item.progress)
+                        .height(4.dp)
+                        .background(com.singam.lionlibrary.ui.theme.OrangeAccent, RoundedCornerShape(2.dp))
+                )
+            }
         }
     }
 }

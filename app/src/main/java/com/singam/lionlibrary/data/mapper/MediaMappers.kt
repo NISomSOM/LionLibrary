@@ -144,25 +144,36 @@ fun MovieDetailsDto.toMediaEntity(
     backdropLocalPath: String?,
     filePath: String? = null,
     preferredEngine: String = "EXOPLAYER"
-): MediaEntity = MediaEntity(
-    tmdbId = id,
-    title = title,
-    originalTitle = originalTitle,
-    overview = overview,
-    posterPath = posterLocalPath,
-    backdropPath = backdropLocalPath,
-    genres = genres?.joinToString(",") { it.name },
-    rating = voteAverage,
-    year = releaseDate?.take(4)?.toIntOrNull(),
-    mediaType = mediaType.name,
-    matchConfidence = confidence,
-    isUnidentified = false,
-    duration = runtime,
-    certification = releaseDates?.results?.find { it.iso31661 == "US" }?.releaseDates?.firstOrNull { !it.certification.isNullOrBlank() }?.certification,
-    lastUpdated = System.currentTimeMillis(),
-    filePath = filePath,
-    preferredEngine = preferredEngine
-)
+): MediaEntity {
+    val isAnimation = genres?.any { it.id == 16 } == true
+    val isJapanese = originCountry?.contains("JP") == true || originalLanguage == "ja"
+    val isAnime = isAnimation && isJapanese
+
+    val finalGenres = genres?.map { it.name }?.toMutableList() ?: mutableListOf()
+    if (isAnime && !finalGenres.contains("Anime")) {
+        finalGenres.add("Anime")
+    }
+
+    return MediaEntity(
+        tmdbId = id,
+        title = title,
+        originalTitle = originalTitle,
+        overview = overview,
+        posterPath = posterLocalPath,
+        backdropPath = backdropLocalPath,
+        genres = if (finalGenres.isEmpty()) null else finalGenres.joinToString(","),
+        rating = voteAverage,
+        year = releaseDate?.take(4)?.toIntOrNull(),
+        mediaType = mediaType.name,
+        matchConfidence = confidence,
+        isUnidentified = false,
+        duration = runtime,
+        certification = releaseDates?.results?.find { it.iso31661 == "US" }?.releaseDates?.firstOrNull { !it.certification.isNullOrBlank() }?.certification,
+        lastUpdated = System.currentTimeMillis(),
+        filePath = filePath,
+        preferredEngine = preferredEngine
+    )
+}
 
 fun TvDetailsDto.toMediaEntity(
     mediaType: MediaType,

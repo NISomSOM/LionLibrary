@@ -19,11 +19,14 @@ class GetHomeContentUseCase(
             mediaRepository.getRecentlyAdded(),
             watchProgressRepository.getJumpBackInItems()
         ) { movies, tvShows, anime, recentlyAdded, jumpBackInItems ->
+            val animeMovies = movies.filter { it.genres?.contains("Anime", ignoreCase = true) == true }
+            val pureMovies = movies.filter { it.genres?.contains("Anime", ignoreCase = true) != true }
+
             HomeContent(
                 jumpBackInItems = jumpBackInItems,
-                movies = movies,
+                movies = pureMovies,
                 tvShows = tvShows,
-                anime = anime,
+                anime = anime + animeMovies,
                 recentlyAdded = recentlyAdded
             )
         }

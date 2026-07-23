@@ -31,6 +31,7 @@ interface WatchProgressDao {
         FROM watch_progress w
         INNER JOIN media m ON m.id = w.mediaId
         LEFT JOIN episodes e ON e.id = w.episodeId
+        WHERE w.isHidden = 0
         GROUP BY m.id
         ORDER BY lastWatched DESC
         LIMIT 20
@@ -46,6 +47,15 @@ interface WatchProgressDao {
 
     @Query("SELECT * FROM watch_progress WHERE mediaId = :mediaId")
     fun getProgressForMedia(mediaId: Long): Flow<List<WatchProgressEntity>>
+
+    @Query("DELETE FROM watch_progress WHERE mediaId = :mediaId AND episodeId = :episodeId")
+    suspend fun deleteProgress(mediaId: Long, episodeId: Long)
+
+    @Query("DELETE FROM watch_progress WHERE mediaId = :mediaId")
+    suspend fun deleteProgressForMedia(mediaId: Long)
+
+    @Query("UPDATE watch_progress SET isHidden = 1 WHERE mediaId = :mediaId")
+    suspend fun hideMediaFromJumpBackIn(mediaId: Long)
 
     @Query("DELETE FROM watch_progress")
     suspend fun clearAll()

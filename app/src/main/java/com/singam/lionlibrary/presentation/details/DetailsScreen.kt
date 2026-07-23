@@ -401,8 +401,10 @@ private fun HeroHeaderSection(
                         val genresText = media.genres.split(",").take(3).joinToString(" • ") { it.trim() }
                         Text(
                             text = genresText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.LightGray
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                            color = Color.LightGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }

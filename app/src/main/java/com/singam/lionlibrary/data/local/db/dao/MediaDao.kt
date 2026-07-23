@@ -21,7 +21,6 @@ interface MediaDao {
         OR genres LIKE '%' || :query || '%')
         AND isUnidentified = 0
         ORDER BY title ASC
-        LIMIT 100
         """
     )
     fun search(query: String): Flow<List<MediaEntity>>

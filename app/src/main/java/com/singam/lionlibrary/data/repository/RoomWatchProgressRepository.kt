@@ -67,7 +67,8 @@ class RoomWatchProgressRepository(
                 lastPositionMs = existing?.lastPositionMs ?: 0L,
                 durationMs = existing?.durationMs ?: 0L,
                 lastWatched = System.currentTimeMillis(),
-                completed = false
+                completed = false,
+                isHidden = false
             )
         )
     }
@@ -82,7 +83,8 @@ class RoomWatchProgressRepository(
                 lastPositionMs = existing?.lastPositionMs ?: 0L,
                 durationMs = existing?.durationMs ?: 0L,
                 lastWatched = System.currentTimeMillis(),
-                completed = true
+                completed = true,
+                isHidden = false
             )
         )
     }
@@ -96,9 +98,22 @@ class RoomWatchProgressRepository(
                 lastPositionMs = 0L,
                 durationMs = 0L,
                 lastWatched = System.currentTimeMillis(),
-                completed = false
+                completed = false,
+                isHidden = false
             )
         )
+    }
+
+    override suspend fun deleteProgress(mediaId: Long, episodeId: Long) {
+        watchProgressDao.deleteProgress(mediaId, episodeId)
+    }
+
+    override suspend fun deleteProgressForMedia(mediaId: Long) {
+        watchProgressDao.deleteProgressForMedia(mediaId)
+    }
+
+    override suspend fun hideMediaFromJumpBackIn(mediaId: Long) {
+        watchProgressDao.hideMediaFromJumpBackIn(mediaId)
     }
 
     override suspend fun clearAll() {

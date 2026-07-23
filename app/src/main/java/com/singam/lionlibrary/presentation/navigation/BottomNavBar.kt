@@ -21,6 +21,8 @@ import com.singam.lionlibrary.ui.theme.DarkSurface
 import com.singam.lionlibrary.ui.theme.OrangeAccent
 import com.singam.lionlibrary.ui.theme.TextSecondary
 import com.singam.lionlibrary.ui.theme.TextTertiary
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.size
 
 data class BottomNavItem(
     val route: String,
@@ -41,10 +43,15 @@ fun BottomNavBar(navController: NavHostController) {
     val currentRoute = navBackStackEntry?.destination?.route
 
     NavigationBar(
-        containerColor = DarkSurface
+        containerColor = com.singam.lionlibrary.ui.theme.DarkBackground,
+        contentColor = TextTertiary,
+        tonalElevation = 0.dp
     ) {
         bottomNavItems.forEach { item ->
-            val selected = currentRoute == item.route
+            val baseRoute = currentRoute?.substringBefore("?")
+            val itemBaseRoute = item.route.substringBefore("?")
+            val selected = baseRoute == itemBaseRoute
+            
             NavigationBarItem(
                 selected = selected,
                 onClick = {
@@ -59,16 +66,15 @@ fun BottomNavBar(navController: NavHostController) {
                 icon = {
                     Icon(
                         imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
-                        contentDescription = item.label
+                        contentDescription = item.label,
+                        modifier = androidx.compose.ui.Modifier.size(if (selected) 28.dp else 24.dp)
                     )
                 },
-                label = { Text(item.label) },
+                alwaysShowLabel = false,
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = OrangeAccent,
-                    selectedTextColor = TextSecondary,
                     unselectedIconColor = TextTertiary,
-                    unselectedTextColor = TextTertiary,
-                    indicatorColor = DarkSurface
+                    indicatorColor = com.singam.lionlibrary.ui.theme.DarkBackground
                 )
             )
         }

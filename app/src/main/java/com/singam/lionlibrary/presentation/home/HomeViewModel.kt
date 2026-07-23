@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
 
 @Stable
 data class HomeState(
-    val featuredItem: MediaItem? = null,
+    val carouselItems: List<MediaItem> = emptyList(),
     val jumpBackInItems: List<JumpBackInItem> = emptyList(),
     val movies: List<MediaItem> = emptyList(),
     val tvShows: List<MediaItem> = emptyList(),
@@ -41,6 +41,7 @@ sealed interface HomeAction {
     data class OnPlayExternal(val item: JumpBackInItem) : HomeAction
     data class OnStartFromBeginning(val item: JumpBackInItem) : HomeAction
     data class OnRemoveWatchProgress(val item: JumpBackInItem) : HomeAction
+    data class OnHeaderClick(val filter: com.singam.lionlibrary.domain.model.MediaFilter) : HomeAction
 }
 
 
@@ -50,7 +51,7 @@ sealed interface HomeEvent {
     data class NavigateToPlayer(val mediaType: String, val mediaId: Long) : HomeEvent
     data class ShowError(val message: String) : HomeEvent
     data class LaunchPlayer(val intent: android.content.Intent) : HomeEvent
-
+    data class NavigateToSearch(val filter: com.singam.lionlibrary.domain.model.MediaFilter) : HomeEvent
 }
 
 
@@ -128,7 +129,12 @@ class HomeViewModel(
             is HomeAction.OnRemoveWatchProgress -> {
                 viewModelScope.launch {
                     val targetId = if (action.item.mediaType == MediaType.MOVIE) 0L else (action.item.episodeId ?: 0L)
-                    updateWatchProgressUseCase.markAsUnwatched(action.item.mediaId, targetId)
+                    updateWatchProgressUseCase.removeWatchProgress(action.item.mediaId, targetId)
+                }
+            }
+            is HomeAction.OnHeaderClick -> {
+                viewModelScope.launch {
+                    _events.send(HomeEvent.NavigateToSearch(action.filter))
                 }
             }
         }
@@ -143,9 +149,13 @@ class HomeViewModel(
                 }
                 .collect { content ->
                     _state.update { currentState ->
-                        // Pick featured item once per session if not already picked
+                        // Pick 10 random items for carousel once per session
                         val allMedia = content.movies + content.tvShows + content.anime
-                        val featured = currentState.featuredItem ?: allMedia.randomOrNull()
+                        val randomCarousel = if (currentState.carouselItems.isNotEmpty()) {
+                            currentState.carouselItems
+                        } else {
+                            allMedia.shuffled().take(10)
+                        }
                         
                         val genreMap = mutableMapOf<String, MutableList<MediaItem>>()
                         allMedia.forEach { item ->
@@ -158,7 +168,7 @@ class HomeViewModel(
                         }
 
                         currentState.copy(
-                            featuredItem = featured,
+                            carouselItems = randomCarousel,
                             jumpBackInItems = content.jumpBackInItems,
                             movies = content.movies,
                             tvShows = content.tvShows,

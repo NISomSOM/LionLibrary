@@ -14,6 +14,7 @@ data class WatchProgressEntity(
     val lastPositionMs: Long,
     val durationMs: Long,
     val lastWatched: Long,
-    val completed: Boolean
+    val completed: Boolean,
+    val isHidden: Boolean = false
 )
 

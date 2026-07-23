@@ -47,7 +47,8 @@ sealed interface SearchEvent {
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class SearchViewModel(
-    private val searchMediaUseCase: SearchMediaUseCase
+    private val searchMediaUseCase: SearchMediaUseCase,
+    savedStateHandle: androidx.lifecycle.SavedStateHandle
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchState())
@@ -58,19 +59,42 @@ class SearchViewModel(
 
     init {
         viewModelScope.launch {
+            savedStateHandle.getStateFlow<String?>("filter", null).collect { filterStr ->
+                val filter = filterStr?.let { str ->
+                    MediaFilter.entries.find { it.name == str }
+                } ?: MediaFilter.ALL
+                _state.update { it.copy(activeFilter = filter) }
+            }
+        }
+
+        viewModelScope.launch {
             val queryFlow = _state.map { it.query }.distinctUntilChanged().debounce(300)
             val filterFlow = _state.map { it.activeFilter }.distinctUntilChanged()
+            
+            // Get all items once as a single flow
+            val allMediaFlow = searchMediaUseCase("", MediaFilter.ALL)
 
-            combine(queryFlow, filterFlow) { query, filter ->
-                Pair(query, filter)
-            }
-            .flatMapLatest { (query, filter) ->
-                if (query.isBlank()) {
-                    flowOf(emptyList())
+            combine(allMediaFlow, queryFlow, filterFlow) { allMedia, query, filter ->
+                _state.update { it.copy(isSearching = true) }
+                
+                val filteredByQuery = if (query.isBlank()) {
+                    allMedia
                 } else {
-                    _state.update { it.copy(isSearching = true) }
-                    searchMediaUseCase(query, filter)
+                    allMedia.filter { 
+                        it.title.contains(query, ignoreCase = true) || 
+                        it.overview?.contains(query, ignoreCase = true) == true ||
+                        it.genres?.contains(query, ignoreCase = true) == true
+                    }
                 }
+                
+                val filteredByFilter = when(filter) {
+                    MediaFilter.ALL -> filteredByQuery
+                    MediaFilter.MOVIES -> filteredByQuery.filter { it.mediaType == MediaType.MOVIE }
+                    MediaFilter.TV_SHOWS -> filteredByQuery.filter { it.mediaType == MediaType.TV_SHOW }
+                    MediaFilter.ANIME -> filteredByQuery.filter { it.mediaType == MediaType.ANIME }
+                }
+                
+                filteredByFilter
             }
             .collect { results ->
                 _state.update { it.copy(results = results, isSearching = false) }

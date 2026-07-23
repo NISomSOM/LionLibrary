@@ -18,6 +18,12 @@ interface WatchProgressRepository {
 
     suspend fun markAsUnwatched(mediaId: Long, episodeId: Long)
 
+    suspend fun deleteProgress(mediaId: Long, episodeId: Long)
+
+    suspend fun deleteProgressForMedia(mediaId: Long)
+
+    suspend fun hideMediaFromJumpBackIn(mediaId: Long)
+
     suspend fun clearAll()
 }
 

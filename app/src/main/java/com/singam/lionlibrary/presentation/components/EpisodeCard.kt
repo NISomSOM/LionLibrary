@@ -63,9 +63,9 @@ fun EpisodeCard(
             // Left: Thumbnail
             Box(
                 modifier = Modifier
-                    .width(110.dp)
+                    .width(130.dp)
                     .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(8.dp))
             ) {
                 if (episode.thumbnailPath != null) {
                     AsyncImage(
@@ -78,15 +78,15 @@ fun EpisodeCard(
                     Box(modifier = Modifier.fillMaxSize().background(Color.DarkGray))
                 }
                 
-                // Play Icon Overlay (center)
+                // Play Icon Overlay (bottom start)
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = "Play",
                     tint = Color.White,
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(4.dp)
-                        .size(32.dp)
+                        .align(Alignment.BottomStart)
+                        .padding(start = 8.dp, bottom = 8.dp)
+                        .size(20.dp)
                 )
 
                 // Progress Bar Overlay (bottom)
@@ -97,70 +97,82 @@ fun EpisodeCard(
                             .align(Alignment.BottomStart)
                             .fillMaxWidth(progressValue)
                             .height(4.dp)
-                            .background(Color(0xFFE5B13A))
+                            .background(com.singam.lionlibrary.ui.theme.OrangeAccent)
                     )
                 }
             }
 
-            // Middle: Title & Subtitle
-            Column(
+            // Middle & Right: Title/Subtitle and Action Icon
+            Row(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 12.dp)
+                    .padding(start = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Title
-                Text(
-                    text = episode.title ?: "Episode ${episode.episodeNumber}",
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    // Title
+                    Text(
+                        text = episode.title ?: "Episode ${episode.episodeNumber}",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
-                // Subtitle
-                val subtitleParts = mutableListOf<String>()
-                subtitleParts.add("S${episode.seasonNumber} E${episode.episodeNumber}")
-                if (!episode.airDate.isNullOrBlank()) {
-                    subtitleParts.add(episode.airDate)
+                    // Subtitle
+                    val subtitleParts = mutableListOf<String>()
+                    subtitleParts.add("S${episode.seasonNumber} E${episode.episodeNumber}")
+                    if (!episode.airDate.isNullOrBlank()) {
+                        subtitleParts.add(episode.airDate)
+                    }
+                    if (episode.runtime != null && episode.runtime > 0) {
+                        subtitleParts.add("${episode.runtime}m")
+                    }
+                    Text(
+                        text = subtitleParts.joinToString(" · "),
+                        style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+                        color = Color.Gray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                if (episode.runtime != null && episode.runtime > 0) {
-                    subtitleParts.add("${episode.runtime}m")
-                }
-                Text(
-                    text = subtitleParts.joinToString(" · "),
-                    fontSize = 12.sp,
-                    color = Color.Gray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
 
-            // Right: Watched Button
-            IconButton(
-                onClick = { onMarkWatched(episode.id) },
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = if (isWatched) Icons.Rounded.CheckCircle else Icons.Outlined.CheckCircle,
-                    contentDescription = if (isWatched) "Mark as Unwatched" else "Mark as Watched",
-                    tint = if (isWatched) Color.White else Color.Gray
-                )
+                // Right: Watched Button
+                IconButton(
+                    onClick = { onMarkWatched(episode.id) },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isWatched) Icons.Rounded.CheckCircle else Icons.Outlined.CheckCircle,
+                        contentDescription = if (isWatched) "Mark as Unwatched" else "Mark as Watched",
+                        tint = if (isWatched) Color.White else Color.Gray,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
 
         // Overview below Top Row
         if (!episode.overview.isNullOrBlank()) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = episode.overview,
-                fontSize = 13.sp,
+                style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
                 color = Color.Gray,
                 maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                lineHeight = 18.sp
+                overflow = TextOverflow.Ellipsis
             )
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        androidx.compose.material3.HorizontalDivider(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color(0xFF333333),
+            thickness = 1.dp
+        )
     }
 }

@@ -27,7 +27,10 @@ fun NavigationRailBar(navController: NavHostController) {
     ) {
         androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
         bottomNavItems.forEach { item ->
-            val selected = currentRoute == item.route
+            val baseRoute = currentRoute?.substringBefore("?")
+            val itemBaseRoute = item.route.substringBefore("?")
+            val selected = baseRoute == itemBaseRoute
+            
             NavigationRailItem(
                 selected = selected,
                 onClick = {

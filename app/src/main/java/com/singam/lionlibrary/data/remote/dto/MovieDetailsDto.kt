@@ -15,6 +15,8 @@ data class MovieDetailsDto(
     @SerialName("release_date") val releaseDate: String? = null,
     @SerialName("genres") val genres: List<GenreDto>? = null,
     @SerialName("runtime") val runtime: Int? = null,
+    @SerialName("original_language") val originalLanguage: String? = null,
+    @SerialName("origin_country") val originCountry: List<String>? = null,
     @SerialName("release_dates") val releaseDates: MovieReleaseDatesResponseDto? = null
 )
 

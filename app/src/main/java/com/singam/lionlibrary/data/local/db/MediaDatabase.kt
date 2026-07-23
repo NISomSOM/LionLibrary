@@ -18,7 +18,7 @@ import com.singam.lionlibrary.data.local.db.entity.WatchProgressEntity
         EpisodeEntity::class,
         WatchProgressEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 abstract class MediaDatabase : RoomDatabase() {

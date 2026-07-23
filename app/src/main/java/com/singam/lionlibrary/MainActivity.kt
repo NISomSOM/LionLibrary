@@ -38,7 +38,8 @@ class MainActivity : ComponentActivity() {
                 val snackbarHostState = remember { SnackbarHostState() }
 
                 //to figure out where to show bottombar and where not to
-                val showNavElements = currentRoute in listOf(
+                val baseRoute = currentRoute?.substringBefore("?")
+                val showNavElements = baseRoute in listOf(
                     Routes.HOME,
                     Routes.SEARCH,
                     Routes.SETTINGS

@@ -45,12 +45,25 @@ fun LionLibraryNavHost(
                 },
                 onNavigateToPlayer = { mediaType, mediaId ->
                     navController.navigate(Routes.player(mediaType, mediaId))
+                },
+                onNavigateToSearch = { filter ->
+                    navController.navigate(Routes.searchWithFilter(filter.name)) {
+                        popUpTo(Routes.HOME) { saveState = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }
 
         // Search
-        composable(Routes.SEARCH) {
+        composable(
+            route = Routes.SEARCH_ROUTE,
+            arguments = listOf(navArgument("filter") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            })
+        ) {
             SearchRoot(
                 windowSizeClass = windowSizeClass,
                 onNavigateToMovieDetails = { mediaId ->

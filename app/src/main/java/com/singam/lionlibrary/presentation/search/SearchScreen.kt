@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -99,13 +101,12 @@ fun SearchScreen(
         )
 
         // Filter Chips
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            MediaFilter.entries.forEach { filter ->
+            items(MediaFilter.entries.toTypedArray()) { filter ->
                 val label = when (filter) {
                     MediaFilter.ALL -> "All"
                     MediaFilter.MOVIES -> "Movies"
@@ -124,28 +125,7 @@ fun SearchScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         // Content
-        if (state.query.isBlank()) {
-            // Empty State
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Search for movies, TV shows, or anime",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                }
-            }
-        } else if (state.results.isEmpty() && !state.isSearching) {
+        if (state.results.isEmpty() && !state.isSearching && state.query.isNotBlank()) {
             // No results state
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -172,7 +152,7 @@ fun SearchScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(state.results, key = { it.id }) { item ->
+                gridItems(state.results, key = { it.id }) { item ->
                     MediaCard(
                         mediaItem = item,
                         onClick = { onAction(SearchAction.OnMediaClick(item.id, item.mediaType)) },

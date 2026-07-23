@@ -5,6 +5,12 @@ import com.singam.lionlibrary.data.local.db.MediaDatabase
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 
+val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE watch_progress ADD COLUMN isHidden INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 val databaseModule = module {
 
     single {
@@ -12,7 +18,7 @@ val databaseModule = module {
             androidContext(),
             MediaDatabase::class.java,
             MediaDatabase.DATABASE_NAME
-        ).fallbackToDestructiveMigration(true).build()
+        ).fallbackToDestructiveMigration(true).addMigrations(MIGRATION_10_11).build()
     }
 
     single { get<MediaDatabase>().mediaDao() }

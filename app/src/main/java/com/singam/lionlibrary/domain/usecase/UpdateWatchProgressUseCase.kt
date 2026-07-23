@@ -16,5 +16,10 @@ class UpdateWatchProgressUseCase(
     suspend fun markAsUnwatched(mediaId: Long, episodeId: Long) {
         watchProgressRepository.markAsUnwatched(mediaId, episodeId)
     }
+
+    suspend fun removeWatchProgress(mediaId: Long, episodeId: Long) {
+        watchProgressRepository.deleteProgress(mediaId, episodeId)
+        watchProgressRepository.hideMediaFromJumpBackIn(mediaId)
+    }
 }
 

@@ -73,7 +73,8 @@ fun HomeRoot(
     windowSizeClass: WindowSizeClass,
     onNavigateToMovieDetails: (Long) -> Unit,
     onNavigateToShowDetails: (Long) -> Unit,
-    onNavigateToPlayer: (String, Long) -> Unit
+    onNavigateToPlayer: (String, Long) -> Unit,
+    onNavigateToSearch: (com.singam.lionlibrary.domain.model.MediaFilter) -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -93,7 +94,7 @@ fun HomeRoot(
                         snackbarHostState.showSnackbar("Failed to launch player")
                     }
                 }
-
+                is HomeEvent.NavigateToSearch -> onNavigateToSearch(event.filter)
             }
         }
     }
@@ -125,7 +126,7 @@ fun HomeScreen(
         return
     }
 
-    if (state.featuredItem == null && 
+    if (state.carouselItems.isEmpty() && 
         state.jumpBackInItems.isEmpty() && 
         state.movies.isEmpty() && 
         state.tvShows.isEmpty() && 
@@ -153,20 +154,11 @@ fun HomeScreen(
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
         // Hero Banner
-        val heroItems = state.recentlyAdded.take(10)
+        val heroItems = state.carouselItems
         if (heroItems.isNotEmpty()) {
             item {
                 HeroBannerCarousel(
                     mediaItems = heroItems,
-                    windowSizeClass = windowSizeClass,
-                    onPlayClick = { id, type -> onAction(HomeAction.OnPlayClick(id, type)) },
-                    onInfoClick = { id, type -> onAction(HomeAction.OnMediaClick(id, type)) }
-                )
-            }
-        } else if (state.featuredItem != null) {
-            item {
-                HeroBannerCarousel(
-                    mediaItems = listOf(state.featuredItem),
                     windowSizeClass = windowSizeClass,
                     onPlayClick = { id, type -> onAction(HomeAction.OnPlayClick(id, type)) },
                     onInfoClick = { id, type -> onAction(HomeAction.OnMediaClick(id, type)) }
@@ -196,7 +188,8 @@ fun HomeScreen(
                 MediaRow(
                     title = "Movies",
                     items = state.movies,
-                    onItemClick = { onAction(HomeAction.OnMediaClick(it.id, MediaType.MOVIE)) }
+                    onItemClick = { onAction(HomeAction.OnMediaClick(it.id, it.mediaType)) },
+                    onHeaderClick = { onAction(HomeAction.OnHeaderClick(com.singam.lionlibrary.domain.model.MediaFilter.MOVIES)) }
                 )
             }
         }
@@ -207,7 +200,8 @@ fun HomeScreen(
                 MediaRow(
                     title = "TV Shows",
                     items = state.tvShows,
-                    onItemClick = { onAction(HomeAction.OnMediaClick(it.id, MediaType.TV_SHOW)) }
+                    onItemClick = { onAction(HomeAction.OnMediaClick(it.id, it.mediaType)) },
+                    onHeaderClick = { onAction(HomeAction.OnHeaderClick(com.singam.lionlibrary.domain.model.MediaFilter.TV_SHOWS)) }
                 )
             }
         }
@@ -218,7 +212,8 @@ fun HomeScreen(
                 MediaRow(
                     title = "Anime",
                     items = state.anime,
-                    onItemClick = { onAction(HomeAction.OnMediaClick(it.id, MediaType.ANIME)) }
+                    onItemClick = { onAction(HomeAction.OnMediaClick(it.id, it.mediaType)) },
+                    onHeaderClick = { onAction(HomeAction.OnHeaderClick(com.singam.lionlibrary.domain.model.MediaFilter.ANIME)) }
                 )
             }
         }
@@ -318,7 +313,7 @@ fun HomeScreen(
                         selectedJumpBackInItem = null
                         onAction(HomeAction.OnPlayExternal(item))
                     },
-                    iconTint = Color(0xFFE5B13A)
+                    iconTint = com.singam.lionlibrary.ui.theme.OrangeAccent
                 )
                 JumpBackInOptionItem(
                     icon = Icons.Default.Refresh,
@@ -327,7 +322,7 @@ fun HomeScreen(
                         selectedJumpBackInItem = null
                         onAction(HomeAction.OnStartFromBeginning(item))
                     },
-                    iconTint = Color(0xFFE5B13A)
+                    iconTint = com.singam.lionlibrary.ui.theme.OrangeAccent
                 )
                 JumpBackInOptionItem(
                     icon = Icons.Default.Delete,
@@ -336,7 +331,7 @@ fun HomeScreen(
                         selectedJumpBackInItem = null
                         onAction(HomeAction.OnRemoveWatchProgress(item))
                     },
-                    iconTint = Color(0xFFE5B13A)
+                    iconTint = com.singam.lionlibrary.ui.theme.OrangeAccent
                 )
             }
         }
@@ -429,7 +424,8 @@ fun HeroBannerCarousel(
                             Brush.verticalGradient(
                                 colors = listOf(
                                     Color.Transparent,
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
+                                    MaterialTheme.colorScheme.background.copy(alpha = 0.2f),
+                                    MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
                                     MaterialTheme.colorScheme.background
                                 ),
                                 startY = 100f
@@ -475,8 +471,10 @@ fun HeroBannerCarousel(
                     if (subtitleInfo.isNotBlank()) {
                         Text(
                             text = subtitleInfo,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White.copy(alpha = 0.8f)
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                            color = Color.White.copy(alpha = 0.9f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -498,11 +496,11 @@ fun HeroBannerCarousel(
                     containerColor = Color.White,
                     contentColor = Color.Black
                 ),
-                modifier = Modifier.fillMaxWidth(0.5f)
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth(0.6f)
             ) {
-                Icon(imageVector = Icons.Default.Info, contentDescription = "Info")
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Details", fontWeight = FontWeight.Bold)
+                Text("View Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             }
             
             if (mediaItems.size > 1) {
@@ -534,14 +532,27 @@ fun HeroBannerCarousel(
 fun MediaRow(
     title: String,
     items: List<MediaItem>,
-    onItemClick: (MediaItem) -> Unit
+    onItemClick: (MediaItem) -> Unit,
+    onHeaderClick: (() -> Unit)? = null
 ) {
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .then(if (onHeaderClick != null) Modifier.clickable(onClick = onHeaderClick) else Modifier)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .width(40.dp)
+                    .height(3.dp)
+                    .background(com.singam.lionlibrary.ui.theme.OrangeAccent, androidx.compose.foundation.shape.RoundedCornerShape(1.5.dp))
+            )
+        }
         
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -565,11 +576,19 @@ fun JumpBackInRow(
     onItemLongClick: (JumpBackInItem) -> Unit = {}
 ) {
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .width(40.dp)
+                    .height(3.dp)
+                    .background(com.singam.lionlibrary.ui.theme.OrangeAccent, androidx.compose.foundation.shape.RoundedCornerShape(1.5.dp))
+            )
+        }
         
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),

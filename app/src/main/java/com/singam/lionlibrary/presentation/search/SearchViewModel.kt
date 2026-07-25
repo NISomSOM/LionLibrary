@@ -7,7 +7,6 @@ import com.singam.lionlibrary.domain.model.MediaFilter
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.usecase.SearchMediaUseCase
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,8 +14,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -45,7 +42,7 @@ sealed interface SearchEvent {
 }
 
 
-@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+@OptIn(FlowPreview::class)
 class SearchViewModel(
     private val searchMediaUseCase: SearchMediaUseCase,
     savedStateHandle: androidx.lifecycle.SavedStateHandle
@@ -71,7 +68,7 @@ class SearchViewModel(
             val queryFlow = _state.map { it.query }.distinctUntilChanged().debounce(300)
             val filterFlow = _state.map { it.activeFilter }.distinctUntilChanged()
             
-            // Get all items once as a single flow
+            // Fetch all items in a single flow
             val allMediaFlow = searchMediaUseCase("", MediaFilter.ALL)
 
             combine(allMediaFlow, queryFlow, filterFlow) { allMedia, query, filter ->

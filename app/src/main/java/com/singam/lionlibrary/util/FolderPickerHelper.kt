@@ -4,10 +4,10 @@ import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 
-// SAF folder picking helpers.
+// Storage Access Framework folder helpers.
 object FolderPickerHelper {
 
-    // Intent for picking a folder.
+    // Creates folder picker intent.
     fun createOpenDocumentTreeIntent(): Intent {
         return Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(
@@ -17,7 +17,7 @@ object FolderPickerHelper {
         }
     }
 
-    // Takes a persistable read permission for the folder.
+    // Requests persistable read access for the folder.
     fun takePersistablePermission(contentResolver: ContentResolver, uri: Uri) {
         contentResolver.takePersistableUriPermission(
             uri,
@@ -25,10 +25,10 @@ object FolderPickerHelper {
         )
     }
 
-    // Returns a readable path (e.g. "primary:Movies" -> "Movies").
+    // Formats path to be readable (e.g., "primary:Movies" -> "Movies").
     fun getDisplayPath(uri: Uri): String {
         val path = uri.lastPathSegment ?: return uri.toString()
-        // SAF tree URIs typically look like "primary:Movies" — extract after the colon
+        // Extract path after colon from SAF tree URIs
         return path.substringAfter(':', path)
     }
 }

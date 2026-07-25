@@ -1,6 +1,5 @@
 package com.singam.lionlibrary.presentation.details
 
-import android.content.Context
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -160,7 +159,7 @@ fun DetailsScreen(
                     .fillMaxWidth()
                     .padding(bottom = 32.dp)
             ) {
-                // Header (Thumbnail + Title)
+                // Render header thumbnail and title
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -197,7 +196,7 @@ fun DetailsScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Options
+                // Render configuration options
                 EpisodeOptionItem(
                     icon = Icons.Default.CheckCircle,
                     text = "Mark as watched upto here",
@@ -231,7 +230,7 @@ fun DetailsScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         if (isTwoPane) {
             Row(modifier = Modifier.fillMaxSize()) {
-                // Left Pane
+                // Render left pane layout
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -240,7 +239,7 @@ fun DetailsScreen(
                     HeroHeaderSection(media, state, isLandscapeMode, onAction)
                 }
                 
-                // Right Pane
+                // Render right pane layout
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1.5f),
@@ -267,7 +266,7 @@ fun DetailsScreen(
         }
 
         if (!isLandscapeMode) {
-            // TopAppBar overlay
+            // Render top app bar over content
         TopAppBar(
             title = {
                 Box(modifier = Modifier.fillMaxWidth().padding(end = 48.dp).alpha(if (isTwoPane) 1f else logoAlpha), contentAlignment = Alignment.Center) {
@@ -295,7 +294,7 @@ fun DetailsScreen(
             )
         )
         } else {
-            // Minimal back button for landscape mode
+            // Render simplified back button for landscape
             val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
             IconButton(
                 onClick = { dispatcher?.onBackPressed() },
@@ -333,7 +332,7 @@ private fun HeroHeaderSection(
         Box(
             modifier = imageModifier
         ) {
-            // Backdrop Image
+            // Render backdrop image
             if (media.backdropPath != null) {
                 AsyncImage(
                     model = File(media.backdropPath),
@@ -356,7 +355,7 @@ private fun HeroHeaderSection(
                 )
             }
             
-            // Gradient Overlay
+            // Render gradient overlay for text readability
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -369,7 +368,7 @@ private fun HeroHeaderSection(
                     )
             )
             
-            // Show Logo or Text Title Overlay
+            // Display series logo or text title
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -395,7 +394,7 @@ private fun HeroHeaderSection(
                         )
                     }
                     
-                    // Genres
+                    // Display genres list
                     if (!media.genres.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         val genresText = media.genres.split(",").take(3).joinToString(" • ") { it.trim() }
@@ -411,7 +410,7 @@ private fun HeroHeaderSection(
             }
         }
 
-        // Info Section
+        // Render metadata section
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -419,7 +418,7 @@ private fun HeroHeaderSection(
                 .padding(top = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Play / Resume Button
+            // Render play or resume button
             Button(
                 onClick = {
                     if (media.mediaType == MediaType.MOVIE) onAction(DetailsAction.OnPlayMovie)
@@ -447,13 +446,13 @@ private fun HeroHeaderSection(
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            // Metadata (Year, Duration, Rating Badge, IMDb)
+            // Render year, duration, and ratings
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Year and Duration
+                // Display year and duration
                 val yearText = media.year?.toString() ?: ""
                 val durationText = media.duration?.let { dur ->
                     val hours = dur / 60
@@ -474,7 +473,7 @@ private fun HeroHeaderSection(
                     )
                 }
 
-                // TV Rating Badge
+                // Display content rating badge
                 if (!media.certification.isNullOrBlank()) {
                     Box(
                         modifier = Modifier
@@ -489,7 +488,7 @@ private fun HeroHeaderSection(
                     }
                 }
 
-                // IMDb rating
+                // Display IMDb rating
                 if (media.rating != null && media.rating > 0.0) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -511,7 +510,7 @@ private fun HeroHeaderSection(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Overview
+            // Display show overview text
             if (!media.overview.isNullOrBlank()) {
                 var isExpanded by remember { mutableStateOf(false) }
                 Column(
@@ -548,7 +547,7 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
     onAction: (DetailsAction) -> Unit,
     onEpisodeLongClick: (Episode) -> Unit
 ) {
-    // TV Show and Anime Season Selector
+    // Display season selector for episodic content
     if ((media.mediaType == MediaType.TV_SHOW || media.mediaType == MediaType.ANIME) && state.seasons.isNotEmpty()) {
         val selectedSeasonIndex = state.seasons.indexOfFirst { it.seasonNumber == state.selectedSeasonNumber }.coerceAtLeast(0)
         
@@ -591,7 +590,7 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
         }
     }
 
-    // Episodes List
+    // Display list of episodes
     if (state.episodes.isNotEmpty()) {
         items(
             items = state.episodes,

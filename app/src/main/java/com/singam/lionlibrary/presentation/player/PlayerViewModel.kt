@@ -22,7 +22,9 @@ import com.singam.lionlibrary.presentation.player.engine.ExoPlayerEngine
 import com.singam.lionlibrary.presentation.player.engine.LibVlcPlayerEngine
 import com.singam.lionlibrary.presentation.player.engine.LionPlayerEngine
 import com.singam.lionlibrary.presentation.player.engine.TrackLanguageMatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -88,8 +90,7 @@ class PlayerViewModel(
     private val _events = Channel<PlayerEvent>()
     val events = _events.receiveAsFlow()
 
-    // Engine is created lazily in loadInitialMedia() after we know which
-    // engine to use (based on the file's preferredEngine + force-libVLC pref).
+    // Lazy engine creation waits until we determine the required engine (preferred + force-libVLC flag).
     var engine: LionPlayerEngine? = null
         private set
 
@@ -108,12 +109,7 @@ class PlayerViewModel(
     }
 
     /**
-     * Determines which engine to use for a file.
-     *
-     * Priority:
-     * 1. If "Always use libVLC" is ON in settings → LIBVLC
-     * 2. Otherwise, use the per-file `preferredEngine` set at scan time
-     *    by [CodecCapabilityChecker]
+     * Determine playback engine based on user settings (force LibVLC) or file probe results.
      */
     private suspend fun resolveEngine(preferredEngine: String): LionPlayerEngine {
         val forceLibVlc = settingsRepository.forceLibVlc.first()
@@ -147,7 +143,7 @@ class PlayerViewModel(
                     )
                 }
 
-                // React to playback state changes
+                // Handle playback state updates
                 when (engineState.playbackState) {
                     EnginePlaybackState.READY -> {
                         if (!defaultTracksApplied) {
@@ -162,7 +158,7 @@ class PlayerViewModel(
                     else -> {}
                 }
 
-                // Start/stop position polling based on isPlaying
+                // Toggle position polling based on playback state
                 if (engineState.isPlaying) {
                     startUiUpdateJob()
                     startPersistenceJob()
@@ -172,7 +168,7 @@ class PlayerViewModel(
                     stopPersistenceJob()
                 }
 
-                // Surface engine errors — recover by reverting to default track selection
+                // Report engine errors and reset track selection to recover
                 engineState.error?.let { errorMsg ->
                     viewModelScope.launch {
                         val recoveryPositionMs = _state.value.currentPositionMs
@@ -213,7 +209,7 @@ class PlayerViewModel(
             if (mediaType == MediaType.MOVIE) {
                 currentMedia = mediaDao.getById(mediaId)
                 currentMedia?.let { media ->
-                    // Resolve engine based on preferredEngine + settings
+                    // Select engine based on media preference and settings
                     initEngine(resolveEngine(media.preferredEngine))
 
                     _state.update {
@@ -226,7 +222,7 @@ class PlayerViewModel(
                     }
                     preparePlayer(media.filePath, media.externalSubtitlePath)
                 } ?: run {
-                    // Fallback engine so PlayerScreen doesn't crash
+                    // Provide a fallback engine to prevent UI crashes
                     initEngine(ExoPlayerEngine(application))
                     _events.send(PlayerEvent.ShowError("Media not found"))
                     _events.send(PlayerEvent.NavigateBack)
@@ -234,7 +230,7 @@ class PlayerViewModel(
             } else {
                 currentEpisode = episodeDao.getById(mediaId)
                 currentEpisode?.let { ep ->
-                    // Resolve engine based on preferredEngine + settings
+                    // Select engine based on media preference and settings
                     initEngine(resolveEngine(ep.preferredEngine))
 
                     showIdForEpisode = ep.showId
@@ -293,24 +289,19 @@ class PlayerViewModel(
     fun selectSubtitleTrack(id: String?) = engine?.selectSubtitleTrack(id)
 
     /**
-     * Auto-selects audio and subtitle tracks based on [mediaType]:
-     * - MOVIE / TV_SHOW → English audio, English subtitles
-     * - ANIME → Japanese audio, English subtitles
-     *
-     * Uses [TrackLanguageMatcher] for fuzzy label matching to handle
-     * inconsistent track names like "ENG", "[Standard] English -1", etc.
+     * Select default audio and subtitle tracks based on media type.
      */
     private fun applyDefaultTrackSelection() {
         val audioTracks = engine?.getAudioTracks() ?: return
         val subtitleTracks = engine?.getSubtitleTracks() ?: return
 
-        // Auto-select audio based on media type
+        // Select default audio track automatically
         val bestAudio = TrackLanguageMatcher.findBestAudioTrack(audioTracks, mediaType)
         if (bestAudio != null && !bestAudio.isSelected) {
             engine?.selectAudioTrack(bestAudio.id)
         }
 
-        // Auto-select English subtitles for all media types
+        // Select default English subtitles
         val bestSub = TrackLanguageMatcher.findBestSubtitleTrack(subtitleTracks)
         if (bestSub != null && !bestSub.isSelected) {
             engine?.selectSubtitleTrack(bestSub.id)
@@ -378,12 +369,8 @@ class PlayerViewModel(
     }
 
     private fun playNewEpisode(ep: EpisodeEntity) {
-        // Stop current playback before switching
-        when (val e = engine) {
-            is ExoPlayerEngine -> e.stop()
-            is LibVlcPlayerEngine -> e.stop()
-            else -> {}
-        }
+        // Halt playback before switching engines
+        engine?.stop()
         defaultTracksApplied = false
         currentEpisode = ep
         viewModelScope.launch {
@@ -427,11 +414,7 @@ class PlayerViewModel(
         uiUpdateJob = viewModelScope.launch {
             while (isActive) {
                 if (!isScrubbing) {
-                    val pos = when (val e = engine) {
-                        is ExoPlayerEngine -> e.currentPositionMs
-                        is LibVlcPlayerEngine -> e.currentPositionMs
-                        else -> _state.value.currentPositionMs
-                    }
+                    val pos = engine?.currentPositionMs ?: _state.value.currentPositionMs
                     _state.update { it.copy(currentPositionMs = pos) }
                 }
                 delay(500)
@@ -443,11 +426,7 @@ class PlayerViewModel(
         uiUpdateJob?.cancel()
         uiUpdateJob = null
         if (!isScrubbing) {
-            val pos = when (val e = engine) {
-                is ExoPlayerEngine -> e.currentPositionMs
-                is LibVlcPlayerEngine -> e.currentPositionMs
-                else -> _state.value.currentPositionMs
-            }
+            val pos = engine?.currentPositionMs ?: _state.value.currentPositionMs
             _state.update { it.copy(currentPositionMs = pos) }
         }
     }
@@ -468,16 +447,8 @@ class PlayerViewModel(
     }
 
     private fun persistProgress(markAsCompleted: Boolean = false) {
-        val currentPos = when (val e = engine) {
-            is ExoPlayerEngine -> e.currentPositionMs
-            is LibVlcPlayerEngine -> e.currentPositionMs
-            else -> _state.value.currentPositionMs
-        }
-        val dur = (when (val e = engine) {
-            is ExoPlayerEngine -> e.durationMs
-            is LibVlcPlayerEngine -> e.durationMs
-            else -> _state.value.durationMs
-        }).coerceAtLeast(1L)
+        val currentPos = engine?.currentPositionMs ?: _state.value.currentPositionMs
+        val dur = (engine?.durationMs ?: _state.value.durationMs).coerceAtLeast(1L)
         if (currentPos == 0L && !markAsCompleted) return
 
         viewModelScope.launch {
@@ -498,9 +469,35 @@ class PlayerViewModel(
         }
     }
 
+    /**
+     * Save playback progress during ViewModel teardown.
+     */
+    private fun persistProgressFinal() {
+        val currentPos = engine?.currentPositionMs ?: _state.value.currentPositionMs
+        val dur = (engine?.durationMs ?: _state.value.durationMs).coerceAtLeast(1L)
+        if (currentPos == 0L) return
+
+        val progressId = if (mediaType == MediaType.MOVIE) 0L else (currentEpisode?.id ?: return)
+        val mId = if (mediaType == MediaType.MOVIE) mediaId else showIdForEpisode
+
+        CoroutineScope(Dispatchers.IO + NonCancellable).launch {
+            watchProgressDao.upsert(
+                WatchProgressEntity(
+                    mediaId = mId,
+                    episodeId = progressId,
+                    progress = currentPos.toFloat() / dur,
+                    lastPositionMs = currentPos,
+                    durationMs = dur,
+                    lastWatched = System.currentTimeMillis(),
+                    completed = currentPos >= dur * 0.95f
+                )
+            )
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
-        persistProgress()
+        persistProgressFinal()
         engine?.release()
     }
 }

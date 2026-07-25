@@ -32,7 +32,7 @@ fun LionLibraryNavHost(
         startDestination = Routes.HOME,
         modifier = modifier
     ) {
-        // Home
+        // Define Home route
         composable(Routes.HOME) {
             HomeRoot(
                 snackbarHostState = snackbarHostState,
@@ -55,7 +55,7 @@ fun LionLibraryNavHost(
             )
         }
 
-        // Search
+        // Define Search route
         composable(
             route = Routes.SEARCH_ROUTE,
             arguments = listOf(navArgument("filter") {
@@ -75,7 +75,7 @@ fun LionLibraryNavHost(
             )
         }
 
-        // Settings
+        // Define Settings route
         composable(Routes.SETTINGS) {
             SettingsRoot(
                 snackbarHostState = snackbarHostState,
@@ -83,11 +83,11 @@ fun LionLibraryNavHost(
             )
         }
 
-        // Movie Details
+        // Define Movie Details route
         composable(
             route = Routes.MOVIE_DETAILS,
             arguments = listOf(navArgument("mediaId") { type = NavType.LongType })
-        ) { backStackEntry ->
+        ) { _ ->
             DetailsRoot(
                 snackbarHostState = snackbarHostState,
                 windowSizeClass = windowSizeClass,
@@ -97,11 +97,11 @@ fun LionLibraryNavHost(
             )
         }
 
-        // Show Details
+        // Define Show Details route
         composable(
             route = Routes.SHOW_DETAILS,
             arguments = listOf(navArgument("mediaId") { type = NavType.LongType })
-        ) { backStackEntry ->
+        ) { _ ->
             DetailsRoot(
                 snackbarHostState = snackbarHostState,
                 windowSizeClass = windowSizeClass,
@@ -111,14 +111,14 @@ fun LionLibraryNavHost(
             )
         }
 
-        // Player
+        // Define Player route
         composable(
             route = Routes.PLAYER,
             arguments = listOf(
                 navArgument("mediaType") { type = NavType.StringType },
                 navArgument("mediaId") { type = NavType.LongType }
             )
-        ) { backStackEntry ->
+        ) { _ ->
             PlayerRoot(navController = navController)
         }
     }

@@ -28,9 +28,7 @@ import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.delay
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -508,11 +506,7 @@ class AndroidMediaScanner(
         )
     }
 
-    /**
-     * Probes the media file's codecs and returns the appropriate engine name.
-     * If all video/audio tracks are hardware-decodable → EXOPLAYER.
-     * Otherwise → LIBVLC (which has its own software decoders).
-     */
+    /** Determine the appropriate playback engine by probing media codecs. */
     private suspend fun determineEngine(uri: Uri): String {
         return if (CodecCapabilityChecker.canHardwareDecode(context, uri)) {
             EngineType.EXOPLAYER.name

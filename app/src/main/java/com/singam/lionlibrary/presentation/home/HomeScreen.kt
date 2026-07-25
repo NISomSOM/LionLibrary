@@ -42,7 +42,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.singam.lionlibrary.domain.model.MediaItem
@@ -55,8 +54,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.ui.draw.clip
@@ -153,7 +150,7 @@ fun HomeScreen(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
-        // Hero Banner
+        // Render hero carousel
         val heroItems = state.carouselItems
         if (heroItems.isNotEmpty()) {
             item {
@@ -170,7 +167,7 @@ fun HomeScreen(
             }
         }
 
-        // Jump Back In
+        // Render 'Jump Back In' section
         if (state.jumpBackInItems.isNotEmpty()) {
             item {
                 JumpBackInRow(
@@ -182,7 +179,7 @@ fun HomeScreen(
             }
         }
 
-        // Movies
+        // Render movie library section
         if (state.movies.isNotEmpty()) {
             item {
                 MediaRow(
@@ -194,7 +191,7 @@ fun HomeScreen(
             }
         }
 
-        // TV Shows
+        // Render TV show library section
         if (state.tvShows.isNotEmpty()) {
             item {
                 MediaRow(
@@ -206,7 +203,7 @@ fun HomeScreen(
             }
         }
 
-        // Anime
+        // Render anime library section
         if (state.anime.isNotEmpty()) {
             item {
                 MediaRow(
@@ -218,7 +215,7 @@ fun HomeScreen(
             }
         }
 
-        // Recently Added
+        // Render recently added media section
         if (state.recentlyAdded.isNotEmpty()) {
             item {
                 MediaRow(
@@ -229,7 +226,7 @@ fun HomeScreen(
             }
         }
 
-        // Genres
+        // Render genre navigation
         state.genresContent.forEach { (genre, items) ->
             if (items.isNotEmpty()) {
                 item {
@@ -254,7 +251,7 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .padding(bottom = 32.dp)
             ) {
-                // Header (Thumbnail + Title)
+                // Render header thumbnail and title
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -297,7 +294,7 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Options
+                // Render configuration options
                 JumpBackInOptionItem(
                     icon = Icons.Default.Info,
                     text = "Go to details",
@@ -416,7 +413,7 @@ fun HeroBannerCarousel(
                     )
                 }
 
-                // Gradient overlay
+                // Render gradient overlay for readability
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -481,7 +478,7 @@ fun HeroBannerCarousel(
             }
         }
 
-        // Stationary elements (Buttons and Pagination)
+        // Render pagination indicators
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)

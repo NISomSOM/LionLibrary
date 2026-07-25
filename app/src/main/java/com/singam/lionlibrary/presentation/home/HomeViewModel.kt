@@ -83,7 +83,7 @@ class HomeViewModel(
                 }
             }
             is HomeAction.OnPlayClick -> {
-                // For now, Play simply navigates to details where actual playback logic will live
+                // Temporary behavior: 'Play' routes to details instead of direct playback.
                 viewModelScope.launch {
                     if (action.mediaType == MediaType.MOVIE) {
                         _events.send(HomeEvent.NavigateToMovieDetails(action.mediaId))
@@ -149,7 +149,7 @@ class HomeViewModel(
                 }
                 .collect { content ->
                     _state.update { currentState ->
-                        // Pick 10 random items for carousel once per session
+                        // Select 10 items randomly for the hero carousel.
                         val allMedia = content.movies + content.tvShows + content.anime
                         val randomCarousel = if (currentState.carouselItems.isNotEmpty()) {
                             currentState.carouselItems

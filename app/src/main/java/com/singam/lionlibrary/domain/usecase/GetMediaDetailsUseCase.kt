@@ -22,8 +22,8 @@ class GetMediaDetailsUseCase(
         val media = mediaRepository.getById(mediaId) ?: return null
         return MediaDetails(
             media = media,
-            seasons = emptyList(),  // loaded on-demand per season
-            episodes = emptyList() // loaded on-demand per season
+            seasons = emptyList(),  // lazy-load per season
+            episodes = emptyList() // lazy-load per season
         )
     }
 

@@ -17,9 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.singam.lionlibrary.ui.theme.DarkSurface
 import com.singam.lionlibrary.ui.theme.OrangeAccent
-import com.singam.lionlibrary.ui.theme.TextSecondary
 import com.singam.lionlibrary.ui.theme.TextTertiary
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.size

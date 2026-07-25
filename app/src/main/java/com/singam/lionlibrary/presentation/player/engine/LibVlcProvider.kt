@@ -6,21 +6,7 @@ import org.videolan.libvlc.LibVLC
 import java.io.File
 
 /**
- * Singleton provider for LibVLC.
- *
- * Fontconfig (used internally by libVLC's freetype subtitle renderer) scans
- * every font in its configured directories on first use. On Android, the
- * default directory is /system/fonts/ which contains hundreds of files — this
- * scan takes ~30 seconds on some devices and is further complicated by SELinux
- * rules on certain vendors (e.g. Vivo) that block fontconfig's cache persistence.
- *
- * The fix: [initFontconfig] creates a minimal fonts.conf that points fontconfig
- * at a directory containing exactly ONE copied font file, with a cache directory
- * inside app-private storage. This makes fontconfig init instant.
- *
- * [prewarm] is called from [LionLibraryApp.onCreate] to run this setup and
- * eagerly create the LibVLC singleton on a background thread, so everything is
- * ready before the user ever opens a video.
+ * Provide a LibVLC singleton.
  */
 object LibVlcProvider {
     @Volatile
@@ -44,13 +30,7 @@ object LibVlcProvider {
         "--sout-keep"
     )
 
-    /**
-     * Creates a minimal fonts.conf in the app's files directory and sets
-     * the FONTCONFIG_FILE environment variable so fontconfig reads it
-     * instead of scanning the entire /system/fonts/ directory.
-     *
-     * MUST be called before any LibVLC instance is created.
-     */
+    /** Set up fontconfig configuration before creating a LibVLC instance. */
     private fun initFontconfig(context: Context) {
         if (fontconfigInitialized) return
         fontconfigInitialized = true
@@ -116,18 +96,15 @@ object LibVlcProvider {
         }
     }
 
-    /**
-     * Sets up fontconfig and eagerly creates the LibVLC singleton on a
-     * background thread. Should be called from Application.onCreate().
-     */
+    /** Initialize fontconfig and create LibVLC singleton in the background. */
     fun prewarm(context: Context) {
         val appContext = context.applicationContext
-        // Set fontconfig env immediately on the calling thread (main thread)
-        // so it's ready before ANY LibVLC code runs.
-        initFontconfig(appContext)
 
         Thread {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
             try {
+                // Configure fontconfig FIRST, before LibVLC touches it.
+                initFontconfig(appContext)
                 android.util.Log.i("LibVlcProvider", "Starting LibVLC singleton prewarm")
                 getSharedInstance(appContext)
                 android.util.Log.i("LibVlcProvider", "LibVLC singleton prewarm complete")
@@ -137,9 +114,7 @@ object LibVlcProvider {
         }.start()
     }
 
-    /**
-     * Retrieves the shared LibVLC instance, creating it synchronously if needed.
-     */
+    /** Get the LibVLC singleton. */
     fun getSharedInstance(context: Context): LibVLC {
         // Ensure fontconfig is configured even if prewarm wasn't called
         initFontconfig(context)

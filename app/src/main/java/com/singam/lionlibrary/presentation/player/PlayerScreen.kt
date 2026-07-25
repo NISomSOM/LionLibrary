@@ -3,7 +3,6 @@ package com.singam.lionlibrary.presentation.player
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.provider.Settings
 import androidx.activity.compose.LocalActivity
@@ -43,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import com.singam.lionlibrary.ui.theme.OrangeAccent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -78,7 +78,7 @@ fun PlayerRoot(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Handle System Bars
+    // Configure system UI visibility
     DisposableEffect(activity) {
         val window = activity?.window
         var controller: WindowInsetsControllerCompat? = null
@@ -93,7 +93,7 @@ fun PlayerRoot(
         }
     }
 
-    // Handle Lifecycle for pausing
+    // Pause playback on app background
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) {
@@ -108,7 +108,7 @@ fun PlayerRoot(
         }
     }
 
-    // Handle Events
+    // Process one-time events
     LaunchedEffect(viewModel.events) {
         viewModel.events.collect { event ->
             when (event) {
@@ -117,7 +117,7 @@ fun PlayerRoot(
                     try {
                         context.startActivity(event.intent)
                     } catch (e: Exception) {
-                        // ignore or toast
+                        // Suppressed intentional exception
                     }
                 }
                 is PlayerEvent.ShowError -> {
@@ -169,7 +169,7 @@ fun PlayerScreen(
         if (showRightSeekFeedback) { delay(500); showRightSeekFeedback = false }
     }
     
-    // Auto-hide controls
+    // Hide controls after inactivity
     LaunchedEffect(showControls, state.isPlaying) {
         if (showControls && state.isPlaying) {
             delay(3500)
@@ -182,16 +182,14 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // Video Surface — branched by engine type so each AndroidView has the
-        // correct native View type. DO NOT merge into a single generic AndroidView.
+        // Branch video surface by engine type. Each needs a specific native View.
         when (state.engineType) {
             EngineType.EXOPLAYER -> {
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             useController = false
-                            // Match libVLC subtitle style: white text, black outline,
-                            // no background box, Roboto font.
+                            // Configure subtitle style to match VLC defaults (white, black outline, no box).
                             subtitleView?.apply {
                                 setStyle(
                                     androidx.media3.ui.CaptionStyleCompat(
@@ -242,9 +240,9 @@ fun PlayerScreen(
             }
         }
 
-        // Gesture Overlay
+        // Render touch gesture zones
         Row(modifier = Modifier.fillMaxSize()) {
-            // Left Third - Brightness & Seek Backward
+            // Render brightness and rewind zone
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -266,7 +264,7 @@ fun PlayerScreen(
                             },
                             onVerticalDrag = { change, dragAmount ->
                                 change.consume()
-                                val dragDelta = -dragAmount / size.height // up is positive
+                                val dragDelta = -dragAmount / size.height // Map upward drag to positive
                                 val newBrightness = (initialBrightness + dragDelta * 2).coerceIn(0f, 1f)
                                 activity?.window?.attributes = activity?.window?.attributes?.apply {
                                     screenBrightness = newBrightness
@@ -308,7 +306,7 @@ fun PlayerScreen(
                 SeekFeedback(visible = showLeftSeekFeedback, isForward = false)
             }
 
-            // Middle Third - Just Tap for Controls & Scrubbing
+            // Render center zone for toggle and scrubbing
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -337,7 +335,7 @@ fun PlayerScreen(
                     }
             )
 
-            // Right Third - Volume & Seek Forward
+            // Render volume and fast-forward zone
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -392,7 +390,7 @@ fun PlayerScreen(
             }
         }
 
-        // Controls Overlay
+        // Render media controls
         AnimatedVisibility(
             visible = showControls,
             enter = fadeIn(),
@@ -404,7 +402,7 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.5f))
             ) {
-                // Top Bar
+                // Render top control bar
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -443,7 +441,7 @@ fun PlayerScreen(
                     }
                 }
 
-                // Center Controls
+                // Render center playback controls
                 Row(
                     modifier = Modifier.align(Alignment.Center),
                     verticalAlignment = Alignment.CenterVertically,
@@ -476,14 +474,14 @@ fun PlayerScreen(
                     }
                 }
 
-                // Bottom Bar (Seekbar + Pill)
+                // Render bottom controls
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .padding(horizontal = 32.dp, vertical = 24.dp)
                 ) {
-                    // Seekbar Row
+                    // Render scrub bar
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
@@ -500,8 +498,8 @@ fun PlayerScreen(
                             },
                             modifier = Modifier.weight(1f).height(24.dp),
                             colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFFE58B20),
-                                activeTrackColor = Color(0xFFE58B20),
+                                thumbColor = OrangeAccent,
+                                activeTrackColor = OrangeAccent,
                                 inactiveTrackColor = Color(0xFF3B3346)
                             )
                         )
@@ -511,7 +509,7 @@ fun PlayerScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    // Bottom Pill Row
+                    // Render track and engine selectors
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center
@@ -550,12 +548,12 @@ fun PlayerScreen(
             }
         }
 
-        // Snackbar for error messages (positioned above bottom controls)
+        // Render error snackbar above controls
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 140.dp) // above seekbar + pill
+                .padding(bottom = 140.dp) // Offset above bottom bar
         ) { snackbarData ->
             Snackbar(
                 snackbarData = snackbarData,
@@ -642,7 +640,7 @@ fun PlayerScreen(
                     )
                 }
 
-                // Off option
+                // Render 'Off' toggle
                 item {
                     Row(
                         modifier = Modifier

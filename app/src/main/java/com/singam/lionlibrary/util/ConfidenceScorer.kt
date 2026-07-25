@@ -1,10 +1,10 @@
 package com.singam.lionlibrary.util
 
-// Figure out how well a filename matches a TMDB result.
-// Uses Jaro-Winkler with a year bonus.
+// Scores filename matches against TMDB results.
+// Uses Jaro-Winkler, adds a bonus if years match.
 object ConfidenceScorer {
 
-    // Returns score between 0.0 and 1.0.
+    // Returns a score from 0.0 to 1.0.
     fun computeConfidence(
         parsedTitle: String,
         tmdbTitle: String,

@@ -9,15 +9,15 @@ import org.junit.runner.RunWith
 import org.junit.Assert.*
 
 /**
- * Instrumented test, which will execute on an Android device.
+ * Instrumented test running on an Android device or emulator.
  *
- * See [testing documentation](http://d.android.com/tools/testing).
+ * Reference: [Android Testing Documentation](http://d.android.com/tools/testing)
  */
 @RunWith(AndroidJUnit4::class)
 class ExampleInstrumentedTest {
     @Test
     fun useAppContext() {
-        // Context of the app under test.
+        // Retrieve application context
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
         assertEquals("com.singam.lionlibrary", appContext.packageName)
     }

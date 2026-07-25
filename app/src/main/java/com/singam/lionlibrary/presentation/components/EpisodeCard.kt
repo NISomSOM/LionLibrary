@@ -55,12 +55,12 @@ fun EpisodeCard(
             .background(Color.Transparent)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // Top Row: Thumbnail + Title/Subtitle + Check Icon
+        // Render top row: Thumbnail, text, and checkmark
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top
         ) {
-            // Left: Thumbnail
+            // Render thumbnail on the left
             Box(
                 modifier = Modifier
                     .width(130.dp)
@@ -78,7 +78,7 @@ fun EpisodeCard(
                     Box(modifier = Modifier.fillMaxSize().background(Color.DarkGray))
                 }
                 
-                // Play Icon Overlay (bottom start)
+                // Render play icon overlay
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = "Play",
@@ -89,7 +89,7 @@ fun EpisodeCard(
                         .size(20.dp)
                 )
 
-                // Progress Bar Overlay (bottom)
+                // Render progress bar overlay
                 val progressValue = if (isWatched) 1f else (progress ?: 0f)
                 if (progressValue > 0f) {
                     Box(
@@ -102,7 +102,7 @@ fun EpisodeCard(
                 }
             }
 
-            // Middle & Right: Title/Subtitle and Action Icon
+            // Render text and action icon
             Row(
                 modifier = Modifier
                     .weight(1f)
@@ -112,7 +112,7 @@ fun EpisodeCard(
                 Column(
                     modifier = Modifier.weight(1f)
                 ) {
-                    // Title
+                    // Render episode title
                     Text(
                         text = episode.title ?: "Episode ${episode.episodeNumber}",
                         style = androidx.compose.material3.MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -123,7 +123,7 @@ fun EpisodeCard(
 
                     Spacer(modifier = Modifier.height(2.dp))
 
-                    // Subtitle
+                    // Render episode subtitle
                     val subtitleParts = mutableListOf<String>()
                     subtitleParts.add("S${episode.seasonNumber} E${episode.episodeNumber}")
                     if (!episode.airDate.isNullOrBlank()) {
@@ -141,7 +141,7 @@ fun EpisodeCard(
                     )
                 }
 
-                // Right: Watched Button
+                // Render watched status button
                 IconButton(
                     onClick = { onMarkWatched(episode.id) },
                     modifier = Modifier.size(36.dp)
@@ -156,7 +156,7 @@ fun EpisodeCard(
             }
         }
 
-        // Overview below Top Row
+        // Render overview text below the top row
         if (!episode.overview.isNullOrBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(

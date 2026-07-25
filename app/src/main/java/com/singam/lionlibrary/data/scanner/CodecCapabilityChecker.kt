@@ -17,33 +17,13 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Correctness-first codec probe that determines whether Android's
- * hardware decoders can handle **every** track in a given media file.
- *
- * Uses a headless [MetadataRetriever] instance to `prepare()` the media and
- * then inspects all track groups — including every audio track in MKV
- * containers. ExoPlayer's own Matroska/WebM extractor reliably
- * enumerates ALL tracks, unlike Android's [android.media.MediaExtractor]
- * which often misses secondary audio tracks.
- *
- * ## Why ExoPlayer instead of libVLC?
- *
- * libVLC's native demuxer cannot parse `content://` SAF URIs during
- * metadata-only operations (returns `ParsedStatus.Skipped` with 0
- * tracks). ExoPlayer handles SAF URIs natively and its extractors are
- * the same ones used during actual playback, guaranteeing that what
- * we detect at scan time matches what the player will encounter.
- *
- * ## Lifecycle
- *
- * If detection has **any** doubt — timeout, exception, zero tracks —
- * it fails safe to LIBVLC.
+ * Check if the device hardware can decode all tracks in a media file.
  */
 object CodecCapabilityChecker {
 
     private const val TAG = "CodecCapabilityChecker"
 
-    /** Per-file probe timeout. MetadataRetriever is fast (~100-500ms). */
+    /** Timeout for probing each file. MetadataRetriever usually takes 100-500ms. */
     private const val PROBE_TIMEOUT_MS = 5_000L
 
     private val codecInfos by lazy {
@@ -51,14 +31,13 @@ object CodecCapabilityChecker {
     }
 
     /**
-     * Cache for video capability results to avoid repeated MediaCodecList lookups
-     * for common MIME types and profiles.
+     * Cache video capability results so we don't query MediaCodecList repeatedly for the same formats.
      */
     private val videoCapabilityCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
     // -----------------------------------------------------------------------
-    // Audio MIME blocklist — codecs ExoPlayer cannot decode without the
-    // FFmpeg extension. Checked against Format.sampleMimeType.
+    // Blocked Audio MIMEs: Codecs ExoPlayer can't decode without the FFmpeg extension.
+    // We check these against Format.sampleMimeType.
     // -----------------------------------------------------------------------
     private val UNSUPPORTED_AUDIO_MIMES = setOf(
         MimeTypes.AUDIO_AC3,          // "audio/ac3"
@@ -72,21 +51,21 @@ object CodecCapabilityChecker {
     )
 
     /**
-     * Checks if the device has a hardware decoder for the given video format.
+     * Checks if the device includes a hardware decoder for this video format.
      */
     private fun isVideoHardwareSupported(format: androidx.media3.common.Format): Boolean {
         val mime = format.sampleMimeType ?: return false
         
-        // Cache key includes MIME, width, and height
+        // Use MIME, width, and height for the cache key
         val cacheKey = "$mime|${format.width}x${format.height}"
         videoCapabilityCache[cacheKey]?.let { return it }
 
         val isSupported = try {
-            // Check if ANY hardware decoder supports this format
+            // Verify if any hardware decoder supports the format
             codecInfos.any { info ->
                 if (info.isEncoder) return@any false
                 
-                // Hardware acceleration check with API 29 fallback
+                // Check for hardware acceleration, falling back for pre-API 29
                 val isHardware = if (android.os.Build.VERSION.SDK_INT >= 29) {
                     info.isHardwareAccelerated
                 } else {
@@ -118,23 +97,13 @@ object CodecCapabilityChecker {
         return isSupported
     }
 
-    /**
-     * Returns `true` if every audio and video track in the file at [uri] can be
-     * decoded by Android's built-in hardware decoders (suitable for ExoPlayer).
-     *
-     * Returns `false` (→ assign LIBVLC) if:
-     * - Any audio track uses a MIME type in [UNSUPPORTED_AUDIO_MIMES]
-     * - Any video track has no matching hardware decoder
-     * - The file cannot be opened or has no tracks
-     * - The probe times out or throws an exception
-     * - Any ambiguity at all — fail safe to LIBVLC
-     */
+    /** Check if all tracks in the media file can be decoded by hardware. */
     suspend fun canHardwareDecode(context: Context, uri: Uri): Boolean {
         return withTimeoutOrNull(PROBE_TIMEOUT_MS) {
             try {
                 val mediaItem = MediaItem.Builder().setUri(uri).build()
                 
-                // Use MetadataRetriever to parse tracks without creating renderers
+                // Parse tracks using MetadataRetriever instead of creating renderers
                 val trackGroups = MetadataRetriever.retrieveMetadata(context, mediaItem).await()
 
                 val audioGroups = mutableListOf<TrackGroup>()
@@ -153,7 +122,7 @@ object CodecCapabilityChecker {
 
                 var allTracksSupported = true
 
-                // Validate Video Tracks (Hardware Decoder Check)
+                // Check video tracks against hardware decoders
                 for (group in videoGroups) {
                     for (i in 0 until group.length) {
                         val format = group.getFormat(i)
@@ -168,7 +137,7 @@ object CodecCapabilityChecker {
                     }
                 }
 
-                // Validate Audio Tracks (Blocklist Check)
+                // Check audio tracks against the blocklist
                 for (group in audioGroups) {
                     for (i in 0 until group.length) {
                         val format = group.getFormat(i)
@@ -189,13 +158,10 @@ object CodecCapabilityChecker {
                 Log.d(TAG, "Probe error for $uri: ${e.message}")
                 false
             }
-        } ?: false // Timeout returns false
+        } ?: false // Return false on timeout
     }
 
-    /**
-     * Extension to suspend cleanly on Guava's ListenableFuture
-     * without pulling in kotlinx-coroutines-guava dependency.
-     */
+    /** Await completion of a ListenableFuture. */
     private suspend fun <T> ListenableFuture<T>.await(): T = suspendCancellableCoroutine { cont ->
         addListener(
             {
@@ -205,7 +171,7 @@ object CodecCapabilityChecker {
                     cont.resumeWithException(e)
                 }
             },
-            { command -> command.run() } // direct executor
+            { command -> command.run() } // Run on direct executor
         )
     }
 }

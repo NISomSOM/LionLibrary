@@ -35,14 +35,7 @@ enum class EngineType {
 // ---------------------------------------------------------------------------
 
 /**
- * Abstraction over the concrete video-engine (ExoPlayer or libVLC).
- *
- * Rules enforced by the dual-engine design:
- *  - The engine instance is created once per player-screen lifecycle (in
- *    PlayerViewModel), never recreated inside a Composable.
- *  - Engine selection happens once at player launch and is never changed
- *    mid-session.
- *  - Watch progress is always keyed on mediaId/episodeId, never on engine.
+ * Interface for video playback engines (ExoPlayer or libVLC).
  */
 interface LionPlayerEngine {
 
@@ -52,10 +45,7 @@ interface LionPlayerEngine {
     /** Which engine backs this instance — used by PlayerScreen to branch the AndroidView. */
     val engineType: EngineType
 
-    /**
-     * Load media from [uri], optionally with a sidecar subtitle at [subtitleUri].
-     * Does NOT start playback; call [play] separately.
-     */
+    /** Load media and optional subtitle without starting playback. */
     fun setMedia(uri: Uri, subtitleUri: Uri?)
 
     fun play()
@@ -71,27 +61,23 @@ interface LionPlayerEngine {
     /** Returns available subtitle/text tracks. */
     fun getSubtitleTracks(): List<EngineTrackInfo>
 
-    /**
-     * Clears any track selection overrides, reverting to the engine's
-     * default track selection. Used by the recovery path when a manually-
-     * selected audio track causes a playback error.
-     */
+    /** Reset track selection to default to recover from playback errors. */
     fun resetToDefaultTrackSelection()
 
-    /**
-     * Selects a subtitle track by [id], or pass `null` to disable subtitles.
-     */
+    /** Select a subtitle track, or null to disable. */
     fun selectSubtitleTrack(id: String?)
 
-    /**
-     * Attaches the engine's rendering surface to [container].
-     * For ExoPlayer: [container] is a [PlayerView].
-     * For libVLC:    [container] is a [VLCVideoLayout].
-     *
-     * Must be called AFTER [setMedia] is called and the engine has prepared
-     * the player — never before media is set.
-     */
+    /** Attach rendering surface to the view container after media is loaded. */
     fun attachToView(container: ViewGroup)
+
+    /** Current playback position in milliseconds. Used for progress polling. */
+    val currentPositionMs: Long
+
+    /** Current media duration in milliseconds. */
+    val durationMs: Long
+
+    /** Stop playback without releasing resources. Used when switching episodes. */
+    fun stop()
 
     /** Release all engine resources. Must be called in ViewModel.onCleared(). */
     fun release()

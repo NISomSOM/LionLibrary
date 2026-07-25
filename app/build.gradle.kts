@@ -59,7 +59,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation("androidx.compose.ui:ui-text-google-fonts:1.6.7")
+    implementation("androidx.compose.ui:ui-text-google-fonts")
 
     // Core
     implementation(libs.androidx.core.ktx)

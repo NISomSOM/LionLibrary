@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -74,7 +73,7 @@ fun SearchScreen(
     onAction: (SearchAction) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // Search Bar
+        // Render search input field
         OutlinedTextField(
             value = state.query,
             onValueChange = { onAction(SearchAction.OnQueryChange(it)) },
@@ -100,7 +99,7 @@ fun SearchScreen(
             )
         )
 
-        // Filter Chips
+        // Render category filters
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -124,9 +123,9 @@ fun SearchScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Content
+        // Render search results
         if (state.results.isEmpty() && !state.isSearching && state.query.isNotBlank()) {
-            // No results state
+            // Display empty state when no results
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -138,7 +137,7 @@ fun SearchScreen(
                 )
             }
         } else {
-            // Results Grid
+            // Display results in a grid
             val columnsCount = when (windowSizeClass.widthSizeClass) {
                 WindowWidthSizeClass.Compact -> 3
                 WindowWidthSizeClass.Medium -> 4

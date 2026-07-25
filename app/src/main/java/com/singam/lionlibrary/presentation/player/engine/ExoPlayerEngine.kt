@@ -17,20 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
- * [LionPlayerEngine] implementation backed by Media3 ExoPlayer.
- *
- * This is a pure refactor of the ExoPlayer setup that previously lived
- * directly in PlayerViewModel. Behaviour is identical — only the housing
- * has changed so it can be swapped with [LibVlcPlayerEngine] at launch time.
- *
- * Lifecycle:
- *  1. Instantiate in PlayerViewModel (once per player screen).
- *  2. Call [setMedia] to load a URI.
- *  3. After calling [setMedia], the Composable calls [attachToView] in the
- *     AndroidView `update` lambda (not `factory`!) so the surface is attached
- *     after the player is ready.
- *  4. Call [play] to start playback.
- *  5. Call [release] in ViewModel.onCleared().
+ * ExoPlayer implementation for LionPlayerEngine.
  */
 class ExoPlayerEngine(context: Context) : LionPlayerEngine {
 
@@ -223,19 +210,11 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
     }
 
     /** Current playback position in milliseconds — used by PlayerViewModel for progress polling. */
-    val currentPositionMs: Long get() = exoPlayer.currentPosition
+    override val currentPositionMs: Long get() = exoPlayer.currentPosition
 
     /** Current duration in milliseconds. */
-    val durationMs: Long get() = exoPlayer.duration.coerceAtLeast(0L)
-
-    /** Whether ExoPlayer is currently playing. */
-    val isPlaying: Boolean get() = exoPlayer.isPlaying
+    override val durationMs: Long get() = exoPlayer.duration.coerceAtLeast(0L)
 
     /** Stop the player (used when switching episodes). */
-    fun stop() = exoPlayer.stop()
-
-    /** Set playWhenReady flag. */
-    fun setPlayWhenReady(play: Boolean) {
-        exoPlayer.playWhenReady = play
-    }
+    override fun stop() = exoPlayer.stop()
 }

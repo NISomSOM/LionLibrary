@@ -116,7 +116,7 @@ class SettingsViewModel(
                 )
             }
 
-            // Load forceLibVlc separately (flow-based)
+            // Load libVLC setting as a flow
             settingsRepository.forceLibVlc.first().let { forced ->
                 _state.update { it.copy(forceLibVlc = forced) }
             }
@@ -152,30 +152,37 @@ class SettingsViewModel(
                 .collect { progress ->
                     _state.update { it.copy(scanProgress = progress) }
 
-                    if (progress.status == ScanStatus.COMPLETE) {
-                        _state.update {
-                            it.copy(
-                                isScanning = false,
-                                lastScanTime = System.currentTimeMillis()
+                    when (progress.status) {
+                        ScanStatus.COMPLETE -> {
+                            _state.update {
+                                it.copy(
+                                    isScanning = false,
+                                    lastScanTime = System.currentTimeMillis()
+                                )
+                            }
+                            _events.send(
+                                SettingsEvent.ShowSnackbar(
+                                    "Scan complete: ${progress.total} files processed"
+                                )
                             )
                         }
-                        _events.send(
-                            SettingsEvent.ShowSnackbar(
-                                "Scan complete: ${progress.total} files processed"
-                            )
-                        )
-                    } else if (progress.status == ScanStatus.API_KEY_MISSING) {
-                        _state.update { it.copy(isScanning = false) }
-                        _events.send(SettingsEvent.ShowSnackbar("API Key missing. Please configure your TMDB API Key."))
-                    } else if (progress.status == ScanStatus.INVALID_API_KEY) {
-                        _state.update { it.copy(isScanning = false) }
-                        _events.send(SettingsEvent.ShowSnackbar("Invalid API Key. Please check your TMDB API Key."))
-                    } else if (progress.status == ScanStatus.NO_INTERNET) {
-                        _state.update { it.copy(isScanning = false) }
-                        _events.send(SettingsEvent.ShowSnackbar("No internet. Files saved without metadata."))
-                    } else if (progress.status == ScanStatus.PERMISSION_REVOKED) {
-                        _state.update { it.copy(isScanning = false) }
-                        _events.send(SettingsEvent.ShowSnackbar("Folder permission lost. Please re-select folder."))
+                        ScanStatus.API_KEY_MISSING -> {
+                            _state.update { it.copy(isScanning = false) }
+                            _events.send(SettingsEvent.ShowSnackbar("API Key missing. Please configure your TMDB API Key."))
+                        }
+                        ScanStatus.INVALID_API_KEY -> {
+                            _state.update { it.copy(isScanning = false) }
+                            _events.send(SettingsEvent.ShowSnackbar("Invalid API Key. Please check your TMDB API Key."))
+                        }
+                        ScanStatus.NO_INTERNET -> {
+                            _state.update { it.copy(isScanning = false) }
+                            _events.send(SettingsEvent.ShowSnackbar("No internet. Files saved without metadata."))
+                        }
+                        ScanStatus.PERMISSION_REVOKED -> {
+                            _state.update { it.copy(isScanning = false) }
+                            _events.send(SettingsEvent.ShowSnackbar("Folder permission lost. Please re-select folder."))
+                        }
+                        else -> {} // No terminal action for SCANNING, MATCHED, SKIPPED, or ERROR
                     }
                 }
         }

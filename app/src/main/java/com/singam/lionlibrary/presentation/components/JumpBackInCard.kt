@@ -64,7 +64,7 @@ fun JumpBackInCard(
             )
         }
 
-        // Gradient at the bottom for text readability
+        // Add bottom gradient for text contrast
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -136,14 +136,14 @@ fun JumpBackInCard(
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
-                // Background track
+                // Render progress bar background
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp)
                         .background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
                 )
-                // Progress
+                // Render current progress
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(item.progress)

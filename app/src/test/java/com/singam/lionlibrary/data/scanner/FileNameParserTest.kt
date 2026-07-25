@@ -21,7 +21,7 @@ class FileNameParserTest {
         assertEquals("Seishun Buta Yarou wa Randoseru Girl no Yume wo Minai", identity3)
         
         val (season4, identity4) = parser.parseShowFolderIdentity("[Anime Time] JoJo's Bizarre Adventure Part 6 - Stone Ocean (Part 1+2+3) [NF][Dual Audio] [1080p][HEVC 10bit x265][Multi Sub] [Batch]")
-        assertEquals(6, season4) // Extracted from "Part 6"
+        assertEquals(6, season4) // Validate extraction from "Part 6"
         assertEquals("JoJo's Bizarre Adventure Stone Ocean", identity4)
         
         val (season5, identity5) = parser.parseShowFolderIdentity("Dandadan S02 1080p Dual Audio WEBRip DD+ x265-EMBER")

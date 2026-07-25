@@ -1,6 +1,6 @@
 package com.singam.lionlibrary.data.scanner
 
-// Result of a parsed filename.
+// Data model for a parsed filename.
 sealed class ParsedFile {
     data class Movie(val title: String, val year: Int?) : ParsedFile()
     data class Episode(val title: String, val season: Int, val episode: Int) : ParsedFile()

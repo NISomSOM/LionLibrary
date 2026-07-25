@@ -2,10 +2,10 @@ package com.singam.lionlibrary.data.scanner
 
 class FileNameParser {
 
-    // Noise categories based on Guessit
+    // Noise patterns derived from Guessit
     private val sitePrefixPattern = Regex("""^www\.[^\s-]+\.[a-z]{2,4}\s*-\s*""", RegexOption.IGNORE_CASE)
 
-    // Applied after dot/underscore replacement
+    // Apply after replacing dots and underscores
     private val resPattern = Regex("""\b(480|576|720|1080|2160|4320)p\b|\b4K\b|\bUHD\b""", RegexOption.IGNORE_CASE)
     private val sourcePattern = Regex("""\b(BluRay|BDRip|BRRip|BD|WEB[- ]?DL|WEB[- ]?Rip|HDTV|DVDRip|HDRip)\b""", RegexOption.IGNORE_CASE)
     private val codecPattern = Regex("""\b(x264|x265|H(?:[- .])?264|H(?:[- .])?265|HEVC|AVC|AV1|XviD)\b""", RegexOption.IGNORE_CASE)
@@ -18,13 +18,13 @@ class FileNameParser {
     private val siteSuffixPattern = Regex("""[- ]?\b[A-Za-z0-9]+\s?Com\b""", RegexOption.IGNORE_CASE)
     private val langPattern = Regex("""\b(ENG|JPN|Hindi|Multi-?Sub|Hin|Eng)\b""", RegexOption.IGNORE_CASE)
 
-    // Episode markers
+    // Identify episode numbers
     private val standardEpisodePattern = Regex("""\b(?:[Ss](\d{1,2}))?[EePp](\d{1,3})(?:-[EePp]?(\d{1,3}))?\b""", RegexOption.IGNORE_CASE)
     private val sceneEpisodePattern = Regex("""\b(\d{1,2})x(\d{2,3})(?:-(\d{2,3}))?\b""", RegexOption.IGNORE_CASE)
     private val absoluteDashPattern = Regex("""-\s*(\d{1,4})(?:v\d+)?\b""")
     private val absoluteTrailingPattern = Regex("""\s0*(\d{1,3})\s*$""")
 
-    // Season markers
+    // Identify season numbers
     private val seasonWordPattern = Regex("""\bSeason\s*(\d+)\b""", RegexOption.IGNORE_CASE)
     private val seasonSPattern = Regex("""\bS(\d{1,2})(?:P\d{1,2})?\b""", RegexOption.IGNORE_CASE)
     private val partSeasonPattern = Regex("""\bPart\s*(\d+)\b""", RegexOption.IGNORE_CASE)
@@ -33,15 +33,15 @@ class FileNameParser {
     fun stripNoise(raw: String): String {
         var clean = raw
         
-        // Globally strip all [ ] blocks
+        // Remove all content within brackets [ ]
         clean = clean.replace(Regex("""\[.*?\]"""), " ")
         
         clean = sitePrefixPattern.replace(clean, "")
         
-        // Remove stray (Part 1+2+3) etc.
+        // Remove combined part markers (e.g., Part 1+2+3)
         clean = clean.replace(Regex("""\(Part.*?\)""", RegexOption.IGNORE_CASE), " ")
         
-        // Normalize separators (preserve dash for trailing group pattern)
+        // Standardize separators, keeping dashes for trailing groups
         clean = clean.replace('.', ' ').replace('_', ' ')
         
         clean = resPattern.replace(clean, "")
@@ -51,21 +51,21 @@ class FileNameParser {
         clean = hdrPattern.replace(clean, "")
         clean = editionPattern.replace(clean, "")
         clean = properRepackPattern.replace(clean, "")
-        // clean = partPattern.replace(clean, "") // Commented out so it doesn't strip 'Part 6' from JoJo Part 6
+        // clean = partPattern.replace(clean, "") // Kept commented to preserve valid part strings like 'Part 6'
         clean = siteSuffixPattern.replace(clean, "")
         clean = langPattern.replace(clean, "")
         
-        // Explicitly strip noise commonly missed
+        // Remove common lingering noise words
         clean = clean.replace(Regex("""\b(10\s?bits?|NF|AMZN|WEB)\b""", RegexOption.IGNORE_CASE), "")
         
-        // Remove trailing empty parens and standalone dashes
+        // Clean up trailing empty parentheses and isolated dashes
         clean = clean.replace(Regex("""\(\s*\)"""), "")
         clean = clean.replace(Regex("""-+$"""), "")
         
         clean = clean.trim()
         clean = clean.replace(trailingGroupPattern, "")
         
-        // Normalize remaining dashes
+        // Clean up remaining dashes
         clean = clean.replace('-', ' ')
         
         return clean.replace(Regex("""\s+"""), " ").trim()
@@ -123,7 +123,7 @@ class FileNameParser {
     }
 
     fun parseSeasonAndEpisodeNumbers(filename: String): Pair<Int?, List<Int>> {
-        // Strip trailing version markers (e.g. v2, v3) from standard episode tokens before matching
+        // Remove version markers (v2, v3) from episode strings before parsing
         val sanitized = filename.replace(Regex("""v\d+\b""", RegexOption.IGNORE_CASE), "")
 
         standardEpisodePattern.find(sanitized)?.let { match ->
@@ -146,7 +146,7 @@ class FileNameParser {
             return Pair(season, eps)
         }
 
-        // For absolute dash pattern, strip brackets first
+        // Remove brackets before parsing absolute dash patterns
         val strippedBracket = filename.replace(Regex("""\[.*?\]"""), "").trim()
         absoluteDashPattern.find(strippedBracket)?.let { match ->
             return Pair(null, listOf(match.groupValues[1].toInt()))

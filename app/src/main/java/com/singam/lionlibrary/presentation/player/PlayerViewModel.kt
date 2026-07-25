@@ -21,6 +21,7 @@ import com.singam.lionlibrary.presentation.player.engine.EngineType
 import com.singam.lionlibrary.presentation.player.engine.ExoPlayerEngine
 import com.singam.lionlibrary.presentation.player.engine.LibVlcPlayerEngine
 import com.singam.lionlibrary.presentation.player.engine.LionPlayerEngine
+import com.singam.lionlibrary.presentation.player.engine.TrackLanguageMatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -100,6 +101,7 @@ class PlayerViewModel(
     private var showIdForEpisode: Long = -1L
 
     private var isScrubbing = false
+    private var defaultTracksApplied = false
 
     init {
         loadInitialMedia()
@@ -148,7 +150,10 @@ class PlayerViewModel(
                 // React to playback state changes
                 when (engineState.playbackState) {
                     EnginePlaybackState.READY -> {
-                        // durationMs is already updated above
+                        if (!defaultTracksApplied) {
+                            defaultTracksApplied = true
+                            applyDefaultTrackSelection()
+                        }
                     }
                     EnginePlaybackState.ENDED -> {
                         persistProgress(markAsCompleted = true)
@@ -287,6 +292,31 @@ class PlayerViewModel(
     fun getSubtitleTracks() = engine?.getSubtitleTracks() ?: emptyList()
     fun selectSubtitleTrack(id: String?) = engine?.selectSubtitleTrack(id)
 
+    /**
+     * Auto-selects audio and subtitle tracks based on [mediaType]:
+     * - MOVIE / TV_SHOW → English audio, English subtitles
+     * - ANIME → Japanese audio, English subtitles
+     *
+     * Uses [TrackLanguageMatcher] for fuzzy label matching to handle
+     * inconsistent track names like "ENG", "[Standard] English -1", etc.
+     */
+    private fun applyDefaultTrackSelection() {
+        val audioTracks = engine?.getAudioTracks() ?: return
+        val subtitleTracks = engine?.getSubtitleTracks() ?: return
+
+        // Auto-select audio based on media type
+        val bestAudio = TrackLanguageMatcher.findBestAudioTrack(audioTracks, mediaType)
+        if (bestAudio != null && !bestAudio.isSelected) {
+            engine?.selectAudioTrack(bestAudio.id)
+        }
+
+        // Auto-select English subtitles for all media types
+        val bestSub = TrackLanguageMatcher.findBestSubtitleTrack(subtitleTracks)
+        if (bestSub != null && !bestSub.isSelected) {
+            engine?.selectSubtitleTrack(bestSub.id)
+        }
+    }
+
     fun onAction(action: PlayerAction) {
         when (action) {
             is PlayerAction.OnPlayPause -> {
@@ -354,6 +384,7 @@ class PlayerViewModel(
             is LibVlcPlayerEngine -> e.stop()
             else -> {}
         }
+        defaultTracksApplied = false
         currentEpisode = ep
         viewModelScope.launch {
             val show = mediaDao.getById(showIdForEpisode)

@@ -318,8 +318,8 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
             }
         } catch (_: Exception) {}
         try { mediaPlayer.release() } catch (_: Exception) {}
-        // DO NOT release libVLC here. It is a shared singleton to keep the 
-        // fontconfig cache alive in memory.
+        // DO NOT release libVLC here. It is a shared singleton — recreating
+        // it would re-trigger fontconfig initialization.
         closePfds()
     }
 

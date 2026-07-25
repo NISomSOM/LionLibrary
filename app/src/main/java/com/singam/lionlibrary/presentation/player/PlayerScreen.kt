@@ -190,6 +190,28 @@ fun PlayerScreen(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             useController = false
+                            // Match libVLC subtitle style: white text, black outline,
+                            // no background box, Roboto font.
+                            subtitleView?.apply {
+                                setStyle(
+                                    androidx.media3.ui.CaptionStyleCompat(
+                                        android.graphics.Color.WHITE,
+                                        android.graphics.Color.TRANSPARENT,
+                                        android.graphics.Color.TRANSPARENT,
+                                        androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                                        android.graphics.Color.BLACK,
+                                        android.graphics.Typeface.createFromFile(
+                                            "/system/fonts/Roboto-Regular.ttf"
+                                        )
+                                    )
+                                )
+                                setBottomPaddingFraction(0.04f)
+                                setApplyEmbeddedFontSizes(false)
+                                setFixedTextSize(
+                                    android.util.TypedValue.COMPLEX_UNIT_SP,
+                                    18f
+                                )
+                            }
                             layoutParams = android.view.ViewGroup.LayoutParams(
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT

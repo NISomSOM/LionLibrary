@@ -8,14 +8,19 @@ import java.io.File
 /**
  * Singleton provider for LibVLC.
  *
- * Android 16 on certain devices (e.g. Vivo) has SELinux rules that block
- * fontconfig from persisting its cache (denying the `link` syscall for
- * atomic renames of .cache-7 files). Without a persistent cache, fontconfig
- * rescans ALL system fonts (~30 seconds) every time LibVLC plays media.
+ * Fontconfig (used internally by libVLC's freetype subtitle renderer) scans
+ * every font in its configured directories on first use. On Android, the
+ * default directory is /system/fonts/ which contains hundreds of files — this
+ * scan takes ~30 seconds on some devices and is further complicated by SELinux
+ * rules on certain vendors (e.g. Vivo) that block fontconfig's cache persistence.
  *
- * The fix: we create a minimal fonts.conf that tells fontconfig to look at
- * exactly ONE font file and set FONTCONFIG_FILE env var BEFORE LibVLC loads.
- * This makes fontconfig init instant instead of 30 seconds.
+ * The fix: [initFontconfig] creates a minimal fonts.conf that points fontconfig
+ * at a directory containing exactly ONE copied font file, with a cache directory
+ * inside app-private storage. This makes fontconfig init instant.
+ *
+ * [prewarm] is called from [LionLibraryApp.onCreate] to run this setup and
+ * eagerly create the LibVLC singleton on a background thread, so everything is
+ * ready before the user ever opens a video.
  */
 object LibVlcProvider {
     @Volatile
@@ -112,8 +117,8 @@ object LibVlcProvider {
     }
 
     /**
-     * Initializes fontconfig + LibVLC on a background thread.
-     * Should be called from Application.onCreate().
+     * Sets up fontconfig and eagerly creates the LibVLC singleton on a
+     * background thread. Should be called from Application.onCreate().
      */
     fun prewarm(context: Context) {
         val appContext = context.applicationContext
@@ -124,57 +129,8 @@ object LibVlcProvider {
         Thread {
             try {
                 android.util.Log.i("LibVlcProvider", "Starting LibVLC singleton prewarm")
-                val vlc = getSharedInstance(appContext)
-                
-                // CRITICAL FIX FOR 30-SECOND PLAYBACK DELAY:
-                // VLC's text_renderer/freetype/fonts/android.c hardcodes scanning the entire
-                // /system/fonts/ directory into Fontconfig, overriding our minimal fonts.conf.
-                // This scan takes ~30 seconds and is triggered lazily when the first video is played.
-                // To prevent the user from waiting 30 seconds on playback, we intentionally trigger
-                // the scan right now in the background by playing a 1-pixel dummy GIF.
-                // The cache will remain in the LibVLC singleton's memory for all subsequent playbacks.
-                
-                val dummyGif = File(appContext.cacheDir, "vlc_dummy_prewarm.gif")
-                if (!dummyGif.exists()) {
-                    // 1x1 transparent GIF (43 bytes)
-                    val base64Gif = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-                    dummyGif.writeBytes(android.util.Base64.decode(base64Gif, android.util.Base64.DEFAULT))
-                }
-                
-                val dummyPlayer = org.videolan.libvlc.MediaPlayer(vlc)
-                val dummyMedia = org.videolan.libvlc.Media(vlc, dummyGif.absolutePath)
-                dummyPlayer.media = dummyMedia
-                
-                // We use an EventListener to release resources once the scan is finished and the GIF "plays".
-                dummyPlayer.setEventListener(object : org.videolan.libvlc.MediaPlayer.EventListener {
-                    override fun onEvent(event: org.videolan.libvlc.MediaPlayer.Event?) {
-                        if (event?.type == org.videolan.libvlc.MediaPlayer.Event.Playing || 
-                            event?.type == org.videolan.libvlc.MediaPlayer.Event.EndReached ||
-                            event?.type == org.videolan.libvlc.MediaPlayer.Event.EncounteredError) {
-                            
-                            android.util.Log.i("LibVlcProvider", "Background fontconfig scan completed. (Event: ${event.type})")
-                            dummyPlayer.setEventListener(null)
-                            
-                            // Must release on a separate thread to avoid deadlocking the LibVLC event callback
-                            Thread {
-                                try {
-                                    dummyPlayer.stop()
-                                    dummyPlayer.release()
-                                    dummyMedia.release()
-                                } catch (e: Exception) {
-                                    android.util.Log.e("LibVlcProvider", "Error releasing dummy player", e)
-                                }
-                            }.start()
-                        }
-                    }
-                })
-                
-                android.util.Log.i("LibVlcProvider", "Triggering background fontconfig scan...")
-                // This play() call is asynchronous, but the heavy lifting (fontconfig scan) 
-                // will be handled by VLC's internal threads.
-                dummyPlayer.play()
-                
-                android.util.Log.i("LibVlcProvider", "Finished LibVLC singleton prewarm setup")
+                getSharedInstance(appContext)
+                android.util.Log.i("LibVlcProvider", "LibVLC singleton prewarm complete")
             } catch (e: Exception) {
                 android.util.Log.e("LibVlcProvider", "LibVLC singleton prewarm failed", e)
             }

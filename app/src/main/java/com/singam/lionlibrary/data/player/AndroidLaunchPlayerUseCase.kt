@@ -5,7 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
 
-// Implementation that just fires an ACTION_VIEW intent to play the video.
+// Fires an ACTION_VIEW intent to play video.
 class AndroidLaunchPlayerUseCase(
     private val context: Context
 ) : LaunchPlayerUseCase {

@@ -9,9 +9,7 @@ data class AlternativeTitlesResponse(
     val id: Int,
     @SerialName("results")
     val results: List<AlternativeTitleDto>? = null,
-    // Movie aliases are sometimes under "titles" instead of "results", let's check TMDB spec.
-    // Wait, TMDB movie alternative titles is "titles", but TV is "results". 
-    // Let's support both.
+    // TMDB uses 'titles' for movies and 'results' for TV.
     @SerialName("titles")
     val titles: List<AlternativeTitleDto>? = null
 )

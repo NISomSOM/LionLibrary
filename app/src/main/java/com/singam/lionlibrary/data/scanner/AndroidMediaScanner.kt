@@ -274,7 +274,7 @@ class AndroidMediaScanner(
                     confidence = 1.0f
                 }
             } catch (e: Exception) {
-                // Ignore failure and fallback to initial confidence
+                // Ignore and fallback
             }
         }
 
@@ -345,12 +345,12 @@ class AndroidMediaScanner(
                     confidence = 1.0f
                 }
             } catch (e: Exception) {
-                // Ignore failure and fallback to initial confidence
+                // Ignore and fallback
             }
         }
 
         if (firstResult == null || confidence < Constants.MATCH_CONFIDENCE_THRESHOLD) {
-            // Unidentified show -> all its episodes become unidentified
+            // Unidentified show, skipping episodes
             for (eps in parsed.seasons.values) {
                 for (ep in eps) {
                     handleUnidentified("${parsed.title} S?E${ep.episodeNumber}", ep.uri.toString(), MediaType.TV_SHOW, ep.subtitleUri?.toString())
@@ -506,7 +506,7 @@ class AndroidMediaScanner(
         )
     }
 
-    /** Determine the appropriate playback engine by probing media codecs. */
+    // Probe codecs to pick engine.
     private suspend fun determineEngine(uri: Uri): String {
         return if (CodecCapabilityChecker.canHardwareDecode(context, uri)) {
             EngineType.EXOPLAYER.name

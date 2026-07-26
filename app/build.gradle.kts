@@ -50,7 +50,7 @@ ksp {
 }
 
 dependencies {
-    // Compose BOM
+    // UI
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
@@ -70,45 +70,45 @@ dependencies {
     // Navigation
     implementation(libs.androidx.navigation.compose)
 
-    // Koin
+    // DI
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
 
-    // Room
+    // DB
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
-    // DataStore
+    // Prefs
     implementation(libs.datastore.preferences)
 
-    // Retrofit + OkHttp
+    // Network
     implementation(libs.retrofit)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
     implementation(libs.retrofit.kotlinx.serialization)
 
-    // Kotlinx Serialization
+    // JSON
     implementation(libs.kotlinx.serialization.json)
 
-    // Coil
+    // Images
     implementation(libs.coil.compose)
 
-    // Coroutines
+    // Async
     implementation(libs.kotlinx.coroutines.android)
 
-    // DocumentFile (SAF)
+    // Storage
     implementation(libs.androidx.documentfile)
 
-    // Media3
+    // Playback
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.common)
 
-    // libVLC (dual-engine player — Phase 2.2)
+    // VLC Fallback
     implementation(libs.libvlc.all)
 
-    // Testing
+    // Tests
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

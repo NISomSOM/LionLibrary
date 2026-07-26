@@ -68,7 +68,7 @@ class SearchViewModel(
             val queryFlow = _state.map { it.query }.distinctUntilChanged().debounce(300)
             val filterFlow = _state.map { it.activeFilter }.distinctUntilChanged()
             
-            // Fetch all items in a single flow
+            // Fetch all items.
             val allMediaFlow = searchMediaUseCase("", MediaFilter.ALL)
 
             combine(allMediaFlow, queryFlow, filterFlow) { allMedia, query, filter ->

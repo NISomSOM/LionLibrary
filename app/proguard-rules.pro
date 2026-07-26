@@ -1,6 +1,4 @@
-# Add project specific ProGuard rules here.
-
-# Retrofit — keep service interfaces AND their method annotations
+# Retrofit
 -keep interface com.singam.lionlibrary.data.remote.api.TmdbApiService { *; }
 
 # Keep Retrofit annotation metadata
@@ -8,7 +6,7 @@
 -keepattributes Exceptions
 -keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
 
-# Kotlinx Serialization
+# Serialization
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.AnnotationsKt
 -keepclassmembers @kotlinx.serialization.Serializable class ** {

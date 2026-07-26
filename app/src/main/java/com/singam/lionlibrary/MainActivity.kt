@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
                 val currentRoute = navBackStackEntry?.destination?.route
                 val snackbarHostState = remember { SnackbarHostState() }
 
-                //to figure out where to show bottombar and where not to
+                // Determine UI visibility.
                 val baseRoute = currentRoute?.substringBefore("?")
                 val showNavElements = baseRoute in listOf(
                     Routes.HOME,
@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
                     }
                     navController.addOnDestinationChangedListener(listener)
                     
-                    // Set initial orientation
+                    // Initial orientation.
                     val isPlayer = navController.currentDestination?.route?.startsWith("player/") == true
                     requestedOrientation = if (isPlayer) {
                         android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE

@@ -32,7 +32,7 @@ fun LionLibraryNavHost(
         startDestination = Routes.HOME,
         modifier = modifier
     ) {
-        // Define Home route
+        // Home
         composable(Routes.HOME) {
             HomeRoot(
                 snackbarHostState = snackbarHostState,
@@ -55,7 +55,7 @@ fun LionLibraryNavHost(
             )
         }
 
-        // Define Search route
+        // Search
         composable(
             route = Routes.SEARCH_ROUTE,
             arguments = listOf(navArgument("filter") {
@@ -75,7 +75,7 @@ fun LionLibraryNavHost(
             )
         }
 
-        // Define Settings route
+        // Settings
         composable(Routes.SETTINGS) {
             SettingsRoot(
                 snackbarHostState = snackbarHostState,
@@ -83,7 +83,7 @@ fun LionLibraryNavHost(
             )
         }
 
-        // Define Movie Details route
+        // Movie Details
         composable(
             route = Routes.MOVIE_DETAILS,
             arguments = listOf(navArgument("mediaId") { type = NavType.LongType })
@@ -97,7 +97,7 @@ fun LionLibraryNavHost(
             )
         }
 
-        // Define Show Details route
+        // Show Details
         composable(
             route = Routes.SHOW_DETAILS,
             arguments = listOf(navArgument("mediaId") { type = NavType.LongType })
@@ -111,7 +111,7 @@ fun LionLibraryNavHost(
             )
         }
 
-        // Define Player route
+        // Player
         composable(
             route = Routes.PLAYER,
             arguments = listOf(

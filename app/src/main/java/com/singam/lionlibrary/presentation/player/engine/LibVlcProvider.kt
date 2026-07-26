@@ -5,9 +5,7 @@ import android.system.Os
 import org.videolan.libvlc.LibVLC
 import java.io.File
 
-/**
- * Provide a LibVLC singleton.
- */
+// LibVLC singleton.
 object LibVlcProvider {
     @Volatile
     private var sharedVlc: LibVLC? = null
@@ -30,7 +28,7 @@ object LibVlcProvider {
         "--sout-keep"
     )
 
-    /** Set up fontconfig configuration before creating a LibVLC instance. */
+    // Fontconfig setup to avoid 30s delay.
     private fun initFontconfig(context: Context) {
         if (fontconfigInitialized) return
         fontconfigInitialized = true
@@ -43,14 +41,7 @@ object LibVlcProvider {
             cacheDir.mkdirs()
 
             val fontsConf = File(fontsDir, "fonts.conf")
-            // Minimal fontconfig config:
-            // - Point to a directory containing ONLY a single font file (via copy)
-            // - No directory scanning of /system/fonts (that's the 30s delay)
-            // - Cache directory inside our app's writable storage (no SELinux issues)
-            // - rescan=0 to prevent re-indexing
             
-            // Copy a single font file into our controlled directory so fontconfig
-            // only indexes that one file, not hundreds in /system/fonts/
             val singleFontDir = File(fontsDir, "fonts")
             singleFontDir.mkdirs()
             val targetFont = File(singleFontDir, "Roboto-Regular.ttf")
@@ -60,7 +51,6 @@ object LibVlcProvider {
                         targetFont.outputStream().use { dst -> src.copyTo(dst) }
                     }
                 } catch (e: Exception) {
-                    // If Roboto doesn't exist, try DroidSans
                     try {
                         File("/system/fonts/DroidSans.ttf").inputStream().use { src ->
                             targetFont.outputStream().use { dst -> src.copyTo(dst) }
@@ -82,8 +72,6 @@ object LibVlcProvider {
 </fontconfig>
 """)
 
-            // Set environment variable BEFORE LibVLC touches fontconfig.
-            // Os.setenv calls the native setenv(), which fontconfig reads.
             Os.setenv("FONTCONFIG_FILE", fontsConf.absolutePath, true)
             Os.setenv("FONTCONFIG_PATH", fontsDir.absolutePath, true)
 
@@ -96,14 +84,13 @@ object LibVlcProvider {
         }
     }
 
-    /** Initialize fontconfig and create LibVLC singleton in the background. */
+    // Prewarm LibVLC on background thread.
     fun prewarm(context: Context) {
         val appContext = context.applicationContext
 
         Thread {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
             try {
-                // Configure fontconfig FIRST, before LibVLC touches it.
                 initFontconfig(appContext)
                 android.util.Log.i("LibVlcProvider", "Starting LibVLC singleton prewarm")
                 getSharedInstance(appContext)
@@ -114,9 +101,8 @@ object LibVlcProvider {
         }.start()
     }
 
-    /** Get the LibVLC singleton. */
+    // Get or create shared LibVLC.
     fun getSharedInstance(context: Context): LibVLC {
-        // Ensure fontconfig is configured even if prewarm wasn't called
         initFontconfig(context)
         return sharedVlc ?: synchronized(this) {
             sharedVlc ?: LibVLC(context.applicationContext, vlcOptions).also {

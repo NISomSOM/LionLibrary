@@ -73,7 +73,6 @@ fun SearchScreen(
     onAction: (SearchAction) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // Render search input field
         OutlinedTextField(
             value = state.query,
             onValueChange = { onAction(SearchAction.OnQueryChange(it)) },
@@ -99,7 +98,6 @@ fun SearchScreen(
             )
         )
 
-        // Render category filters
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -123,9 +121,7 @@ fun SearchScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Render search results
         if (state.results.isEmpty() && !state.isSearching && state.query.isNotBlank()) {
-            // Display empty state when no results
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -137,7 +133,6 @@ fun SearchScreen(
                 )
             }
         } else {
-            // Display results in a grid
             val columnsCount = when (windowSizeClass.widthSizeClass) {
                 WindowWidthSizeClass.Compact -> 3
                 WindowWidthSizeClass.Medium -> 4
@@ -162,4 +157,3 @@ fun SearchScreen(
         }
     }
 }
-

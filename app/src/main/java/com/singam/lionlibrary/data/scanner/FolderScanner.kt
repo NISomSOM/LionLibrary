@@ -145,7 +145,7 @@ class FolderScanner(
                     }
                 }
 
-                // Merge results
+                // Merge identical show results.
                 val grouped = rawCandidates.groupBy { it.title }
                 val mergedCandidates = grouped.map { (identity, candidates) ->
                     val mergedSeasons = mutableMapOf<Int, MutableList<EpisodeFile>>()

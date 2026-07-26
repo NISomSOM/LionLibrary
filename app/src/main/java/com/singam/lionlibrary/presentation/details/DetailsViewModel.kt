@@ -130,7 +130,7 @@ class DetailsViewModel(
             }
         }
 
-        // Monitor viewing progress reactively
+        // Reactively monitor progress.
         viewModelScope.launch {
             getMediaDetailsUseCase.getProgress(mediaId).collect { progressList ->
                 val movieProgress = progressList.find { it.episodeId == 0L }
@@ -145,7 +145,7 @@ class DetailsViewModel(
             }
         }
 
-        // Monitor episodes reactively
+        // Reactively monitor episodes.
         viewModelScope.launch {
             selectedSeasonFlow.flatMapLatest { seasonNumber ->
                 if (mediaId > 0L) {

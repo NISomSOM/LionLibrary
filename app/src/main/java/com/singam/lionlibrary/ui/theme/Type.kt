@@ -27,7 +27,6 @@ val Manrope = FontFamily(
     Font(googleFont = fontName, fontProvider = provider, weight = FontWeight.ExtraBold)
 )
 
-// Set of Material typography styles to start with
 val Typography = Typography(
     bodyLarge = TextStyle(
         fontFamily = Manrope,

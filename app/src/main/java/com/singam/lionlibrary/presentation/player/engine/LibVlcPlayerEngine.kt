@@ -17,9 +17,7 @@ import org.videolan.libvlc.interfaces.IMedia
 import org.videolan.libvlc.interfaces.IVLCVout
 import org.videolan.libvlc.util.VLCVideoLayout
 
-/**
- * LibVLC implementation for LionPlayerEngine.
- */
+// LibVLC implementation.
 class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
 
     override val engineType: EngineType = EngineType.LIBVLC
@@ -27,20 +25,16 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
     private val _state = MutableStateFlow(EngineState())
     override val state: StateFlow<EngineState> = _state.asStateFlow()
 
-    // Step 1: Create LibVLC instance with hardware acceleration options
-    // NOTE: Do NOT set --vout=android-display here. VLCVideoLayout manages
-    // its own vout module internally. Forcing it causes conflicts.
+    // 1. LibVLC instance.
+    // VLCVideoLayout manages vout internally.
     private val libVLC: LibVLC = LibVlcProvider.getSharedInstance(context)
     
-    // Step 2: Create MediaPlayer once
+    // 2. MediaPlayer.
     private val mediaPlayer: MediaPlayer = MediaPlayer(libVLC)
 
-    // Main-thread handler for deferred operations that require the surface
+    // Main-thread handler.
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // -----------------------------------------------------------------------
-    // Deferred-initialization state
-    // -----------------------------------------------------------------------
     private var pendingUri: Uri? = null
     private var pendingSubtitleUri: Uri? = null
     private var pendingSeekMs: Long? = null
@@ -49,35 +43,25 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
     private var surfaceReady: Boolean = false
     private var mediaLoaded: Boolean = false
 
-    // Persistent URI references (survive loadMediaInternal clearing pendingUri).
-    // Used to re-load media after mid-playback config changes.
+    // Active URI references.
     private var activeUri: Uri? = null
     private var activeSubtitleUri: Uri? = null
 
-    // Track the actual VLCVideoLayout instance so we can detect when
-    // the Activity recreates after a config change (rotation) and
-    // provides a brand-new layout that needs re-attachment.
+    // Track VLCVideoLayout to handle config changes.
     private var currentLayout: VLCVideoLayout? = null
 
-    // -----------------------------------------------------------------------
-    // SAF file-descriptor lifecycle (kept alive while playing)
-    // -----------------------------------------------------------------------
+    // SAF file descriptors.
     private var videoPfd: ParcelFileDescriptor? = null
     private var subtitlePfd: ParcelFileDescriptor? = null
 
-    // Named reference so we can properly remove it in release().
-    // Previously this was an anonymous object, causing a callback leak
-    // because the removal in release() cast vlcVout itself (always null).
+    // Surface callback.
     private val surfaceCallback = object : IVLCVout.Callback {
         override fun onSurfacesCreated(vlcVout: IVLCVout) {
-            // Post to main thread — VLC callbacks fire on the VLC event thread
             mainHandler.post {
                 surfaceReady = true
-                // If media was queued before surface was ready, load it now.
-                // Check pendingUri first; fall back to activeUri for config-change re-plays.
+                // Load queued media.
                 if (!mediaLoaded) {
                     if (pendingUri == null && activeUri != null) {
-                        // Config change mid-playback — re-buffer the active media
                         pendingUri = activeUri
                         pendingSubtitleUri = activeSubtitleUri
                         pendingPlay = true
@@ -96,9 +80,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
     }
 
     init {
-        // Register surface callback BEFORE attachViews is ever called.
-        // This is the critical piece: media must NOT be loaded until
-        // onSurfacesCreated fires, confirming the Android Surface exists.
+        // Register callback early.
         mediaPlayer.vlcVout.addCallback(surfaceCallback)
 
         mediaPlayer.setEventListener { event ->
@@ -111,9 +93,8 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                             error = null
                         )
                     }
-                    // Apply deferred seek now that VLC is playing
+                    // Apply deferred seek.
                     pendingSeekMs?.let { ms ->
-                        // Small delay to let VLC finish decoder init
                         mainHandler.postDelayed({
                             if (mediaPlayer.isSeekable) {
                                 mediaPlayer.time = ms
@@ -173,10 +154,6 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // LionPlayerEngine implementation
-    // ---------------------------------------------------------------------------
-
     override fun setMedia(uri: Uri, subtitleUri: Uri?) {
         pendingUri = uri
         pendingSubtitleUri = subtitleUri
@@ -192,8 +169,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
             )
         }
 
-        // Only load if the Surface is confirmed ready by IVLCVout.Callback.
-        // Otherwise, onSurfacesCreated will trigger loadMediaInternal().
+        // Load if surface ready.
         if (surfaceReady) {
             loadMediaInternal()
         }
@@ -215,7 +191,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
 
     override fun seekTo(positionMs: Long) {
         if (!mediaLoaded || !mediaPlayer.isPlaying) {
-            // Buffer the seek — it will be applied when Playing event fires
+            // Buffer seek.
             pendingSeekMs = positionMs
             return
         }
@@ -231,7 +207,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         val tracks = mediaPlayer.audioTracks ?: return emptyList()
         val selectedId = mediaPlayer.audioTrack
         return tracks.mapNotNull { track ->
-            if (track.id < 0) return@mapNotNull null // skip "Disable" pseudo-track
+            if (track.id < 0) return@mapNotNull null
             EngineTrackInfo(
                 id = track.id.toString(),
                 label = track.name?.takeIf { it.isNotBlank() } ?: "Audio ${track.id}",
@@ -249,7 +225,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         val tracks = mediaPlayer.spuTracks ?: return emptyList()
         val selectedId = mediaPlayer.spuTrack
         return tracks.mapNotNull { track ->
-            if (track.id < 0) return@mapNotNull null // skip "Disable" pseudo-track (-1)
+            if (track.id < 0) return@mapNotNull null
             EngineTrackInfo(
                 id = track.id.toString(),
                 label = track.name?.takeIf { it.isNotBlank() } ?: "Subtitle ${track.id}",
@@ -259,13 +235,10 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
     }
 
     override fun resetToDefaultTrackSelection() {
-        // No-op for libVLC — it handles unsupported audio tracks gracefully
-        // with its own software decoder stack, so this recovery path is
-        // unnecessary. Kept as no-op to satisfy the interface contract.
     }
 
     override fun selectSubtitleTrack(id: String?) {
-        // null → disable subtitles (VLC id = -1)
+        // null disables subs.
         mediaPlayer.spuTrack = id?.toIntOrNull() ?: -1
     }
 
@@ -273,14 +246,12 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         val layout = container as? VLCVideoLayout
             ?: throw IllegalArgumentException("LibVlcPlayerEngine requires a VLCVideoLayout")
 
-        // Same instance — nothing to do (recomposition, not a config change)
         if (layout === currentLayout && viewAttached) return
 
-        // Different instance (new layout after config change / Activity recreation).
-        // Detach from old layout before attaching to the new one.
+        // New layout after config change.
         if (viewAttached) {
             surfaceReady = false
-            mediaLoaded = false  // Will be re-loaded in onSurfacesCreated via activeUri
+            mediaLoaded = false
             try { mediaPlayer.detachViews() } catch (_: Exception) {}
             viewAttached = false
         }
@@ -288,7 +259,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         currentLayout = layout
         viewAttached = true
         mediaPlayer.attachViews(layout, null, false, false)
-        // Do NOT load media here. Wait for onSurfacesCreated callback.
+        // Wait for surface.
     }
 
     override fun release() {
@@ -303,14 +274,9 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
             }
         } catch (_: Exception) {}
         try { mediaPlayer.release() } catch (_: Exception) {}
-        // DO NOT release libVLC here. It is a shared singleton — recreating
-        // it would re-trigger fontconfig initialization.
+        // Shared libVLC; don't release.
         closePfds()
     }
-
-    // -----------------------------------------------------------------------
-    // Helpers used by PlayerViewModel for position polling
-    // -----------------------------------------------------------------------
 
     override val currentPositionMs: Long get() {
         return if (mediaLoaded) mediaPlayer.time.coerceAtLeast(0L) else 0L
@@ -326,18 +292,13 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         closePfds()
     }
 
-    // -----------------------------------------------------------------------
-    // Internal: deferred media loading
-    // -----------------------------------------------------------------------
-
-    /** Set media on the MediaPlayer. */
+    // Load media.
     private fun loadMediaInternal() {
         val uri = pendingUri ?: return
 
-        // Clean up previous file descriptors
         closePfds()
 
-        // --- Build the Media object ---
+        // Media object.
         val media = openMediaFromUri(uri)
         if (media == null) {
             _state.update { it.copy(error = "Cannot open file", playbackState = EnginePlaybackState.IDLE) }
@@ -345,19 +306,18 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         }
 
         mediaPlayer.media = media
-        media.release() // MediaPlayer retains its own reference
+        media.release()
         mediaLoaded = true
 
-        // Store active URI for possible config-change re-plays
         activeUri = uri
         activeSubtitleUri = pendingSubtitleUri
 
-        // --- Subtitle slave ---
+        // Subtitle slave.
         pendingSubtitleUri?.let { subUri ->
             addSubtitleSlave(subUri)
         }
 
-        // --- Auto-play if requested ---
+        // Auto-play.
         if (pendingPlay) {
             mediaPlayer.play()
             pendingPlay = false
@@ -367,7 +327,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         pendingSubtitleUri = null
     }
 
-    /** Open media from a URI. */
+    // Open media.
     private fun openMediaFromUri(uri: Uri): Media? {
         return if (uri.scheme == "content") {
             val pfd = try {
@@ -377,18 +337,16 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
             }
             if (pfd == null) return null
             videoPfd = pfd
-            // Pass the FileDescriptor directly — libVLC's nativeNewFromFd()
-            // receives the fd via JNI, so no path resolution or SELinux check.
+            // Pass FD directly.
             Media(libVLC, pfd.fileDescriptor)
         } else {
             Media(libVLC, uri)
         }
     }
 
-    /** Attach an external subtitle file to the media player. */
+    // Attach subtitles.
     private fun addSubtitleSlave(subtitleUri: Uri) {
         val uriString: String = if (subtitleUri.scheme == "content") {
-            // Determine extension from the original path
             val ext = subtitleUri.path
                 ?.substringAfterLast('.', "srt")
                 ?.takeIf { it.length <= 4 }
@@ -415,11 +373,9 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         videoPfd = null
         subtitlePfd?.let { try { it.close() } catch (_: Exception) {} }
         subtitlePfd = null
-        // Clean up any temp subtitle file
         try {
             val cacheDir = context.cacheDir
             cacheDir.listFiles()?.filter { it.name.startsWith("vlc_sub_temp") }?.forEach { it.delete() }
         } catch (_: Exception) {}
     }
 }
-

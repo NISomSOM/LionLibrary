@@ -8,7 +8,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 
-// Local cache for TMDB images to prevent redundant downloads.
+// Local image cache.
 class ImageCacheManager(
     private val context: Context,
     private val okHttpClient: OkHttpClient
@@ -18,36 +18,35 @@ class ImageCacheManager(
         File(context.filesDir, Constants.IMAGE_CACHE_DIR).also { it.mkdirs() }
     }
 
-    // Cache a poster (w500) and return local path or null.
+    // Cache poster (w500).
     suspend fun cachePoster(remotePath: String, filename: String): String? {
         val url = "${Constants.TMDB_IMAGE_BASE_URL_W500}$remotePath"
         return downloadAndCache(url, filename)
     }
 
-    // Cache a backdrop (w1280).
+    // Cache backdrop (w1280).
     suspend fun cacheBackdrop(remotePath: String, filename: String): String? {
         val url = "${Constants.TMDB_IMAGE_BASE_URL_W1280}$remotePath"
         return downloadAndCache(url, filename)
     }
 
-    // Cache an episode still (tries w780 first, then original).
+    // Cache episode still.
     suspend fun cacheEpisodeStill(remotePath: String, filename: String): String? {
         val w780Url = "${Constants.TMDB_IMAGE_BASE_URL_W780}$remotePath"
         val path = downloadAndCache(w780Url, filename)
         if (path != null) return path
         
-        // Try original size if w780 fails
         val originalUrl = "${Constants.TMDB_IMAGE_BASE_URL_ORIGINAL}$remotePath"
         return downloadAndCache(originalUrl, filename)
     }
 
-    // Cache a logo.
+    // Cache logo.
     suspend fun cacheLogo(remotePath: String, filename: String): String? {
         val url = "${Constants.TMDB_IMAGE_BASE_URL_ORIGINAL}$remotePath"
         return downloadAndCache(url, filename)
     }
 
-    // Download the image, or return path if already cached.
+    // Download or return cached path.
     private suspend fun downloadAndCache(url: String, filename: String): String? =
         withContext(Dispatchers.IO) {
             try {

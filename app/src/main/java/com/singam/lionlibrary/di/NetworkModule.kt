@@ -15,7 +15,7 @@ val networkModule = module {
 
     single {
         val logging = HttpLoggingInterceptor { message ->
-            // Redact API key from logged URLs
+            // Hide API key in logs.
             val redacted = message.replace(Regex("api_key=[^&\\s]+"), "api_key=***")
             android.util.Log.d("OkHttp", redacted)
         }.apply {

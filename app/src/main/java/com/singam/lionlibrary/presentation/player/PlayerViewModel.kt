@@ -90,7 +90,7 @@ class PlayerViewModel(
     private val _events = Channel<PlayerEvent>()
     val events = _events.receiveAsFlow()
 
-    // Lazy engine creation waits until we determine the required engine (preferred + force-libVLC flag).
+    // Engine created on-demand.
     var engine: LionPlayerEngine? = null
         private set
 
@@ -108,9 +108,7 @@ class PlayerViewModel(
         loadInitialMedia()
     }
 
-    /**
-     * Determine playback engine based on user settings (force LibVLC) or file probe results.
-     */
+    // Pick engine based on settings/probe.
     private suspend fun resolveEngine(preferredEngine: String): LionPlayerEngine {
         val forceLibVlc = settingsRepository.forceLibVlc.first()
         val engineType = if (forceLibVlc) {
@@ -143,7 +141,6 @@ class PlayerViewModel(
                     )
                 }
 
-                // Handle playback state updates
                 when (engineState.playbackState) {
                     EnginePlaybackState.READY -> {
                         if (!defaultTracksApplied) {
@@ -158,7 +155,6 @@ class PlayerViewModel(
                     else -> {}
                 }
 
-                // Toggle position polling based on playback state
                 if (engineState.isPlaying) {
                     startUiUpdateJob()
                     startPersistenceJob()
@@ -168,7 +164,7 @@ class PlayerViewModel(
                     stopPersistenceJob()
                 }
 
-                // Report engine errors and reset track selection to recover
+                // Error recovery: reset tracks.
                 engineState.error?.let { errorMsg ->
                     viewModelScope.launch {
                         val recoveryPositionMs = _state.value.currentPositionMs
@@ -209,7 +205,6 @@ class PlayerViewModel(
             if (mediaType == MediaType.MOVIE) {
                 currentMedia = mediaDao.getById(mediaId)
                 currentMedia?.let { media ->
-                    // Select engine based on media preference and settings
                     initEngine(resolveEngine(media.preferredEngine))
 
                     _state.update {
@@ -222,7 +217,7 @@ class PlayerViewModel(
                     }
                     preparePlayer(media.filePath, media.externalSubtitlePath)
                 } ?: run {
-                    // Provide a fallback engine to prevent UI crashes
+                    // Fallback engine.
                     initEngine(ExoPlayerEngine(application))
                     _events.send(PlayerEvent.ShowError("Media not found"))
                     _events.send(PlayerEvent.NavigateBack)
@@ -230,7 +225,6 @@ class PlayerViewModel(
             } else {
                 currentEpisode = episodeDao.getById(mediaId)
                 currentEpisode?.let { ep ->
-                    // Select engine based on media preference and settings
                     initEngine(resolveEngine(ep.preferredEngine))
 
                     showIdForEpisode = ep.showId
@@ -288,20 +282,16 @@ class PlayerViewModel(
     fun getSubtitleTracks() = engine?.getSubtitleTracks() ?: emptyList()
     fun selectSubtitleTrack(id: String?) = engine?.selectSubtitleTrack(id)
 
-    /**
-     * Select default audio and subtitle tracks based on media type.
-     */
+    // Default track selection.
     private fun applyDefaultTrackSelection() {
         val audioTracks = engine?.getAudioTracks() ?: return
         val subtitleTracks = engine?.getSubtitleTracks() ?: return
 
-        // Select default audio track automatically
         val bestAudio = TrackLanguageMatcher.findBestAudioTrack(audioTracks, mediaType)
         if (bestAudio != null && !bestAudio.isSelected) {
             engine?.selectAudioTrack(bestAudio.id)
         }
 
-        // Select default English subtitles
         val bestSub = TrackLanguageMatcher.findBestSubtitleTrack(subtitleTracks)
         if (bestSub != null && !bestSub.isSelected) {
             engine?.selectSubtitleTrack(bestSub.id)
@@ -369,7 +359,7 @@ class PlayerViewModel(
     }
 
     private fun playNewEpisode(ep: EpisodeEntity) {
-        // Halt playback before switching engines
+        // Stop before engine switch.
         engine?.stop()
         defaultTracksApplied = false
         currentEpisode = ep
@@ -469,9 +459,7 @@ class PlayerViewModel(
         }
     }
 
-    /**
-     * Save playback progress during ViewModel teardown.
-     */
+    // Save final progress.
     private fun persistProgressFinal() {
         val currentPos = engine?.currentPositionMs ?: _state.value.currentPositionMs
         val dur = (engine?.durationMs ?: _state.value.durationMs).coerceAtLeast(1L)

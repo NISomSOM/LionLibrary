@@ -21,8 +21,7 @@ class LionLibraryApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
 
-        // Set up fontconfig (to avoid 30s font scan) and eagerly create
-        // the LibVLC singleton on a background thread.
+        // Prewarm LibVLC and fontconfig.
         com.singam.lionlibrary.presentation.player.engine.LibVlcProvider.prewarm(this)
 
         startKoin {

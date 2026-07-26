@@ -32,13 +32,13 @@ class RoomWatchProgressRepository(
                             isNextUp = true
                         )
                     } else {
-                        // Series completed, hide from jump back in
+                        // Series done
                         null
                     }
                 } else if (!entity.completed) {
                     entity.toJumpBackInItem().copy(isNextUp = false)
                 } else {
-                    // Movie completed
+                    // Movie done
                     null
                 }
             }
@@ -57,7 +57,7 @@ class RoomWatchProgressRepository(
 
     override suspend fun markAsStarted(mediaId: Long, episodeId: Long) {
         val existing = watchProgressDao.getProgress(mediaId, episodeId)
-        if (existing?.completed == true) return // Don't override if already watched
+        if (existing?.completed == true) return // Already watched, skip.
         
         watchProgressDao.upsert(
             WatchProgressEntity(

@@ -16,9 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-/**
- * ExoPlayer implementation for LionPlayerEngine.
- */
+// ExoPlayer implementation.
 class ExoPlayerEngine(context: Context) : LionPlayerEngine {
 
     override val engineType: EngineType = EngineType.EXOPLAYER
@@ -26,7 +24,6 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
     private val _state = MutableStateFlow(EngineState())
     override val state: StateFlow<EngineState> = _state.asStateFlow()
 
-    // Build ExoPlayer with the same configuration that was in PlayerViewModel
     val exoPlayer: ExoPlayer = ExoPlayer.Builder(
         context,
         DefaultRenderersFactory(context).apply {
@@ -64,10 +61,6 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
             }
         })
     }
-
-    // ---------------------------------------------------------------------------
-    // LionPlayerEngine implementation
-    // ---------------------------------------------------------------------------
 
     override fun setMedia(uri: Uri, subtitleUri: Uri?) {
         val mediaItemBuilder = MediaItem.Builder().setUri(uri)
@@ -174,7 +167,6 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
 
     override fun selectSubtitleTrack(id: String?) {
         if (id == null) {
-            // Disable subtitles
             exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                 .buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
@@ -200,7 +192,6 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
     }
 
     override fun attachToView(container: ViewGroup) {
-        // container must be a PlayerView when using ExoPlayerEngine
         val playerView = container as PlayerView
         playerView.player = exoPlayer
     }
@@ -209,12 +200,12 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
         exoPlayer.release()
     }
 
-    /** Current playback position in milliseconds — used by PlayerViewModel for progress polling. */
+    // Current position.
     override val currentPositionMs: Long get() = exoPlayer.currentPosition
 
-    /** Current duration in milliseconds. */
+    // Duration.
     override val durationMs: Long get() = exoPlayer.duration.coerceAtLeast(0L)
 
-    /** Stop the player (used when switching episodes). */
+    // Stop playback.
     override fun stop() = exoPlayer.stop()
 }

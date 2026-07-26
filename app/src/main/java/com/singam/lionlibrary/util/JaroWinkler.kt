@@ -1,7 +1,6 @@
 package com.singam.lionlibrary.util
 
-// Jaro-Winkler implementation in Kotlin.
-// Returns a score from 0.0 (no match) to 1.0 (exact match).
+// Jaro-Winkler.
 object JaroWinkler {
 
     private const val WINKLER_PREFIX_WEIGHT = 0.1
@@ -13,7 +12,6 @@ object JaroWinkler {
 
         val jaroScore = jaroSimilarity(s1, s2)
 
-        // Get common prefix (max 4 characters)
         val prefixLength = s1.zip(s2)
             .takeWhile { (a, b) -> a == b }
             .count()
@@ -32,7 +30,6 @@ object JaroWinkler {
         var matches = 0
         var transpositions = 0
 
-        // Find matching characters
         for (i in s1.indices) {
             val start = maxOf(0, i - matchDistance)
             val end = minOf(i + matchDistance + 1, s2.length)
@@ -48,7 +45,6 @@ object JaroWinkler {
 
         if (matches == 0) return 0.0
 
-        // Count transposed characters
         var k = 0
         for (i in s1.indices) {
             if (!s1Matches[i]) continue
@@ -62,4 +58,3 @@ object JaroWinkler {
                 (matches - transpositions / 2.0) / matches) / 3.0
     }
 }
-

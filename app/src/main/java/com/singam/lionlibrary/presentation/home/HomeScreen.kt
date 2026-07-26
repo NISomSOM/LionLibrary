@@ -158,7 +158,6 @@ fun HomeScreen(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
-        // Render hero carousel
         val heroItems = state.carouselItems
         if (heroItems.isNotEmpty()) {
             item {
@@ -175,7 +174,6 @@ fun HomeScreen(
             }
         }
 
-        // Render 'Jump Back In' section
         if (state.jumpBackInItems.isNotEmpty()) {
             item {
                 JumpBackInRow(
@@ -187,7 +185,6 @@ fun HomeScreen(
             }
         }
 
-        // Render movie library section
         if (state.movies.isNotEmpty()) {
             item {
                 MediaRow(
@@ -199,7 +196,6 @@ fun HomeScreen(
             }
         }
 
-        // Render TV show library section
         if (state.tvShows.isNotEmpty()) {
             item {
                 MediaRow(
@@ -211,7 +207,6 @@ fun HomeScreen(
             }
         }
 
-        // Render anime library section
         if (state.anime.isNotEmpty()) {
             item {
                 MediaRow(
@@ -223,7 +218,6 @@ fun HomeScreen(
             }
         }
 
-        // Render recently added media section
         if (state.recentlyAdded.isNotEmpty()) {
             item {
                 MediaRow(
@@ -234,7 +228,6 @@ fun HomeScreen(
             }
         }
 
-        // Render genre navigation
         state.genresContent.forEach { (genre, items) ->
             if (items.isNotEmpty()) {
                 item {
@@ -259,7 +252,6 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .padding(bottom = 32.dp)
             ) {
-                // Render header thumbnail and title
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -302,7 +294,6 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Render configuration options
                 JumpBackInOptionItem(
                     icon = Icons.Default.Info,
                     text = "Go to details",
@@ -373,7 +364,7 @@ private fun JumpBackInOptionItem(
     }
 }
 
-// Parallax and auto-scroll constants for the hero carousel
+// Hero carousel constants.
 private const val HERO_CONTENT_PARALLAX = 0.70f
 private const val HERO_AUTO_SCROLL_MS = 8_000L
 private const val HERO_VIEWPORT_RATIO = 0.65f
@@ -391,7 +382,7 @@ fun HeroBannerCarousel(
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { mediaItems.size })
     val coroutineScope = rememberCoroutineScope()
 
-    // Auto-scroll timer: advances to the next page every 8 seconds
+    // Auto-scroll timer.
     val autoScrollPage = pagerState.currentPage
     LaunchedEffect(autoScrollPage, mediaItems.size) {
         if (mediaItems.size <= 1) return@LaunchedEffect
@@ -405,7 +396,7 @@ fun HeroBannerCarousel(
         }
     }
 
-    // Viewport-proportional hero height (using LocalConfiguration since we are in a LazyColumn)
+    // Calculate hero height.
     val configuration = LocalConfiguration.current
     val heroHeight = (configuration.screenHeightDp.dp * HERO_VIEWPORT_RATIO).coerceIn(HERO_MIN_HEIGHT, HERO_MAX_HEIGHT)
     val heroWidthPx = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx() }
@@ -423,7 +414,7 @@ fun HeroBannerCarousel(
                 val mediaItem = mediaItems[page]
                 val imagePath = mediaItem.backdropPath ?: mediaItem.posterPath
 
-                // Signed offset for parallax: smoothly changes during swipe
+                // Parallax offset.
                 val signedOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
                 val pageOffset = kotlin.math.abs(signedOffset)
                 val pageAlpha = 1f - pageOffset.coerceIn(0f, 1f)
@@ -435,7 +426,7 @@ fun HeroBannerCarousel(
                             alpha = pageAlpha
                         }
                 ) {
-                    // Background image — no zoom, just crop-fit
+                    // Background image.
                     if (imagePath != null) {
                         AsyncImage(
                             model = File(imagePath),
@@ -445,7 +436,7 @@ fun HeroBannerCarousel(
                         )
                     }
 
-                    // Cinematic multi-stop gradient overlay
+                    // Gradient overlay.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -465,7 +456,7 @@ fun HeroBannerCarousel(
                             )
                     )
 
-                    // Content layer (logo/title/subtitle) with parallax and scale
+                    // Content layer.
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -520,7 +511,7 @@ fun HeroBannerCarousel(
                 }
             }
 
-            // Bottom controls: View Details button + pill indicators
+            // Bottom controls.
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -542,7 +533,7 @@ fun HeroBannerCarousel(
                     Text("View Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 }
 
-                // Animated pill indicators: smooth width transition on page change
+                // Pill indicators.
                 if (mediaItems.size > 1) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(
@@ -652,4 +643,3 @@ fun JumpBackInRow(
         }
     }
 }
-

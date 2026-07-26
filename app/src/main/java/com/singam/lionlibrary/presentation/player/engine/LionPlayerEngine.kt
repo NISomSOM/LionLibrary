@@ -4,10 +4,6 @@ import android.net.Uri
 import android.view.ViewGroup
 import kotlinx.coroutines.flow.StateFlow
 
-// ---------------------------------------------------------------------------
-// Engine-agnostic state
-// ---------------------------------------------------------------------------
-
 enum class EnginePlaybackState {
     IDLE, BUFFERING, READY, ENDED
 }
@@ -30,55 +26,49 @@ enum class EngineType {
     EXOPLAYER, LIBVLC
 }
 
-// ---------------------------------------------------------------------------
-// Engine interface
-// ---------------------------------------------------------------------------
-
-/**
- * Interface for video playback engines (ExoPlayer or libVLC).
- */
+// Video engine interface.
 interface LionPlayerEngine {
 
-    /** Emits playback state changes. Collect in PlayerViewModel. */
+    // Playback state.
     val state: StateFlow<EngineState>
 
-    /** Which engine backs this instance — used by PlayerScreen to branch the AndroidView. */
+    // Engine type.
     val engineType: EngineType
 
-    /** Load media and optional subtitle without starting playback. */
+    // Load media.
     fun setMedia(uri: Uri, subtitleUri: Uri?)
 
     fun play()
     fun pause()
     fun seekTo(positionMs: Long)
 
-    /** Returns available audio tracks. Empty list when engine is in IDLE state. */
+    // Audio tracks.
     fun getAudioTracks(): List<EngineTrackInfo>
 
-    /** Selects an audio track by its [id] (as provided by [getAudioTracks]). */
+    // Select audio track.
     fun selectAudioTrack(id: String)
 
-    /** Returns available subtitle/text tracks. */
+    // Subtitle tracks.
     fun getSubtitleTracks(): List<EngineTrackInfo>
 
-    /** Reset track selection to default to recover from playback errors. */
+    // Reset tracks.
     fun resetToDefaultTrackSelection()
 
-    /** Select a subtitle track, or null to disable. */
+    // Select subtitle track.
     fun selectSubtitleTrack(id: String?)
 
-    /** Attach rendering surface to the view container after media is loaded. */
+    // Attach to view.
     fun attachToView(container: ViewGroup)
 
-    /** Current playback position in milliseconds. Used for progress polling. */
+    // Current position.
     val currentPositionMs: Long
 
-    /** Current media duration in milliseconds. */
+    // Duration.
     val durationMs: Long
 
-    /** Stop playback without releasing resources. Used when switching episodes. */
+    // Stop playback.
     fun stop()
 
-    /** Release all engine resources. Must be called in ViewModel.onCleared(). */
+    // Release resources.
     fun release()
 }

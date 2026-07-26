@@ -129,7 +129,6 @@ fun SettingsScreen(
         Column(
             modifier = if (isExpandedScreen) Modifier.widthIn(max = 800.dp) else Modifier.fillMaxWidth()
         ) {
-        // Render screen header
         Text(
             text = "Settings",
             style = MaterialTheme.typography.headlineMedium,
@@ -137,7 +136,6 @@ fun SettingsScreen(
         )
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Render API Key configuration section
         ApiKeySection(
             apiKeyInput = state.apiKeyInput,
             isApiKeySaved = state.isApiKeySaved,
@@ -153,7 +151,6 @@ fun SettingsScreen(
         SectionDivider()
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Render folder selection section
         SectionHeader(
             title = "Library Folders", 
             icon = Icons.Filled.Folder,
@@ -189,7 +186,6 @@ fun SettingsScreen(
 
 
 
-        // Render manual scan button
         SectionHeader(
             title = "Scan", 
             icon = Icons.Filled.Refresh,
@@ -211,7 +207,6 @@ fun SettingsScreen(
         SectionDivider()
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Render playback engine selection
         SectionHeader(
             title = "Playback",
             icon = Icons.Filled.VideoSettings,
@@ -253,7 +248,6 @@ fun SettingsScreen(
         SectionDivider()
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Render maintenance tools
         SectionHeader(
             title = "Data", 
             icon = Icons.Filled.DeleteForever,
@@ -276,7 +270,6 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Render application info
         Text(
             text = "LionLibrary V2.0",
             style = MaterialTheme.typography.bodySmall,
@@ -298,7 +291,6 @@ fun SettingsScreen(
         }
     }
 
-    // Display history clearing confirmation dialog
     if (state.showClearHistoryDialog) {
         AlertDialog(
             onDismissRequest = { onAction(SettingsAction.OnDismissClearHistoryDialog) },
@@ -322,7 +314,6 @@ fun SettingsScreen(
         )
     }
 
-    // Display informational dialog
     if (infoDialogTitle != null && infoDialogText != null) {
         AlertDialog(
             onDismissRequest = { 
@@ -525,7 +516,6 @@ private fun ScanSection(
                 }
             }
 
-            // Display progress indicator
             if (isScanning && scanProgress != null) {
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -562,7 +552,6 @@ private fun ScanSection(
                 }
             }
 
-            // Display last scan timestamp
             if (lastScanTime > 0L) {
                 Spacer(modifier = Modifier.height(8.dp))
                 val dateFormat = remember {
@@ -623,5 +612,3 @@ private fun SectionDivider() {
             .background(DarkSurfaceVariant)
     )
 }
-
-

@@ -11,7 +11,7 @@ sealed interface MediaCandidate {
     ) : MediaCandidate
 
     data class Show(
-        val title: String,              // Extracted from folder names, never filenames
+        val title: String,              // From folder names, not filenames.
         val seasons: Map<Int, List<EpisodeFile>>
     ) : MediaCandidate
 

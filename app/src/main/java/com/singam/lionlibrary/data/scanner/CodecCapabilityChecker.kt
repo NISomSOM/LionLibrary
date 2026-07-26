@@ -16,29 +16,22 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/**
- * Check if the device hardware can decode all tracks in a media file.
- */
+// Hardware decoding check.
 object CodecCapabilityChecker {
 
     private const val TAG = "CodecCapabilityChecker"
 
-    /** Timeout for probing each file. MetadataRetriever usually takes 100-500ms. */
+    // 5s timeout for probing.
     private const val PROBE_TIMEOUT_MS = 5_000L
 
     private val codecInfos by lazy {
         MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
     }
 
-    /**
-     * Cache video capability results so we don't query MediaCodecList repeatedly for the same formats.
-     */
+    // Cache video capabilities.
     private val videoCapabilityCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
-    // -----------------------------------------------------------------------
-    // Blocked Audio MIMEs: Codecs ExoPlayer can't decode without the FFmpeg extension.
-    // We check these against Format.sampleMimeType.
-    // -----------------------------------------------------------------------
+    // Blocked Audio MIMEs: ExoPlayer can't decode these without extensions.
     private val UNSUPPORTED_AUDIO_MIMES = setOf(
         MimeTypes.AUDIO_AC3,          // "audio/ac3"
         MimeTypes.AUDIO_E_AC3,        // "audio/eac3"
@@ -50,22 +43,19 @@ object CodecCapabilityChecker {
         "audio/mlp",                  // "audio/mlp"
     )
 
-    /**
-     * Checks if the device includes a hardware decoder for this video format.
-     */
+    // Check hardware support for video format.
     private fun isVideoHardwareSupported(format: androidx.media3.common.Format): Boolean {
         val mime = format.sampleMimeType ?: return false
         
-        // Use MIME, width, and height for the cache key
+        // MIME + resolution key
         val cacheKey = "$mime|${format.width}x${format.height}"
         videoCapabilityCache[cacheKey]?.let { return it }
 
         val isSupported = try {
-            // Verify if any hardware decoder supports the format
             codecInfos.any { info ->
                 if (info.isEncoder) return@any false
                 
-                // Check for hardware acceleration, falling back for pre-API 29
+                // Hardware acceleration check
                 val isHardware = if (android.os.Build.VERSION.SDK_INT >= 29) {
                     info.isHardwareAccelerated
                 } else {
@@ -97,13 +87,13 @@ object CodecCapabilityChecker {
         return isSupported
     }
 
-    /** Check if all tracks in the media file can be decoded by hardware. */
+    // Check if all tracks are HW supported.
     suspend fun canHardwareDecode(context: Context, uri: Uri): Boolean {
         return withTimeoutOrNull(PROBE_TIMEOUT_MS) {
             try {
                 val mediaItem = MediaItem.Builder().setUri(uri).build()
                 
-                // Parse tracks using MetadataRetriever instead of creating renderers
+                // Parse tracks without renderers
                 val trackGroups = MetadataRetriever.retrieveMetadata(context, mediaItem).await()
 
                 val audioGroups = mutableListOf<TrackGroup>()
@@ -122,7 +112,7 @@ object CodecCapabilityChecker {
 
                 var allTracksSupported = true
 
-                // Check video tracks against hardware decoders
+                // Check video tracks
                 for (group in videoGroups) {
                     for (i in 0 until group.length) {
                         val format = group.getFormat(i)
@@ -137,7 +127,7 @@ object CodecCapabilityChecker {
                     }
                 }
 
-                // Check audio tracks against the blocklist
+                // Check audio tracks
                 for (group in audioGroups) {
                     for (i in 0 until group.length) {
                         val format = group.getFormat(i)
@@ -158,10 +148,10 @@ object CodecCapabilityChecker {
                 Log.d(TAG, "Probe error for $uri: ${e.message}")
                 false
             }
-        } ?: false // Return false on timeout
+        } ?: false
     }
 
-    /** Await completion of a ListenableFuture. */
+    // Await ListenableFuture.
     private suspend fun <T> ListenableFuture<T>.await(): T = suspendCancellableCoroutine { cont ->
         addListener(
             {
@@ -171,7 +161,7 @@ object CodecCapabilityChecker {
                     cont.resumeWithException(e)
                 }
             },
-            { command -> command.run() } // Run on direct executor
+            { command -> command.run() }
         )
     }
 }

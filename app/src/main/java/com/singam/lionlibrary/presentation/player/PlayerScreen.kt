@@ -78,7 +78,7 @@ fun PlayerRoot(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Configure system UI visibility
+    // Hide system bars.
     DisposableEffect(activity) {
         val window = activity?.window
         var controller: WindowInsetsControllerCompat? = null
@@ -93,7 +93,7 @@ fun PlayerRoot(
         }
     }
 
-    // Pause playback on app background
+    // Pause on background.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) {
@@ -108,7 +108,7 @@ fun PlayerRoot(
         }
     }
 
-    // Process one-time events
+    // One-time events.
     LaunchedEffect(viewModel.events) {
         viewModel.events.collect { event ->
             when (event) {
@@ -117,7 +117,6 @@ fun PlayerRoot(
                     try {
                         context.startActivity(event.intent)
                     } catch (e: Exception) {
-                        // Suppressed intentional exception
                     }
                 }
                 is PlayerEvent.ShowError -> {
@@ -169,7 +168,7 @@ fun PlayerScreen(
         if (showRightSeekFeedback) { delay(500); showRightSeekFeedback = false }
     }
     
-    // Hide controls after inactivity
+    // Auto-hide controls.
     LaunchedEffect(showControls, state.isPlaying) {
         if (showControls && state.isPlaying) {
             delay(3500)
@@ -182,14 +181,14 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // Branch video surface by engine type. Each needs a specific native View.
+        // Pick video surface by engine.
         when (state.engineType) {
             EngineType.EXOPLAYER -> {
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             useController = false
-                            // Configure subtitle style to match VLC defaults (white, black outline, no box).
+                            // VLC-style subtitles.
                             subtitleView?.apply {
                                 setStyle(
                                     androidx.media3.ui.CaptionStyleCompat(
@@ -240,9 +239,7 @@ fun PlayerScreen(
             }
         }
 
-        // Render touch gesture zones
         Row(modifier = Modifier.fillMaxSize()) {
-            // Render brightness and rewind zone
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -264,7 +261,7 @@ fun PlayerScreen(
                             },
                             onVerticalDrag = { change, dragAmount ->
                                 change.consume()
-                                val dragDelta = -dragAmount / size.height // Map upward drag to positive
+                                val dragDelta = -dragAmount / size.height
                                 val newBrightness = (initialBrightness + dragDelta * 2).coerceIn(0f, 1f)
                                 activity?.window?.attributes = activity?.window?.attributes?.apply {
                                     screenBrightness = newBrightness
@@ -306,7 +303,6 @@ fun PlayerScreen(
                 SeekFeedback(visible = showLeftSeekFeedback, isForward = false)
             }
 
-            // Render center zone for toggle and scrubbing
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -335,7 +331,6 @@ fun PlayerScreen(
                     }
             )
 
-            // Render volume and fast-forward zone
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -390,7 +385,6 @@ fun PlayerScreen(
             }
         }
 
-        // Render media controls
         AnimatedVisibility(
             visible = showControls,
             enter = fadeIn(),
@@ -402,7 +396,6 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.5f))
             ) {
-                // Render top control bar
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -441,7 +434,6 @@ fun PlayerScreen(
                     }
                 }
 
-                // Render center playback controls
                 Row(
                     modifier = Modifier.align(Alignment.Center),
                     verticalAlignment = Alignment.CenterVertically,
@@ -474,14 +466,12 @@ fun PlayerScreen(
                     }
                 }
 
-                // Render bottom controls
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .padding(horizontal = 32.dp, vertical = 24.dp)
                 ) {
-                    // Render scrub bar
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
@@ -509,7 +499,6 @@ fun PlayerScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    // Render track and engine selectors
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center
@@ -548,15 +537,14 @@ fun PlayerScreen(
             }
         }
 
-        // Render error snackbar above controls
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 140.dp) // Offset above bottom bar
+                .padding(bottom = 140.dp)
         ) { snackbarData ->
             Snackbar(
-                snackbarData = snackbarData,
+                snackbarData = snackbarHostState.currentSnackbarData ?: snackbarData,
                 containerColor = Color(0xFF2D2D2D),
                 contentColor = Color.White,
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
@@ -640,7 +628,6 @@ fun PlayerScreen(
                     )
                 }
 
-                // Render 'Off' toggle
                 item {
                     Row(
                         modifier = Modifier

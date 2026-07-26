@@ -116,7 +116,6 @@ class SettingsViewModel(
                 )
             }
 
-            // Load libVLC setting as a flow
             settingsRepository.forceLibVlc.first().let { forced ->
                 _state.update { it.copy(forceLibVlc = forced) }
             }
@@ -182,7 +181,7 @@ class SettingsViewModel(
                             _state.update { it.copy(isScanning = false) }
                             _events.send(SettingsEvent.ShowSnackbar("Folder permission lost. Please re-select folder."))
                         }
-                        else -> {} // No terminal action for SCANNING, MATCHED, SKIPPED, or ERROR
+                        else -> {}
                     }
                 }
         }

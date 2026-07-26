@@ -61,6 +61,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -158,7 +159,7 @@ fun SettingsScreen(
             icon = Icons.Filled.Folder,
             onInfoClick = {
                 infoDialogTitle = "Library Folders"
-                infoDialogText = "Store your media in 3 different folders and pick them from here. Folder name containing episodes must be named after the show/anime. Name of the episodes inside must be detectable from the filename. Movie files should be named after movie name."
+                infoDialogText = "Store your media in 2 different folders for Movies and TV shows/Anime. The media's name, and season-episode number must be present in the file names."
             }
         )
         Spacer(modifier = Modifier.height(12.dp))
@@ -277,10 +278,20 @@ fun SettingsScreen(
 
         // Render application info
         Text(
-            text = "LionLibrary V0.1",
+            text = "LionLibrary V2.0",
             style = MaterialTheme.typography.bodySmall,
             color = TextTertiary,
             modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextTertiary,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            textAlign = TextAlign.Center
         )
 
         Spacer(modifier = Modifier.height(16.dp))

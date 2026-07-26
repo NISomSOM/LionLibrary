@@ -1,8 +1,10 @@
 package com.singam.lionlibrary.presentation.home
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,6 +33,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +42,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +64,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.ui.draw.clip
 import java.io.File
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
@@ -365,6 +373,13 @@ private fun JumpBackInOptionItem(
     }
 }
 
+// Parallax and auto-scroll constants for the hero carousel
+private const val HERO_CONTENT_PARALLAX = 0.70f
+private const val HERO_AUTO_SCROLL_MS = 8_000L
+private const val HERO_VIEWPORT_RATIO = 0.65f
+private val HERO_MIN_HEIGHT = 200.dp
+private val HERO_MAX_HEIGHT = 560.dp
+
 @androidx.compose.foundation.ExperimentalFoundationApi
 @Composable
 fun HeroBannerCarousel(
@@ -374,156 +389,192 @@ fun HeroBannerCarousel(
     onInfoClick: (Long, MediaType) -> Unit
 ) {
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { mediaItems.size })
+    val coroutineScope = rememberCoroutineScope()
 
-    val bannerHeight = when (windowSizeClass.widthSizeClass) {
-        WindowWidthSizeClass.Compact -> 500.dp
-        WindowWidthSizeClass.Expanded -> 700.dp
-        else -> 500.dp
+    // Auto-scroll timer: advances to the next page every 8 seconds
+    val autoScrollPage = pagerState.currentPage
+    LaunchedEffect(autoScrollPage, mediaItems.size) {
+        if (mediaItems.size <= 1) return@LaunchedEffect
+        delay(HERO_AUTO_SCROLL_MS)
+        while (pagerState.isScrollInProgress) {
+            delay(100L)
+        }
+        val nextPage = (pagerState.currentPage + 1) % mediaItems.size
+        coroutineScope.launch {
+            pagerState.animateScrollToPage(nextPage)
+        }
     }
+
+    // Viewport-proportional hero height (using LocalConfiguration since we are in a LazyColumn)
+    val configuration = LocalConfiguration.current
+    val heroHeight = (configuration.screenHeightDp.dp * HERO_VIEWPORT_RATIO).coerceIn(HERO_MIN_HEIGHT, HERO_MAX_HEIGHT)
+    val heroWidthPx = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx() }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(bannerHeight)
+            .height(heroHeight)
+            .clip(RoundedCornerShape(0.dp))
     ) {
         androidx.compose.foundation.pager.HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize()
-        ) { page ->
-            val mediaItem = mediaItems[page]
-            val imagePath = mediaItem.backdropPath ?: mediaItem.posterPath
-            
-            val pageOffset = (
-                (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
-            ).let { kotlin.math.abs(it) }
-            val pageAlpha = 1f - pageOffset.coerceIn(0f, 1f)
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                val mediaItem = mediaItems[page]
+                val imagePath = mediaItem.backdropPath ?: mediaItem.posterPath
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = pageAlpha
-                    }
-            ) {
-                if (imagePath != null) {
-                    AsyncImage(
-                        model = File(imagePath),
-                        contentDescription = mediaItem.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+                // Signed offset for parallax: smoothly changes during swipe
+                val signedOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+                val pageOffset = kotlin.math.abs(signedOffset)
+                val pageAlpha = 1f - pageOffset.coerceIn(0f, 1f)
 
-                // Render gradient overlay for readability
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.2f),
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
-                                    MaterialTheme.colorScheme.background
-                                ),
-                                startY = 100f
-                            )
-                        )
-                )
-
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 110.dp, start = 24.dp, end = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .graphicsLayer {
+                            alpha = pageAlpha
+                        }
                 ) {
-                    if (mediaItem.logoPath != null) {
+                    // Background image — no zoom, just crop-fit
+                    if (imagePath != null) {
                         AsyncImage(
-                            model = File(mediaItem.logoPath),
-                            contentDescription = "Show Logo",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .fillMaxWidth(0.6f)
-                                .height(80.dp)
-                                .padding(bottom = 4.dp)
-                        )
-                    } else {
-                        Text(
-                            text = mediaItem.title,
-                            style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
+                            model = File(imagePath),
+                            contentDescription = mediaItem.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
-                    
-                    Spacer(modifier = Modifier.height(4.dp))
-                    
-                    val subtitleInfo = buildString {
-                        if (mediaItem.year != null) append(mediaItem.year).append(" • ")
-                        if (mediaItem.genres != null) append(mediaItem.genres.split(",").take(2).joinToString(", ")).append(" • ")
-                        if (mediaItem.rating != null) append(mediaItem.rating).append(" ★")
-                    }.trimEnd(' ', '•')
-                    
-                    if (subtitleInfo.isNotBlank()) {
-                        Text(
-                            text = subtitleInfo,
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-                            color = Color.White.copy(alpha = 0.9f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+
+                    // Cinematic multi-stop gradient overlay
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colorStops = arrayOf(
+                                        0.00f to Color.Transparent,
+                                        0.30f to Color.Black.copy(alpha = 0.05f),
+                                        0.50f to Color.Black.copy(alpha = 0.15f),
+                                        0.65f to Color.Black.copy(alpha = 0.35f),
+                                        0.75f to Color.Black.copy(alpha = 0.55f),
+                                        0.85f to Color.Black.copy(alpha = 0.75f),
+                                        0.92f to Color.Black.copy(alpha = 0.92f),
+                                        1.00f to Color.Black
+                                    )
+                                )
+                            )
+                    )
+
+                    // Content layer (logo/title/subtitle) with parallax and scale
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 110.dp, start = 24.dp, end = 24.dp)
+                            .graphicsLayer {
+                                translationX = -signedOffset * heroWidthPx * HERO_CONTENT_PARALLAX
+                                val scale = 1f - (pageOffset * 0.15f).coerceIn(0f, 0.15f)
+                                scaleX = scale
+                                scaleY = scale
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (mediaItem.logoPath != null) {
+                            AsyncImage(
+                                model = File(mediaItem.logoPath),
+                                contentDescription = "Show Logo",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxWidth(0.6f)
+                                    .height(80.dp)
+                                    .padding(bottom = 4.dp)
+                            )
+                        } else {
+                            Text(
+                                text = mediaItem.title,
+                                style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        val subtitleInfo = buildString {
+                            if (mediaItem.year != null) append(mediaItem.year).append(" \u2022 ")
+                            if (mediaItem.genres != null) append(mediaItem.genres.split(",").take(2).joinToString(", ")).append(" \u2022 ")
+                            if (mediaItem.rating != null) append(mediaItem.rating).append(" \u2605")
+                        }.trimEnd(' ', '\u2022')
+
+                        if (subtitleInfo.isNotBlank()) {
+                            Text(
+                                text = subtitleInfo,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                                color = Color.White.copy(alpha = 0.9f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        // Render pagination indicators
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 24.dp, start = 24.dp, end = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            val currentItem = mediaItems[pagerState.currentPage]
-
-            Button(
-                onClick = { onInfoClick(currentItem.id, currentItem.mediaType) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,
-                    contentColor = Color.Black
-                ),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
-                modifier = Modifier.fillMaxWidth(0.6f)
+            // Bottom controls: View Details button + pill indicators
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp, start = 24.dp, end = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("View Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-            }
-            
-            if (mediaItems.size > 1) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(8.dp),
-                    horizontalArrangement = Arrangement.Center
+                val currentItem = mediaItems[pagerState.currentPage]
+
+                Button(
+                    onClick = { onInfoClick(currentItem.id, currentItem.mediaType) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                    modifier = Modifier.fillMaxWidth(0.6f)
                 ) {
-                    repeat(mediaItems.size) { iteration ->
-                        val color = if (pagerState.currentPage == iteration) Color.White else Color.White.copy(alpha = 0.5f)
-                        val width = if (pagerState.currentPage == iteration) 24.dp else 8.dp
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .width(width)
-                                .height(8.dp)
-                                .background(color, androidx.compose.foundation.shape.CircleShape)
-                        )
+                    Text("View Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                }
+
+                // Animated pill indicators: smooth width transition on page change
+                if (mediaItems.size > 1) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        repeat(mediaItems.size) { index ->
+                            val isActive = pagerState.currentPage == index
+                            val pillWidth by androidx.compose.animation.core.animateDpAsState(
+                                targetValue = if (isActive) 24.dp else 8.dp,
+                                animationSpec = tween(durationMillis = 300),
+                                label = "pillWidth"
+                            )
+                            val pillAlpha by androidx.compose.animation.core.animateFloatAsState(
+                                targetValue = if (isActive) 1f else 0.4f,
+                                animationSpec = tween(durationMillis = 300),
+                                label = "pillAlpha"
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 3.dp)
+                                    .width(pillWidth)
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(Color.White.copy(alpha = pillAlpha))
+                            )
+                        }
                     }
                 }
             }
         }
     }
-}
 
 @Composable
 fun MediaRow(

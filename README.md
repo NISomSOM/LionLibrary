@@ -6,8 +6,8 @@ LionLibrary is an offline-first Android media manager and player. It organizes y
 
 | Home Screens | Detail Screens |
 | :---: | :---: |
-| <img src="Screenshots/Home1.jpeg" width="240" alt="Home Screen 1" /> | <img src="Screenshots/Details1.jpeg" width="240" alt="Details Screen 1" /> |
-| <img src="Screenshots/Home2.jpeg" width="240" alt="Home Screen 2" /> | <img src="Screenshots/Details2.jpeg" width="240" alt="Details Screen 2" /> |
+| <img src="Screenshots/Home1.png" width="240" alt="Home Screen 1" /> | <img src="Screenshots/Details1.png" width="240" alt="Details Screen 1" /> |
+| <img src="Screenshots/Home2.png" width="240" alt="Home Screen 2" /> | <img src="Screenshots/Details2.png" width="240" alt="Details Screen 2" /> |
 
 ## Features
 

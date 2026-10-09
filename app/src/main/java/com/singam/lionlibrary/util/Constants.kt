@@ -23,6 +23,10 @@ object Constants {
     // Scan concurrency.
     const val SCAN_CONCURRENCY = 8
 
+    // Nesting limits for folder traversal.
+    const val MAX_MOVIE_FOLDER_DEPTH = 4
+    const val MAX_SHOW_WRAPPER_DEPTH = 2
+
     // Cache dir.
     const val IMAGE_CACHE_DIR = "posters"
 }

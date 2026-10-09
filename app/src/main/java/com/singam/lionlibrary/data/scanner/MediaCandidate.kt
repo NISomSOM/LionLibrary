@@ -26,5 +26,6 @@ sealed interface MediaCandidate {
 data class EpisodeFile(
     val uri: Uri,
     val episodeNumber: Int,
-    val subtitleUri: Uri? = null
+    val subtitleUri: Uri? = null,
+    val extraTitle: String? = null      // Set for extras (trailers, NCOP/NCED); skips TMDB episode metadata.
 )

@@ -28,6 +28,8 @@ class FileNameParser {
     private val seasonSPattern = Regex("""\bS(\d{1,2})(?:P\d{1,2})?\b""", RegexOption.IGNORE_CASE)
     private val partSeasonPattern = Regex("""\bPart\s*(\d+)\b""", RegexOption.IGNORE_CASE)
     private val specialsPattern = Regex("""\bSpecials\b""", RegexOption.IGNORE_CASE)
+    // Scene-style season token in dotted names (Show.Name.S01.1080p...).
+    private val dottedSeasonPattern = Regex("""\.S(\d{1,2})(?=\.|$)""", RegexOption.IGNORE_CASE)
 
     fun stripNoise(raw: String): String {
         var clean = raw
@@ -94,7 +96,18 @@ class FileNameParser {
         if (baseName == folderName) {
             sceneEpisodePattern.find(baseName)?.let { baseName = baseName.substring(0, it.range.first) }
         }
-        
+
+        // Dotted release names: everything after the season token is release noise.
+        var dottedSeason: Int? = null
+        if (baseName == folderName && folderName.none { it.isWhitespace() }) {
+            dottedSeasonPattern.find(baseName)?.let {
+                if (it.range.first > 0) {
+                    dottedSeason = it.groupValues[1].toInt()
+                    baseName = baseName.substring(0, it.range.first)
+                }
+            }
+        }
+
         var clean = stripNoise(baseName)
         var season: Int? = null
 
@@ -117,7 +130,20 @@ class FileNameParser {
         clean = clean.replace(Regex("""-+$"""), "")
         clean = clean.replace(Regex("""\s+"""), " ").trim()
         
-        return Pair(season, clean)
+        return Pair(season ?: dottedSeason, clean)
+    }
+
+    fun parseExtraTitle(nameWithoutExt: String, showIdentity: String): String {
+        val raw = nameWithoutExt.trim()
+        var title = raw
+        // Drop a leading show name prefix.
+        if (showIdentity.isNotBlank() && title.startsWith(showIdentity, ignoreCase = true) &&
+            (title.length == showIdentity.length || !title[showIdentity.length].isLetterOrDigit())
+        ) {
+            title = title.substring(showIdentity.length).trimStart(' ', '-', '.', '_')
+        }
+        title = title.replace(Regex("""\s+"""), " ").trim()
+        return title.ifBlank { raw }
     }
 
     fun parseSeasonAndEpisodeNumbers(filename: String): Pair<Int?, List<Int>> {

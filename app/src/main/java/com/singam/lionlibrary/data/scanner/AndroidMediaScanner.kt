@@ -94,7 +94,10 @@ class AndroidMediaScanner(
 
         try {
             if (moviesFolderUri.isNotBlank()) {
-                allCandidates += folderScanner.scanMoviesFolder(Uri.parse(moviesFolderUri))
+                allCandidates += folderScanner.scanMoviesFolder(
+                    Uri.parse(moviesFolderUri),
+                    showsFolderUri.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                )
             }
             if (showsFolderUri.isNotBlank()) {
                 allCandidates += folderScanner.scanShowsFolder(Uri.parse(showsFolderUri))
@@ -373,7 +376,9 @@ class AndroidMediaScanner(
                     continue
                 }
 
-                val episodeInfo = seasonDetails?.episodes?.find { it.episodeNumber == ep.episodeNumber }
+                // Extras have synthetic numbers; don't attach a real special's metadata.
+                val episodeInfo = if (ep.extraTitle != null) null
+                    else seasonDetails?.episodes?.find { it.episodeNumber == ep.episodeNumber }
 
                 val thumbnailPath = episodeInfo?.stillPath?.let { path ->
                     imageCacheManager.cacheEpisodeStill(
@@ -386,7 +391,7 @@ class AndroidMediaScanner(
                     showId = showId,
                     seasonNumber = seasonNum,
                     episodeNumber = ep.episodeNumber,
-                    title = episodeInfo?.name,
+                    title = ep.extraTitle ?: episodeInfo?.name,
                     overview = episodeInfo?.overview,
                     runtime = episodeInfo?.runtime,
                     airDate = episodeInfo?.airDate,
@@ -463,7 +468,7 @@ class AndroidMediaScanner(
             val seasonEntity = SeasonEntity(
                 showId = showId,
                 seasonNumber = seasonNumber,
-                name = seasonDetails?.name ?: "Season $seasonNumber",
+                name = seasonDetails?.name ?: if (seasonNumber == 0) "Specials" else "Season $seasonNumber",
                 posterPath = seasonDetails?.posterPath?.let { path ->
                     imageCacheManager.cachePoster(path, "tv_${tmdbId}_s${seasonNumber}_poster.jpg")
                 }

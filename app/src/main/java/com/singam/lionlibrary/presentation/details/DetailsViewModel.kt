@@ -119,7 +119,9 @@ class DetailsViewModel(
                             getMediaDetailsUseCase.getProgress(mediaId)
                         ) { allEpisodes, progressList ->
                             val completedEpisodeIds = progressList.filter { it.completed }.map { it.episodeId }.toSet()
-                            allEpisodes.firstOrNull { it.id !in completedEpisodeIds } ?: allEpisodes.lastOrNull()
+                            // Resume prefers regular seasons; specials only for specials-only shows.
+                            val pool = allEpisodes.filter { it.seasonNumber > 0 }.ifEmpty { allEpisodes }
+                            pool.firstOrNull { it.id !in completedEpisodeIds } ?: pool.lastOrNull()
                         }.collect { nextEp ->
                             _state.update { it.copy(nextEpisodeToWatch = nextEp) }
                         }

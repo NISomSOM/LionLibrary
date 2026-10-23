@@ -15,6 +15,17 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
+/**
+ * Android's external-storage provider cannot check tree ancestry for a document that no longer
+ * exists, so it reports a deleted file as an IllegalArgumentException wrapping
+ * FileNotFoundException instead of returning no cursor. Only that wrapped not-found means MISSING;
+ * any other argument error stays UNAVAILABLE. Callers still require their own evidence (the
+ * reconciler's complete listing, or a successful native delete) before acting on MISSING.
+ */
+internal fun presenceForProviderError(message: String?): DocumentPresence =
+    if (message?.contains(FileNotFoundException::class.java.name) == true) DocumentPresence.MISSING
+    else DocumentPresence.UNAVAILABLE
+
 class SafLibraryDocuments(context: Context) : LibraryDocuments {
     private class NoDocumentCursor : IOException()
 
@@ -90,6 +101,8 @@ class SafLibraryDocuments(context: Context) : LibraryDocuments {
                     }
                 } catch (_: FileNotFoundException) {
                     DocumentPresence.MISSING
+                } catch (error: IllegalArgumentException) {
+                    presenceForProviderError(error.message)
                 } catch (_: Exception) {
                     DocumentPresence.UNAVAILABLE
                 }
@@ -97,8 +110,8 @@ class SafLibraryDocuments(context: Context) : LibraryDocuments {
                 DocumentPresence.UNAVAILABLE
             } catch (_: IOException) {
                 DocumentPresence.UNAVAILABLE
-            } catch (_: IllegalArgumentException) {
-                DocumentPresence.UNAVAILABLE
+            } catch (error: IllegalArgumentException) {
+                presenceForProviderError(error.message)
             }
         }
 

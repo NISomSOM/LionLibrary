@@ -1,0 +1,8 @@
+<resources>
+    <string name="resume_percent_watched">%1$d%% watched</string>
+    <string name="resume_hours_minutes_left">%1$dh %2$dm left</string>
+    <plurals name="resume_minutes_left">
+        <item quantity="one">%1$d min left</item>
+        <item quantity="other">%1$d mins left</item>
+    </plurals>
+</resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider android:name=".DeletionFixtureProvider"
+            android:authorities="${applicationId}.deletion-fixtures"
+            android:exported="true" android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS" />
+        <!-- Test fixtures only; absent from the release APK. -->
+        <provider android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.playback-fixtures"
+            android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/playback_fixture_paths" />
+        </provider>
+    </application>
+</manifest>

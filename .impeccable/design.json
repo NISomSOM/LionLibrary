@@ -1,0 +1,387 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-11T14:13:13.028996+00:00",
+  "title": "LionLibrary — Nuvio UI reference",
+  "extensions": {
+    "colorMeta": {
+      "reference-accent": {
+        "role": "primary",
+        "displayName": "Accent",
+        "tonalRamp": [
+          "#340000",
+          "#550000",
+          "#750200",
+          "#962E00",
+          "#B84E00",
+          "#DA6E00",
+          "#FF9E2C",
+          "#FFCF68"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-accent-strong": {
+        "role": "primary",
+        "displayName": "Accent Strong",
+        "tonalRamp": [
+          "#3A0000",
+          "#5B0000",
+          "#7D0000",
+          "#9F1C00",
+          "#C14100",
+          "#E46200",
+          "#FF9343",
+          "#FFC578"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-background": {
+        "role": "neutral",
+        "displayName": "Background",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#222222",
+          "#3A3A3A",
+          "#555555",
+          "#717171",
+          "#8F8F8F",
+          "#BEBEBE",
+          "#EEEEEE"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "#0E0A0A",
+          "#252020",
+          "#3E3939",
+          "#595454",
+          "#757070",
+          "#938E8E",
+          "#C2BCBC",
+          "#F3EDED"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-input": {
+        "role": "neutral",
+        "displayName": "Input",
+        "tonalRamp": [
+          "#0E0B06",
+          "#25211B",
+          "#3E3A33",
+          "#59554E",
+          "#76716A",
+          "#938E87",
+          "#C2BDB5",
+          "#F3EEE5"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "tonalRamp": [
+          "#0A0B0C",
+          "#202223",
+          "#393B3B",
+          "#545556",
+          "#707273",
+          "#8E8F90",
+          "#BCBEBF",
+          "#EDEFF0"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-text-secondary": {
+        "role": "neutral",
+        "displayName": "Text Secondary",
+        "tonalRamp": [
+          "#080C10",
+          "#1E2227",
+          "#363B41",
+          "#51565C",
+          "#6D7279",
+          "#8A9096",
+          "#B8BEC5",
+          "#E9EFF6"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-text-muted": {
+        "role": "neutral",
+        "displayName": "Text Muted",
+        "tonalRamp": [
+          "#080C10",
+          "#1D2228",
+          "#363B41",
+          "#50565C",
+          "#6C7279",
+          "#8A9097",
+          "#B8BEC6",
+          "#E9EFF7"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-text-inverse": {
+        "role": "neutral",
+        "displayName": "Text Inverse",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#222222",
+          "#3A3A3A",
+          "#555555",
+          "#717171",
+          "#8F8F8F",
+          "#BEBEBE",
+          "#EEEEEE"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-outline": {
+        "role": "neutral",
+        "displayName": "Outline",
+        "tonalRamp": [
+          "#080C0C",
+          "#1E2323",
+          "#363C3C",
+          "#515756",
+          "#6D7373",
+          "#8A9190",
+          "#B9BFBF",
+          "#E9F0F0"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-focus": {
+        "role": "neutral",
+        "displayName": "Focus",
+        "tonalRamp": [
+          "#2E0000",
+          "#4D0000",
+          "#6C1C00",
+          "#8B3B00",
+          "#AC5A00",
+          "#CD7800",
+          "#FFA828",
+          "#FFD966"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      },
+      "reference-danger": {
+        "role": "neutral",
+        "displayName": "Danger",
+        "tonalRamp": [
+          "#320004",
+          "#530017",
+          "#74002F",
+          "#952149",
+          "#B74265",
+          "#D96182",
+          "#FF91B0",
+          "#FFC1E0"
+        ],
+        "purpose": "Derived preview ramp, not an observed Nuvio palette scale"
+      }
+    },
+    "typographyMeta": {
+      "page": {
+        "displayName": "page",
+        "purpose": "Measured reference role; adaptation and inherited Material roles are explained in DESIGN.md"
+      },
+      "headline": {
+        "displayName": "headline",
+        "purpose": "Measured reference role; adaptation and inherited Material roles are explained in DESIGN.md"
+      },
+      "shelf-title": {
+        "displayName": "shelf-title",
+        "purpose": "Measured reference role; adaptation and inherited Material roles are explained in DESIGN.md"
+      },
+      "detail-section": {
+        "displayName": "detail-section",
+        "purpose": "Measured reference role; adaptation and inherited Material roles are explained in DESIGN.md"
+      },
+      "title": {
+        "displayName": "title",
+        "purpose": "Measured reference role; adaptation and inherited Material roles are explained in DESIGN.md"
+      },
+      "hero-action": {
+        "displayName": "hero-action",
+        "purpose": "Measured reference role; adaptation and inherited Material roles are explained in DESIGN.md"
+      },
+      "body": {
+        "displayName": "body",
+        "purpose": "Measured reference role; adaptation and inherited Material roles are explained in DESIGN.md"
+      },
+      "caption": {
+        "displayName": "caption",
+        "purpose": "Measured reference role; adaptation and inherited Material roles are explained in DESIGN.md"
+      },
+      "action": {
+        "displayName": "action",
+        "purpose": "Measured reference role; adaptation and inherited Material roles are explained in DESIGN.md"
+      },
+      "section-label": {
+        "displayName": "section-label",
+        "purpose": "Measured reference role; adaptation and inherited Material roles are explained in DESIGN.md"
+      }
+    },
+    "shadows": [
+      {
+        "name": "flat",
+        "value": "0dp",
+        "purpose": "Most content"
+      },
+      {
+        "name": "raised",
+        "value": "2dp",
+        "purpose": "Reference collection cards"
+      },
+      {
+        "name": "details-header",
+        "value": "4dp",
+        "purpose": "Scrolled Details header"
+      }
+    ],
+    "motion": [
+      {
+        "name": "fast",
+        "value": "150ms",
+        "purpose": "Small feedback"
+      },
+      {
+        "name": "normal",
+        "value": "220ms",
+        "purpose": "State transition"
+      },
+      {
+        "name": "sheet-enter",
+        "value": "300ms",
+        "purpose": "Token reference"
+      },
+      {
+        "name": "sheet-exit",
+        "value": "250ms",
+        "purpose": "Token reference"
+      },
+      {
+        "name": "standard",
+        "value": "cubic-bezier(0.2,0,0,1)",
+        "purpose": "Reference easing"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "tablet",
+        "value": "600dp"
+      },
+      {
+        "name": "large-tablet",
+        "value": "840dp"
+      },
+      {
+        "name": "desktop",
+        "value": "1024dp"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Hero action",
+      "kind": "button",
+      "refersTo": "hero-action",
+      "description": "Illustrative white cinematic action; previews use system font if JetBrains Sans is absent.",
+      "html": "<button class=\"ds-hero\">View details</button>",
+      "css": ".ds-hero{font-family:\"JetBrains Sans\",system-ui,sans-serif;color:#f5f7f8;color:#111;background:#f5f7f8;border:0;border-radius:999px;padding:12px 28px;font-size:16px;font-weight:700;cursor:pointer;transition:opacity .15s}.ds-hero:hover{opacity:.9}.ds-hero:active{opacity:.8}.ds-hero:focus-visible{outline:3px solid #FFA726;outline-offset:3px}"
+    },
+    {
+      "name": "Details action",
+      "kind": "button",
+      "refersTo": "detail-action",
+      "description": "Illustrative white local playback action; grows for content in native implementation.",
+      "html": "<button class=\"ds-play\">▶ Resume</button>",
+      "css": ".ds-play{font-family:\"JetBrains Sans\",system-ui,sans-serif;color:#f5f7f8;color:#111;background:#f5f7f8;border:0;border-radius:999px;min-height:52px;min-width:240px;padding:12px 24px;font-size:14px;cursor:pointer}.ds-play:hover{opacity:.9}.ds-play:active{opacity:.8}.ds-play:focus-visible{outline:3px solid #FFA726;outline-offset:3px}"
+    },
+    {
+      "name": "Search field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Illustrative filled input; measured native colors and shape, web dimensions are previews.",
+      "html": "<input class=\"ds-input\" aria-label=\"Search\" placeholder=\"Search movies, shows...\">",
+      "css": ".ds-input{font-family:\"JetBrains Sans\",system-ui,sans-serif;color:#f5f7f8;background:#24201a;border:1px solid #252a2a;border-radius:12px;padding:16px;font-size:15px;min-height:24px}.ds-input::placeholder{color:#969ca3}.ds-input:hover{border-color:#969ca3}.ds-input:focus-visible{outline:2px solid #ffa726;outline-offset:0}"
+    },
+    {
+      "name": "Sort selector",
+      "kind": "chip",
+      "refersTo": "dropdown",
+      "description": "Illustrative selector; native touch area must reach 48 dp.",
+      "html": "<button class=\"ds-sort\">Recently added <span aria-hidden=\"true\">⌄</span></button>",
+      "css": ".ds-sort{font-family:\"JetBrains Sans\",system-ui,sans-serif;color:#f5f7f8;background:#1e1a1a;border:0;border-radius:12px;padding:8px 12px;min-height:48px;font-size:14px;font-weight:600;cursor:pointer}.ds-sort:hover{background:#24201a}.ds-sort:active{background:#3d2d1a}.ds-sort:focus-visible{outline:3px solid #FFA726;outline-offset:3px}"
+    },
+    {
+      "name": "Poster",
+      "kind": "card",
+      "refersTo": "poster",
+      "description": "Geometry-only poster preview; no third-party artwork bundled.",
+      "html": "<button class=\"ds-poster\"><span class=\"ds-art\" aria-hidden=\"true\">Artwork</span><span class=\"ds-title\">Movie title</span><span class=\"ds-year\">2026</span></button>",
+      "css": ".ds-poster{font-family:\"JetBrains Sans\",system-ui,sans-serif;color:#f5f7f8;display:flex;flex-direction:column;gap:6px;width:126px;background:transparent;border:0;padding:0;text-align:left;cursor:pointer}.ds-art{display:grid;place-items:center;width:126px;aspect-ratio:.675;background:#24201a;color:#969ca3;border-radius:12px}.ds-title{font-size:14px}.ds-year{font-size:11px;color:#969ca3}.ds-poster:hover .ds-art{background:#303030}.ds-poster:active .ds-art{opacity:.8}.ds-poster:focus-visible{outline:3px solid #FFA726;outline-offset:3px}"
+    },
+    {
+      "name": "Settings row",
+      "kind": "custom",
+      "refersTo": "settings-row",
+      "description": "Illustrative title/helper hierarchy using existing LionLibrary option wording.",
+      "html": "<button class=\"ds-row\"><span class=\"ds-icon\" aria-hidden=\"true\">▣</span><span><strong>Movies folder</strong><small>Choose your local movies folder.</small></span></button>",
+      "css": ".ds-row{font-family:\"JetBrains Sans\",system-ui,sans-serif;color:#f5f7f8;display:flex;align-items:center;gap:14px;text-align:left;background:#1e1a1a;border:0;border-radius:12px;padding:14px 16px;max-width:380px;cursor:pointer}.ds-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;background:#3d2d1a;color:#fb8c00;flex-shrink:0}.ds-row strong{font-size:15px;font-weight:500}.ds-row small{display:block;color:#969ca3;font-size:14px;margin-top:2px}.ds-row:hover{background:#24201a}.ds-row:active{opacity:.8}.ds-row:focus-visible{outline:3px solid #FFA726;outline-offset:3px}"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "description": "Flat geometry preview of native floating navigation; glass shader is intentionally not simulated.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Main\"><button aria-current=\"page\">Home</button><button>Search</button><button>Library</button><button>Profile</button></nav>",
+      "css": ".ds-nav{font-family:\"JetBrains Sans\",system-ui,sans-serif;color:#f5f7f8;display:flex;gap:6px;background:#1c1c1e;border-radius:999px;padding:4px 6px;max-width:400px}.ds-nav button{font:inherit;font-size:11px;min-height:48px;background:transparent;color:#969ca3;border:0;border-radius:999px;padding:8px 14px;cursor:pointer}.ds-nav button[aria-current]{background:#3d2d1a;color:#fb8c00}.ds-nav button:hover{background:#24201a}.ds-nav button:active{opacity:.8}.ds-nav button:focus-visible{outline:3px solid #FFA726;outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "A cinematic local library.",
+    "overview": "Artwork carries the atmosphere;\ncontrols make browsing and playback clear. Use one coherent type scale, measured\ngaps, a restrained orange accent, and dark surfaces. Make the next useful action\neasy to find without surrounding every piece of metadata with another card.",
+    "keyCharacteristics": [
+      "Artwork-led hierarchy",
+      "One consistent type/spacing system",
+      "Preserved local-library functionality"
+    ],
+    "rules": [
+      {
+        "name": "The Contrast Rule",
+        "body": "Verify the final composited colors, including scrims and translucent selection fills. Normal text needs 4.5:1; large text and essential non-text controls need 3:1. Small white text on orange is not automatically readable. Prefer a white cinematic primary action with dark text, or a dark on-orange label where contrast supports it. Do not lower subtitle/placeholder opacity until it fails.",
+        "section": "colors"
+      },
+      {
+        "name": "The Scalable Type Rule",
+        "body": "Match the hierarchy at normal scale, using sp and content-driven heights. Nuvio forces `fontScale = 1f`; LionLibrary must preserve system font scaling. At 200%, titles can wrap, metadata groups can flow and actions can grow. Never shrink text or clip a label to preserve a screenshot's geometry.",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "Do use this as a measured reference, with source values and proposed changes distinguished. Use the pinned release, not a newer branch's unrelated constants.",
+      "Do implement one shared spacing/type/shape system, using Material roles and the installed Android Compose/MVI/navigation skills when code work begins.",
+      "Do preserve orange, two folder roots, offline art, stable IDs and every existing scan/playback/history/watchlist contract in AGENT.md.",
+      "Do keep the episode list and its controls unchanged during this redesign.",
+      "Do test 320/360 dp widths, 1×/1.5×/2× text, long titles, landscape return, tablet/rail layout, TalkBack, RTL, keyboard and missing artwork.",
+      "Do verify image transitions at rest and mid-swipe; text and logos must never flash behind each other or drift outside the centered content area.",
+      "Do use a licensed bundled family, and explicitly configure every Material type role. Preserve Inter until any replacement's redistribution terms are established.",
+      "Do preserve scroll position, search query and filter selection when returning from Details; keep saved state in the existing presentation model.",
+      "Do capture before/after screenshots on the same phone/density and compare typography baselines, image ratios, target sizes and empty/error behavior."
+    ],
+    "donts": [
+      "Don't treat reference inspection as authorization to implement features now.",
+      "Don't introduce Cloud/Profile/accounts, remote discovery, downloads, new folder roots, onboarding or Settings options merely because Nuvio has them.",
+      "Don't disable font scaling, copy undersized hit targets or preserve a fixed grid count when captions become unreadable.",
+      "Don't add an extra title below an already-labeled image by accident, stretch logos, or render fallback text underneath a loaded transparent logo.",
+      "Don't copy rating strips that are part of poster images as if they were a native rating component, or show ratings/services our app does not fetch.",
+      "Don't let a floating bar, transparent sticky header or keyboard hide final rows/actions. Safe clearance is a layout requirement, not a screenshot workaround.",
+      "Don't copy all Nuvio fonts/code/assets into the app based solely on public repository visibility. The [release repository license](https://github.com/NuvioMedia/NuvioMobile/blob/1ae5066a4dd5026228625e40082eacc3ada68436/LICENSE) is GPL-3.0; this reference uses observations and measurements, without importing its implementation or artwork into LionLibrary."
+    ]
+  }
+}

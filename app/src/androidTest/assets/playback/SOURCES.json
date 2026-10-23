@@ -1,0 +1,20 @@
+[
+  {
+    "name": "silent-black-25s.mp4",
+    "url": "https://raw.githubusercontent.com/androidx/media/8c6678b657ede1e7883fc164ef73ed483c7796c3/libraries/test_data/src/test/assets/media/mp4/silent-black-25s.mp4",
+    "bytes": 46333,
+    "sha256": "ecbd4956a16e2f2808a83af2085e5e7b213e9a45dd463852c45a4103f4cc1baf"
+  },
+  {
+    "name": "hdr10-720p.mp4",
+    "url": "https://raw.githubusercontent.com/androidx/media/8c6678b657ede1e7883fc164ef73ed483c7796c3/libraries/test_data/src/test/assets/media/mp4/hdr10-720p.mp4",
+    "bytes": 8080944,
+    "sha256": "84e9bae9ae5224fc208feea5264a5700469c6e13d62dba2a4daf3910578db78d"
+  },
+  {
+    "name": "hlg10-color-test.mp4",
+    "url": "https://raw.githubusercontent.com/androidx/media/8c6678b657ede1e7883fc164ef73ed483c7796c3/libraries/test_data/src/test/assets/media/mp4/hlg10-color-test.mp4",
+    "bytes": 341381,
+    "sha256": "0c8122c8d6ff3ee2ca2df86ae94f10152a16615270645d759af3dbc52c10608d"
+  }
+]

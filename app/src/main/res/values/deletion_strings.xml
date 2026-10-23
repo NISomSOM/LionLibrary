@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="delete_from_device">Delete from device</string>
+    <string name="media_options">Media options</string>
+    <string name="delete_file_confirm">Delete file permanently?</string>
+    <string name="delete_folder_confirm">Delete show folder permanently?</string>
+    <string name="delete_file_warning">Only this video file will be deleted. Other files in its folder will stay. This cannot be undone.</string>
+    <string name="delete_combined_warning">This file contains more than one episode. Deleting it removes every episode in the displayed range.</string>
+    <string name="delete_folder_warning">This entire folder and all its contents (%1$d files), including subtitles and artwork stored there, will be permanently deleted. This cannot be undone.</string>
+    <string name="delete_file_button">Delete file</string>
+    <string name="delete_folder_button">Delete folder</string>
+    <string name="delete_preparing">Checking the exact file or folder…</string>
+    <string name="delete_in_progress">Deleting…</string>
+    <string name="delete_cancel">Cancel</string>
+    <string name="delete_success">Deleted from device</string>
+    <string name="delete_busy">A scan or another file operation is running. Wait for it to finish.</string>
+    <string name="delete_unavailable">Storage could not be verified. Check folder access and reconnect the drive, then rescan.</string>
+    <string name="delete_unsafe">Cannot safely delete this item. Its folder may be shared, contain unscanned videos, span several folders, or be read-only. Rescan first or use your file manager.</string>
+    <string name="delete_changed">The item or folder changed. Review it again before deleting.</string>
+    <string name="delete_failed">Deletion could not be completed. Some files may already be removed. Rescan to refresh the library.</string>
+</resources>

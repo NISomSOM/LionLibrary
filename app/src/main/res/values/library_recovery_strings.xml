@@ -1,0 +1,8 @@
+﻿<resources>
+    <string name="open_settings">Open Settings</string>
+    <string name="local_file">Local file</string>
+    <string name="library_folders">Library folders</string>
+    <string name="hide_key">Hide key</string>
+    <string name="recovering_artwork">Checking library artwork…</string>
+    <string name="ui_next_up">Next up</string>
+</resources>

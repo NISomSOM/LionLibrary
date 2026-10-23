@@ -93,6 +93,7 @@ class AndroidMediaScanner(
     override operator fun invoke(): Flow<ScanProgress> = flow {
         mutationGate.mutex.withLock {
             reconciler.reconcile()
+            reconciler.mergeEpisodeDuplicates()
             emitAll(scan())
         }
     }
@@ -193,6 +194,12 @@ class AndroidMediaScanner(
                                     val fileUriString = candidate.sourceUri.toString()
                                     val existingMedia = mediaDao.getByFilePath(fileUriString)
                                     if (existingMedia != null && !existingMedia.isUnidentified) {
+                                        candidate.subtitleUri?.let {
+                                            mediaDao.fillMissingSubtitle(
+                                                fileUriString,
+                                                it.toString(),
+                                            )
+                                        }
                                         emit(FileResult.Skipped(candidate.title))
                                     } else {
                                         val entity =
@@ -231,6 +238,12 @@ class AndroidMediaScanner(
                                     episodeFiles.forEach { file ->
                                         file.episodeEndNumber?.let {
                                             episodeDao.updateRange(file.uri.toString(), it)
+                                        }
+                                        file.subtitleUri?.let {
+                                            episodeDao.fillMissingSubtitle(
+                                                file.uri.toString(),
+                                                it.toString(),
+                                            )
                                         }
                                     }
                                     val allKnown =
@@ -677,6 +690,9 @@ class AndroidMediaScanner(
         sourceEpisodeEnd: Int? = null,
         parsedYear: Int? = null,
     ) {
+        // A file already catalogued as an episode keeps that identity. A failed or
+        // unconfident show lookup must not add a second, unidentified row for it.
+        if (episodeDao.getByFilePath(fileUri) != null) return
         val existing = mediaDao.getByFilePath(fileUri)
         if (existing != null) {
             if (existing.isUnidentified)

@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -40,13 +41,31 @@ import com.singam.lionlibrary.presentation.navigation.BottomNavBar
 import com.singam.lionlibrary.presentation.navigation.LionLibraryNavHost
 import com.singam.lionlibrary.presentation.navigation.NavigationRailBar
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.flow.stateIn
 import org.koin.android.ext.android.inject
 
-@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
+private const val ARTWORK_SAMPLE_MS = 300L
+
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class, FlowPreview::class)
 class MainActivity : ComponentActivity() {
 
     private val artworkRepository: ArtworkRepository by inject()
     private val scanCoordinator: ScanCoordinator by inject()
+
+    // A scan publishes artwork in bursts; sampling turns hundreds of publications into a few
+    // artwork refreshes. The latest revision always arrives.
+    private val artworkRevision by lazy {
+        artworkRepository.revision
+            .sample(ARTWORK_SAMPLE_MS)
+            .stateIn(
+                lifecycleScope,
+                SharingStarted.WhileSubscribed(),
+                artworkRepository.revision.value,
+            )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,8 +73,8 @@ class MainActivity : ComponentActivity() {
         // Once per process; no-op without a TMDB key, folders or internet.
         scanCoordinator.autoScanOnLaunch()
         setContent {
-            val artworkRevision by artworkRepository.revision.collectAsStateWithLifecycle()
-            LionLibraryTheme(artworkRevision = artworkRevision) {
+            val revision by artworkRevision.collectAsStateWithLifecycle()
+            LionLibraryTheme(artworkRevision = revision) {
                 val windowSizeClass = calculateWindowSizeClass(this)
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()

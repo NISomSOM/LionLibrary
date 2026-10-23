@@ -40,6 +40,37 @@ class LibraryReconciler(
         return removed
     }
 
+    /**
+     * Folds unidentified rows that duplicate an existing episode file back into that episode,
+     * merging history with [mergeDuplicateProgress] and keeping watchlist membership. Touches no
+     * storage. Repeatable: once a duplicate is removed there is nothing left to merge.
+     */
+    suspend fun mergeEpisodeDuplicates(): Int = database.withTransaction {
+        val media = database.mediaDao()
+        val episodes = database.episodeDao()
+        val history = database.watchProgressDao()
+        var merged = 0
+        for (duplicate in media.getUnidentifiedEpisodeDuplicates()) {
+            val path = duplicate.filePath ?: continue
+            val episode = episodes.getByFilePath(path) ?: continue
+            history.getProgress(duplicate.id, 0L)?.let { progress ->
+                history.upsert(
+                    mergeDuplicateProgress(
+                        history.getProgress(episode.showId, episode.id),
+                        progress,
+                        episode.showId,
+                        episode.id,
+                    )
+                )
+            }
+            if (duplicate.isWatchlisted) media.addToWatchlist(episode.showId)
+            history.deleteProgressForMedia(duplicate.id)
+            media.deleteById(duplicate.id)
+            merged++
+        }
+        merged
+    }
+
     private suspend fun reconcileTree(
         root: String,
         tree: StorageTree,

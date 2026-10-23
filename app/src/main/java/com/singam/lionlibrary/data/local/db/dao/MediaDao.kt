@@ -49,6 +49,20 @@ interface MediaDao {
 
     @Query("DELETE FROM media WHERE id = :id") suspend fun deleteById(id: Long)
 
+    /** Unidentified rows whose file is also an episode row: duplicates from older scans. */
+    @Query(
+        "SELECT * FROM media WHERE isUnidentified = 1 AND filePath IN (SELECT filePath FROM episodes)"
+    )
+    suspend fun getUnidentifiedEpisodeDuplicates(): List<MediaEntity>
+
+    @Query("UPDATE media SET isWatchlisted = 1 WHERE id = :id") suspend fun addToWatchlist(id: Long)
+
+    /** Attaches a sidecar found after the first scan; never replaces an existing one. */
+    @Query(
+        "UPDATE media SET externalSubtitlePath = :subtitle WHERE filePath = :path AND externalSubtitlePath IS NULL"
+    )
+    suspend fun fillMissingSubtitle(path: String, subtitle: String)
+
     @Query("SELECT * FROM media WHERE sourceShowTitle = :title AND isUnidentified = 1")
     suspend fun getUnidentifiedShow(title: String): List<MediaEntity>
 

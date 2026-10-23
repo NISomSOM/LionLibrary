@@ -11,6 +11,7 @@ import com.singam.lionlibrary.domain.model.Episode
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.Season
+import com.singam.lionlibrary.domain.model.WatchProgressPolicy
 import com.singam.lionlibrary.domain.model.isSingleFile
 import com.singam.lionlibrary.domain.repository.LetterboxdRepository
 import com.singam.lionlibrary.domain.usecase.GetMediaDetailsUseCase
@@ -185,27 +186,7 @@ class DetailsViewModel(
                                 getMediaDetailsUseCase.getAllEpisodesForShow(mediaId),
                                 getMediaDetailsUseCase.getProgress(mediaId),
                             ) { allEpisodes, progressList ->
-                                val completedEpisodeIds =
-                                    progressList
-                                        .filter { it.completed }
-                                        .map { it.episodeId }
-                                        .toSet()
-                                // Resume prefers regular seasons; specials only for specials-only
-                                // shows.
-                                val pool =
-                                    allEpisodes
-                                        .filter { it.seasonNumber > 0 }
-                                        .ifEmpty { allEpisodes }
-                                progressList
-                                    .filter {
-                                        !it.completed &&
-                                            it.lastPositionMs > 0 &&
-                                            pool.any { ep -> ep.id == it.episodeId }
-                                    }
-                                    .maxByOrNull { it.lastWatched }
-                                    ?.let { progress -> pool.find { it.id == progress.episodeId } }
-                                    ?: pool.firstOrNull { it.id !in completedEpisodeIds }
-                                    ?: pool.firstOrNull()
+                                WatchProgressPolicy.resumeEpisode(allEpisodes, progressList)
                             }
                             .collect { nextEp ->
                                 _state.update { it.copy(nextEpisodeToWatch = nextEp) }

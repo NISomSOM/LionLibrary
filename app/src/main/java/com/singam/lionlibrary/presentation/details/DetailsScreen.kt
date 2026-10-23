@@ -89,6 +89,7 @@ import com.singam.lionlibrary.presentation.components.EpisodeCard
 import com.singam.lionlibrary.presentation.components.LocalArtwork
 import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionMotion
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -102,24 +103,26 @@ fun DetailsRoot(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val resources = androidx.compose.ui.platform.LocalResources.current
+    val snackbarScope = androidx.compose.runtime.rememberCoroutineScope()
+    // Snackbars run in their own coroutine so a visible message never delays navigation.
+    fun showSnackbar(message: String) {
+        snackbarScope.launch { snackbarHostState.showSnackbar(message) }
+    }
 
     LaunchedEffect(viewModel.events) {
         viewModel.events.collect { event ->
             when (event) {
                 DetailsEvent.NavigateBack -> onBack()
-                is DetailsEvent.ShowMessage ->
-                    snackbarHostState.showSnackbar(event.message.resolve(context))
+                is DetailsEvent.ShowMessage -> showSnackbar(event.message.resolve(context))
                 is DetailsEvent.NavigateToPlayer -> {
                     onNavigateToPlayer(event.mediaType, event.mediaId)
                 }
-                is DetailsEvent.ShowError -> {
-                    snackbarHostState.showSnackbar(event.message.resolve(context))
-                }
+                is DetailsEvent.ShowError -> showSnackbar(event.message.resolve(context))
                 is DetailsEvent.LaunchPlayer -> {
                     try {
                         context.startActivity(event.intent)
                     } catch (e: Exception) {
-                        snackbarHostState.showSnackbar(
+                        showSnackbar(
                             resources.getString(
                                 com.singam.lionlibrary.R.string.external_launch_error
                             )
@@ -135,7 +138,7 @@ fun DetailsRoot(
                             )
                         )
                     } catch (e: android.content.ActivityNotFoundException) {
-                        snackbarHostState.showSnackbar(
+                        showSnackbar(
                             resources.getString(com.singam.lionlibrary.R.string.error_not_found)
                         )
                     }

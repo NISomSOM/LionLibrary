@@ -50,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +88,7 @@ import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionMotion
 import kotlin.math.abs
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
 @androidx.compose.foundation.ExperimentalFoundationApi
@@ -105,20 +107,28 @@ fun HomeRoot(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
+    val snackbarScope = rememberCoroutineScope()
+    // Snackbars run in their own coroutine so a visible message never delays navigation.
+    fun showSnackbar(message: String) {
+        snackbarScope.launch { snackbarHostState.showSnackbar(message) }
+    }
 
     LaunchedEffect(viewModel.events) {
         viewModel.events.collect { event ->
             when (event) {
                 is HomeEvent.NavigateToPlayer -> onNavigateToPlayer(event.mediaType, event.mediaId)
-                is HomeEvent.ShowMessage ->
-                    snackbarHostState.showSnackbar(event.message.resolve(context))
-                is HomeEvent.ShowError ->
-                    snackbarHostState.showSnackbar(event.message.resolve(context))
+                is HomeEvent.ShowMessage -> showSnackbar(event.message.resolve(context))
+                is HomeEvent.ShowError -> showSnackbar(event.message.resolve(context))
                 is HomeEvent.LaunchPlayer -> {
                     try {
                         context.startActivity(event.intent)
                     } catch (e: Exception) {
-                        snackbarHostState.showSnackbar("Failed to launch player")
+                        showSnackbar(
+                            resources.getString(
+                                com.singam.lionlibrary.R.string.external_launch_error
+                            )
+                        )
                     }
                 }
             }
@@ -236,7 +246,7 @@ fun HomeScreen(
     ) {
         val heroItems = state.carouselItems
         if (heroItems.isNotEmpty()) {
-            item {
+            item(key = "hero", contentType = "hero") {
                 HeroBannerCarousel(
                     mediaItems = heroItems,
                     verticalScrollOffset = {
@@ -249,11 +259,13 @@ fun HomeScreen(
                 )
             }
         } else {
-            item { Spacer(modifier = Modifier.height(32.dp)) }
+            item(key = "top-spacer", contentType = "spacer") {
+                Spacer(modifier = Modifier.height(32.dp))
+            }
         }
 
         if (state.jumpBackInItems.isNotEmpty()) {
-            item {
+            item(key = "jump-back-in", contentType = "jump-back-in") {
                 JumpBackInRow(
                     title =
                         androidx.compose.ui.res.stringResource(
@@ -267,7 +279,7 @@ fun HomeScreen(
         }
 
         if (state.movies.isNotEmpty()) {
-            item {
+            item(key = "movies", contentType = "shelf") {
                 MediaRow(
                     title =
                         androidx.compose.ui.res.stringResource(
@@ -284,7 +296,7 @@ fun HomeScreen(
         }
 
         if (state.tvShows.isNotEmpty()) {
-            item {
+            item(key = "tv-shows", contentType = "shelf") {
                 MediaRow(
                     title =
                         androidx.compose.ui.res.stringResource(
@@ -301,7 +313,7 @@ fun HomeScreen(
         }
 
         if (state.anime.isNotEmpty()) {
-            item {
+            item(key = "anime", contentType = "shelf") {
                 MediaRow(
                     title =
                         androidx.compose.ui.res.stringResource(
@@ -318,7 +330,7 @@ fun HomeScreen(
         }
 
         if (state.recentlyAdded.isNotEmpty()) {
-            item {
+            item(key = "recently-added", contentType = "shelf") {
                 MediaRow(
                     title =
                         androidx.compose.ui.res.stringResource(
@@ -333,7 +345,7 @@ fun HomeScreen(
 
         state.genresContent.forEach { (genre, items) ->
             if (items.isNotEmpty()) {
-                item {
+                item(key = "genre:$genre", contentType = "shelf") {
                     MediaRow(
                         title = genre,
                         items = items,

@@ -97,6 +97,17 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
         onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
+    // The brightness gesture overrides the window; give the rest of the app its own back.
+    DisposableEffect(activity) {
+        val window = activity?.window
+        val original = window?.attributes?.screenBrightness
+        onDispose {
+            if (window != null && original != null) {
+                window.attributes = window.attributes.apply { screenBrightness = original }
+            }
+        }
+    }
+
     // Pause on background.
     DisposableEffect(lifecycleOwner, viewModel) {
         val noisy =

@@ -21,6 +21,12 @@ interface EpisodeDao {
     )
     suspend fun updateRange(path: String, end: Int)
 
+    /** Attaches a sidecar found after the first scan; never replaces an existing one. */
+    @Query(
+        "UPDATE episodes SET externalSubtitlePath = :subtitle WHERE filePath = :path AND externalSubtitlePath IS NULL"
+    )
+    suspend fun fillMissingSubtitle(path: String, subtitle: String)
+
     @Query("SELECT * FROM episodes") suspend fun getAll(): List<EpisodeEntity>
 
     @Query(

@@ -1,5 +1,6 @@
 package com.singam.lionlibrary.di
 
+import com.singam.lionlibrary.data.remote.TmdbRateLimitInterceptor
 import com.singam.lionlibrary.data.remote.api.TmdbApiService
 import com.singam.lionlibrary.util.Constants
 import java.util.concurrent.TimeUnit
@@ -7,11 +8,15 @@ import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 
 val networkModule = module {
+    single { com.singam.lionlibrary.data.remote.TmdbRateLimiter() }
+    singleOf(::TmdbRateLimitInterceptor)
+
     single {
         val logging = HttpLoggingInterceptor { message ->
             // Hide API key in logs.
@@ -27,6 +32,7 @@ val networkModule = module {
                     }
             }
         OkHttpClient.Builder()
+            .addInterceptor(get<com.singam.lionlibrary.data.remote.TmdbRateLimitInterceptor>())
             .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

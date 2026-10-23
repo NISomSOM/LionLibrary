@@ -5,13 +5,9 @@ import com.singam.lionlibrary.domain.model.MediaType
 // Match audio/subtitle labels.
 object TrackLanguageMatcher {
 
-    private val ENGLISH_TOKENS = setOf(
-        "english", "eng", "en"
-    )
+    private val ENGLISH_TOKENS = setOf("english", "eng", "en")
 
-    private val JAPANESE_TOKENS = setOf(
-        "japanese", "jpn", "jp", "ja"
-    )
+    private val JAPANESE_TOKENS = setOf("japanese", "jpn", "jp", "ja")
 
     // Match Japanese characters.
     private val CJK_JAPANESE_REGEX = Regex("[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FFF]")
@@ -29,24 +25,20 @@ object TrackLanguageMatcher {
     }
 
     // Best audio track.
-    fun findBestAudioTrack(
-        tracks: List<EngineTrackInfo>,
-        mediaType: MediaType
-    ): EngineTrackInfo? {
+    fun findBestAudioTrack(tracks: List<EngineTrackInfo>, mediaType: MediaType): EngineTrackInfo? {
         if (tracks.isEmpty()) return null
 
-        val preferred: (String) -> Boolean = when (mediaType) {
-            MediaType.ANIME -> ::isJapanese
-            else -> ::isEnglish
-        }
+        val preferred: (String) -> Boolean =
+            when (mediaType) {
+                MediaType.ANIME -> ::isJapanese
+                else -> ::isEnglish
+            }
 
         return tracks.firstOrNull { preferred(it.label) } ?: tracks.first()
     }
 
     // Best subtitle track.
-    fun findBestSubtitleTrack(
-        tracks: List<EngineTrackInfo>
-    ): EngineTrackInfo? {
+    fun findBestSubtitleTrack(tracks: List<EngineTrackInfo>): EngineTrackInfo? {
         if (tracks.isEmpty()) return null
         return tracks.firstOrNull { isEnglish(it.label) && !isSignsOnly(it.label) }
             ?: tracks.firstOrNull { isEnglish(it.label) }

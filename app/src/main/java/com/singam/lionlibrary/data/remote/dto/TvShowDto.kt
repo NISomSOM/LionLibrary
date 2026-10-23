@@ -13,6 +13,5 @@ data class TvShowDto(
     @SerialName("backdrop_path") val backdropPath: String? = null,
     @SerialName("vote_average") val voteAverage: Float? = null,
     @SerialName("first_air_date") val firstAirDate: String? = null,
-    @SerialName("genre_ids") val genreIds: List<Int>? = null
+    @SerialName("genre_ids") val genreIds: List<Int>? = null,
 )
-

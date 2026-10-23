@@ -3,9 +3,7 @@ package com.singam.lionlibrary.util
 object Constants {
 
     // Video extensions.
-    val SUPPORTED_VIDEO_EXTENSIONS = setOf(
-        "mkv", "mp4", "avi", "mov", "m4v", "webm"
-    )
+    val SUPPORTED_VIDEO_EXTENSIONS = setOf("mkv", "mp4", "avi", "mov", "m4v", "webm")
 
     // Subtitle extensions.
     val SUBTITLE_EXTENSIONS = setOf("srt", "vtt", "ass")

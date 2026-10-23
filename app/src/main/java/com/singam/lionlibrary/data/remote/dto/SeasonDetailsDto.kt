@@ -10,6 +10,5 @@ data class SeasonDetailsDto(
     @SerialName("name") val name: String? = null,
     @SerialName("overview") val overview: String? = null,
     @SerialName("poster_path") val posterPath: String? = null,
-    @SerialName("episodes") val episodes: List<EpisodeDto>? = null
+    @SerialName("episodes") val episodes: List<EpisodeDto>? = null,
 )
-

@@ -1,614 +1,486 @@
 package com.singam.lionlibrary.presentation.settings
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.VideoSettings
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.singam.lionlibrary.ui.theme.DarkSurfaceVariant
-import com.singam.lionlibrary.ui.theme.OrangeAccent
-import com.singam.lionlibrary.ui.theme.SuccessGreen
-import com.singam.lionlibrary.ui.theme.TextTertiary
-import com.singam.lionlibrary.util.FolderPickerHelper
 import com.singam.lionlibrary.R
+import com.singam.lionlibrary.domain.model.DataError
+import com.singam.lionlibrary.presentation.components.PageHeading
+import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import org.koin.androidx.compose.koinViewModel
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-
-
-import androidx.compose.material3.windowsizeclass.WindowSizeClass
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
-import androidx.compose.foundation.layout.widthIn
 
 @Composable
 fun SettingsRoot(
     snackbarHostState: SnackbarHostState,
     windowSizeClass: WindowSizeClass,
-    viewModel: SettingsViewModel = koinViewModel()
+    viewModel: SettingsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-
-    LaunchedEffect(Unit) {
-        viewModel.events.collect { event ->
-            when (event) {
-                is SettingsEvent.ShowSnackbar -> {
-                    snackbarHostState.showSnackbar(event.message)
+    val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
+    var notices by remember { mutableStateOf<List<LicenseNotice>>(emptyList()) }
+    LaunchedEffect(context, resources) {
+        notices =
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                listOf(
+                        R.string.license_notices to "THIRD_PARTY_NOTICES.md",
+                        R.string.license_apache to "licenses/Apache-2.0.txt",
+                        R.string.license_vlc to "licenses/LGPL-2.1.txt",
+                        R.string.license_font to "licenses/Inter-OFL.txt",
+                    )
+                    .map { (title, path) ->
+                        LicenseNotice(
+                            resources.getString(title),
+                            context.assets.open(path).bufferedReader().use { it.readText() },
+                        )
+                    }
+            }
+    }
+    val movies =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            uri?.let {
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        it,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    )
+                    viewModel.onAction(SettingsAction.OnMoviesFolderSelected(it.toString()))
+                } catch (_: SecurityException) {
+                    viewModel.onAction(SettingsAction.PlatformFailure(DataError.PERMISSION))
                 }
             }
         }
+    val shows =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            uri?.let {
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        it,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    )
+                    viewModel.onAction(SettingsAction.OnShowsFolderSelected(it.toString()))
+                } catch (_: SecurityException) {
+                    viewModel.onAction(SettingsAction.PlatformFailure(DataError.PERMISSION))
+                }
+            }
+        }
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is SettingsEvent.ShowSnackbar ->
+                    snackbarHostState.showSnackbar(event.message.resolve(context))
+            }
+        }
     }
-
     SettingsScreen(
         state = state,
-        windowSizeClass = windowSizeClass,
-        onAction = viewModel::onAction
+        onAction = viewModel::onAction,
+        onMovies = { movies.launch(null) },
+        onShows = { shows.launch(null) },
+        notices = notices,
     )
 }
 
+data class LicenseNotice(val title: String, val text: String)
 
 @Composable
 fun SettingsScreen(
     state: SettingsState,
-    windowSizeClass: WindowSizeClass,
-    onAction: (SettingsAction) -> Unit
+    onAction: (SettingsAction) -> Unit,
+    onMovies: () -> Unit,
+    onShows: () -> Unit,
+    modifier: Modifier = Modifier,
+    notices: List<LicenseNotice> = emptyList(),
 ) {
-    val context = LocalContext.current
-    var infoDialogTitle by remember { mutableStateOf<String?>(null) }
-    var infoDialogText by remember { mutableStateOf<String?>(null) }
-
-    val isExpandedScreen = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
-
+    var selectedNotice by remember { mutableStateOf<LicenseNotice?>(null) }
+    var revealKey by remember { mutableStateOf(false) }
+    var showCredits by remember { mutableStateOf(false) }
     Column(
-        modifier = Modifier
+        modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+            )
+            .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(top = 32.dp, bottom = 16.dp, start = 16.dp, end=16.dp),
-        horizontalAlignment = if (isExpandedScreen) Alignment.CenterHorizontally else Alignment.Start
+            .padding(horizontal = 16.dp)
+            .padding(bottom = LocalFloatingNavigationInset.current + 24.dp),
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column(
-            modifier = if (isExpandedScreen) Modifier.widthIn(max = 800.dp) else Modifier.fillMaxWidth()
+            Modifier.widthIn(max = 640.dp).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-
-        ApiKeySection(
-            apiKeyInput = state.apiKeyInput,
-            isApiKeySaved = state.isApiKeySaved,
-            onApiKeyChange = { onAction(SettingsAction.OnApiKeyInputChange(it)) },
-            onSave = { onAction(SettingsAction.OnSaveApiKey) },
-            onInfoClick = {
-                infoDialogTitle = "TMDB API Key"
-                infoDialogText = "You will need to bring your API Key for this app to work. Getting a key is easy, go to https://www.themoviedb.org/settings/api and create an account and paste in the API key you get from there"
-            }
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
-        SectionDivider()
-        Spacer(modifier = Modifier.height(20.dp))
-
-        SectionHeader(
-            title = "Library Folders", 
-            icon = Icons.Filled.Folder,
-            onInfoClick = {
-                infoDialogTitle = "Library Folders"
-                infoDialogText = "Store your media in 2 different folders for Movies and TV shows/Anime. The media's name, and season-episode number must be present in the file names."
-            }
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        FolderPickerRow(
-            label = "Movies",
-            currentUri = state.moviesFolderUri,
-            onFolderSelected = { uri ->
-                FolderPickerHelper.takePersistablePermission(context.contentResolver, uri)
-                onAction(SettingsAction.OnMoviesFolderSelected(uri.toString()))
-            }
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        FolderPickerRow(
-            label = "TV Shows & Anime",
-            currentUri = state.showsFolderUri,
-            onFolderSelected = { uri ->
-                FolderPickerHelper.takePersistablePermission(context.contentResolver, uri)
-                onAction(SettingsAction.OnShowsFolderSelected(uri.toString()))
-            }
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
-        SectionDivider()
-        Spacer(modifier = Modifier.height(20.dp))
-
-
-
-        SectionHeader(
-            title = "Scan", 
-            icon = Icons.Filled.Refresh,
-            onInfoClick = {
-                infoDialogTitle = "Scan"
-                infoDialogText = "First scan might take a long time if you have a lot of files. If it doesn't detect everything run it again once."
-            }
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        ScanSection(
-            isScanning = state.isScanning,
-            scanProgress = state.scanProgress,
-            lastScanTime = state.lastScanTime,
-            onScan = { onAction(SettingsAction.OnScanLibrary) }
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
-        SectionDivider()
-        Spacer(modifier = Modifier.height(20.dp))
-
-        SectionHeader(
-            title = "Playback",
-            icon = Icons.Filled.VideoSettings,
-            onInfoClick = {
-                infoDialogTitle = "Playback Engine"
-                infoDialogText = "By default, the app automatically selects the best player engine for each file based on codec support. Enable this toggle to always use libVLC, which supports more codecs but may use more battery."
-            }
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(DarkSurfaceVariant)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Always use libVLC",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
+            PageHeading(stringResource(R.string.settings))
+            SettingsSection(stringResource(R.string.api_key)) {
+                OutlinedTextField(
+                    value = state.apiKeyInput,
+                    onValueChange = { onAction(SettingsAction.OnApiKeyInputChange(it)) },
+                    singleLine = true,
+                    visualTransformation =
+                        if (revealKey) VisualTransformation.None
+                        else PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.keyChecking,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    trailingIcon = {
+                        IconButton(onClick = { revealKey = !revealKey }) {
+                            Icon(
+                                if (revealKey)
+                                    androidx.compose.material.icons.Icons.Default.VisibilityOff
+                                else androidx.compose.material.icons.Icons.Default.Visibility,
+                                stringResource(
+                                    if (revealKey) R.string.hide_key else R.string.show_key
+                                ),
+                            )
+                        }
+                    },
                 )
-                Text(
-                    text = "Bypass automatic engine selection",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextTertiary
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    if (state.isApiKeySaved)
+                        Text(
+                            stringResource(
+                                if (state.keyVerified) R.string.key_verified
+                                else R.string.key_unverified
+                            ),
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    Button(
+                        onClick = { onAction(SettingsAction.OnSaveApiKey) },
+                        enabled = !state.keyChecking && state.apiKeyInput.isNotBlank(),
+                    ) {
+                        Text(stringResource(R.string.save_key))
+                    }
+                }
+                if (state.keyChecking) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            SettingsSection(stringResource(R.string.library_folders)) {
+                FolderSetting(
+                    stringResource(R.string.movies_folder),
+                    state.moviesFolderUri,
+                    onMovies,
+                )
+                FolderSetting(stringResource(R.string.shows_folder), state.showsFolderUri, onShows)
+            }
+            SettingsSection(stringResource(R.string.playback)) {
+                PlaybackSetting(
+                    stringResource(R.string.force_vlc),
+                    state.forceLibVlc,
+                    { onAction(SettingsAction.OnForceLibVlcToggle(it)) },
+                    enabled = !state.forceExternalPlayer,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                PlaybackSetting(
+                    stringResource(R.string.force_external),
+                    state.forceExternalPlayer,
+                    { onAction(SettingsAction.OnForceExternalPlayerToggle(it)) },
                 )
             }
-            Switch(
-                checked = state.forceLibVlc,
-                onCheckedChange = { onAction(SettingsAction.OnForceLibVlcToggle(it)) }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-        SectionDivider()
-        Spacer(modifier = Modifier.height(20.dp))
-
-        SectionHeader(
-            title = "Data", 
-            icon = Icons.Filled.DeleteForever,
-            onInfoClick = {
-                infoDialogTitle = "Data"
-                infoDialogText = "If you want to clear app data/cache, please do it via android settings"
+            SettingsSection(stringResource(R.string.scan_library)) {
+                if (state.isScanning) {
+                    val progress = state.scanProgress
+                    if (
+                        progress != null &&
+                            progress.total > 0 &&
+                            progress.processed < progress.total
+                    ) {
+                        LinearProgressIndicator(
+                            progress = { progress.processed.toFloat() / progress.total },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            progress.currentFile,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    } else {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text(
+                            stringResource(R.string.recovering_artwork),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    OutlinedButton(onClick = { onAction(SettingsAction.OnCancelScan) }) {
+                        Text(stringResource(R.string.cancel_scan))
+                    }
+                } else {
+                    Button(
+                        onClick = { onAction(SettingsAction.OnScanLibrary) },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled =
+                            state.apiKey.isNotBlank() &&
+                                (state.moviesFolderUri.isNotBlank() ||
+                                    state.showsFolderUri.isNotBlank()),
+                    ) {
+                        Text(stringResource(R.string.scan_library))
+                    }
+                }
+                if (state.lastScanTime > 0)
+                    Text(
+                        stringResource(
+                            R.string.last_scan,
+                            java.text.DateFormat.getDateTimeInstance()
+                                .format(java.util.Date(state.lastScanTime)),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
             }
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = { onAction(SettingsAction.OnClearHistoryClick) },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.error
-            )
-        ) {
-            Text("Clear Watch History")
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Text(
-            text = "LionLibrary V2.0",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextTertiary,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "This product uses the TMDB API but is not endorsed or certified by TMDB.",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextTertiary,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
+            OutlinedButton(
+                onClick = { onAction(SettingsAction.OnClearHistoryClick) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.clear_history))
+            }
+            TextButton(onClick = { showCredits = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.about))
+            }
         }
     }
-
-    if (state.showClearHistoryDialog) {
+    if (state.showClearHistoryDialog)
         AlertDialog(
             onDismissRequest = { onAction(SettingsAction.OnDismissClearHistoryDialog) },
-            title = { Text("Clear Watch History") },
-            text = { Text("Clear all your watching progress? This includes all your episode progress, not just continue watching ones") },
+            title = { Text(stringResource(R.string.clear_history)) },
+            text = { Text(stringResource(R.string.clear_history_help)) },
             confirmButton = {
-                TextButton(
-                    onClick = { onAction(SettingsAction.OnConfirmClearHistory) },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text("Clear")
+                TextButton(onClick = { onAction(SettingsAction.OnConfirmClearHistory) }) {
+                    Text(stringResource(R.string.clear_history))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { onAction(SettingsAction.OnDismissClearHistoryDialog) }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
-            }
-        )
-    }
-
-    if (infoDialogTitle != null && infoDialogText != null) {
-        AlertDialog(
-            onDismissRequest = { 
-                infoDialogTitle = null
-                infoDialogText = null 
             },
-            title = { Text(infoDialogTitle!!) },
-            text = { Text(infoDialogText!!) },
+        )
+    if (showCredits)
+        AlertDialog(
+            onDismissRequest = { showCredits = false },
+            title = { Text(stringResource(R.string.about)) },
+            text = {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(stringResource(R.string.privacy_summary))
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(R.drawable.tmdb_logo),
+                        contentDescription = stringResource(R.string.tmdb_logo_description),
+                        modifier = Modifier.width(180.dp).height(24.dp),
+                    )
+                    Text(stringResource(R.string.tmdb_attribution))
+                    Text(stringResource(R.string.third_party_credits))
+                    notices.forEach { notice ->
+                        TextButton(
+                            onClick = {
+                                selectedNotice = notice
+                                showCredits = false
+                            }
+                        ) {
+                            Text(notice.title)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCredits = false }) {
+                    Text(stringResource(R.string.close))
+                }
+            },
+        )
+    selectedNotice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = { selectedNotice = null },
+            title = { Text(notice.title) },
+            text = {
+                Text(
+                    notice.text,
+                    modifier =
+                        Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
             confirmButton = {
                 TextButton(
-                    onClick = { 
-                        infoDialogTitle = null
-                        infoDialogText = null 
+                    onClick = {
+                        selectedNotice = null
+                        showCredits = true
                     }
                 ) {
-                    Text("Close")
+                    Text(stringResource(R.string.close))
                 }
-            }
+            },
         )
     }
 }
 
-
 @Composable
-private fun ApiKeySection(
-    apiKeyInput: String,
-    isApiKeySaved: Boolean,
-    onApiKeyChange: (String) -> Unit,
-    onSave: () -> Unit,
-    onInfoClick: () -> Unit
+private fun SettingsSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
-    var passwordVisible by remember { mutableStateOf(false) }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        SectionHeader(
-            title = "TMDB API Key", 
-            icon = Icons.Filled.Key,
-            onInfoClick = onInfoClick
-        )
-        Image(
-            painter = painterResource(id = R.drawable.tmdb_logo),
-            contentDescription = "TMDB Logo",
-            modifier = Modifier.height(16.dp)
-        )
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-
-    OutlinedTextField(
-        value = apiKeyInput,
-        onValueChange = onApiKeyChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text("API Key") },
-        placeholder = { Text("Enter your TMDB API key") },
-        singleLine = true,
-        visualTransformation = if (passwordVisible) {
-            VisualTransformation.None
-        } else {
-            PasswordVisualTransformation()
-        },
-        trailingIcon = {
-            Row {
-                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(
-                        imageVector = if (passwordVisible) Icons.Filled.VisibilityOff
-                        else Icons.Filled.Visibility,
-                        contentDescription = if (passwordVisible) "Hide API key" else "Show API key"
-                    )
-                }
-            }
-        },
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = OrangeAccent,
-            cursorColor = OrangeAccent,
-            focusedLabelColor = OrangeAccent
-        )
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AnimatedVisibility(
-            visible = isApiKeySaved,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = null,
-                    tint = SuccessGreen,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "Saved",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SuccessGreen
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Button(
-            onClick = onSave,
-            enabled = apiKeyInput.isNotBlank(),
-            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
-        ) {
-            Text("Save Key")
-        }
-    }
-}
-
-@Composable
-private fun FolderPickerRow(
-    label: String,
-    currentUri: String,
-    onFolderSelected: (Uri) -> Unit
-) {
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        uri?.let { onFolderSelected(it) }
-    }
-
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant)
+        modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        border = BorderStroke(.5.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = .8.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            content()
+        }
+    }
+}
+
+@Composable
+private fun FolderSetting(
+    title: String,
+    uri: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            Modifier.heightIn(min = 64.dp).padding(vertical = 10.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Surface(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Box(Modifier.size(36.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                    Icon(
+                        androidx.compose.material.icons.Icons.Outlined.Folder,
+                        null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(
-                    text = label,
+                    if (uri.isBlank()) stringResource(R.string.choose_folder)
+                    else Uri.decode(uri.substringAfterLast('/')).substringAfter(':'),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                if (currentUri.isNotBlank()) {
-                    Text(
-                        text = FolderPickerHelper.getDisplayPath(Uri.parse(currentUri)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextTertiary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                } else {
-                    Text(
-                        text = "Not configured",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextTertiary
-                    )
-                }
-            }
-            OutlinedButton(
-                onClick = { launcher.launch(null) },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
-            ) {
-                Text(if (currentUri.isBlank()) "Select" else "Change")
-            }
-        }
-    }
-}
-
-
-
-@Composable
-private fun ScanSection(
-    isScanning: Boolean,
-    scanProgress: com.singam.lionlibrary.domain.model.ScanProgress?,
-    lastScanTime: Long,
-    onScan: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Button(
-                onClick = onScan,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isScanning,
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
-            ) {
-                if (isScanning) {
-                    Text("Scanning...")
-                } else {
-                    Text("Scan Library")
-                }
-            }
-
-            if (isScanning && scanProgress != null) {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val progress = if (scanProgress.total > 0) {
-                    scanProgress.processed.toFloat() / scanProgress.total
-                } else 0f
-
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                    color = OrangeAccent,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "${scanProgress.processed} / ${scanProgress.total} files",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextTertiary
-                )
-
-                if (scanProgress.currentFile.isNotBlank()) {
-                    Text(
-                        text = scanProgress.currentFile,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextTertiary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            if (lastScanTime > 0L) {
-                Spacer(modifier = Modifier.height(8.dp))
-                val dateFormat = remember {
-                    SimpleDateFormat("MMM dd, yyyy 'at' hh:mm a", Locale.getDefault())
-                }
-                Text(
-                    text = "Last scan: ${dateFormat.format(Date(lastScanTime))}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextTertiary
+                    maxLines = 1,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
+            Icon(
+                androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
 
 @Composable
-private fun SectionHeader(
+private fun PlaybackSetting(
     title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onInfoClick: (() -> Unit)? = null
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = OrangeAccent,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 56.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onBackground
+            title,
+            Modifier.weight(1f),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else .45f),
         )
-        if (onInfoClick != null) {
-            Spacer(modifier = Modifier.width(8.dp))
-            IconButton(
-                onClick = onInfoClick,
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Info,
-                    contentDescription = "Information about $title",
-                    tint = TextTertiary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
+        Switch(
+            checked,
+            onCheckedChange,
+            enabled = enabled,
+            modifier = Modifier.semantics { contentDescription = title },
+        )
     }
 }
 
+@Preview(name = "Settings")
+@Preview(name = "Large text", fontScale = 2f)
 @Composable
-private fun SectionDivider() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(DarkSurfaceVariant)
-    )
+private fun SettingsPreview() {
+    LionLibraryTheme { SettingsScreen(SettingsState(), {}, {}, {}) }
+}
+
+@Preview(name = "Scanning", widthDp = 840)
+@Composable
+private fun ScanPreview() {
+    LionLibraryTheme { SettingsScreen(SettingsState(isScanning = true), {}, {}, {}) }
+}
+
+@Preview(name = "Confirmation")
+@Composable
+private fun ConfirmPreview() {
+    LionLibraryTheme { SettingsScreen(SettingsState(showClearHistoryDialog = true), {}, {}, {}) }
+}
+
+@Preview(name = "Folder selected and playback overrides", fontScale = 2f)
+@Composable
+private fun SettingsRowsPreview() {
+
+    LionLibraryTheme {
+        Column(Modifier.padding(16.dp)) {
+            FolderSetting("Movies folder", "content://fixture/Movies", {})
+
+            PlaybackSetting("Force libVLC", true, {})
+
+            PlaybackSetting("Force libVLC", false, {}, enabled = false)
+
+            PlaybackSetting("Force external player", false, {})
+        }
+    }
 }

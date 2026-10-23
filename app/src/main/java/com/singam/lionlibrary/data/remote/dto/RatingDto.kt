@@ -11,13 +11,11 @@ data class MovieReleaseDatesResponseDto(
 @Serializable
 data class MovieReleaseDateResultDto(
     @SerialName("iso_3166_1") val iso31661: String,
-    @SerialName("release_dates") val releaseDates: List<MovieReleaseDateDto> = emptyList()
+    @SerialName("release_dates") val releaseDates: List<MovieReleaseDateDto> = emptyList(),
 )
 
 @Serializable
-data class MovieReleaseDateDto(
-    @SerialName("certification") val certification: String? = null
-)
+data class MovieReleaseDateDto(@SerialName("certification") val certification: String? = null)
 
 @Serializable
 data class TvContentRatingsResponseDto(
@@ -27,5 +25,5 @@ data class TvContentRatingsResponseDto(
 @Serializable
 data class TvContentRatingResultDto(
     @SerialName("iso_3166_1") val iso31661: String,
-    @SerialName("rating") val rating: String? = null
+    @SerialName("rating") val rating: String? = null,
 )

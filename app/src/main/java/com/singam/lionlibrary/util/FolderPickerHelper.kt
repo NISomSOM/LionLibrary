@@ -18,10 +18,7 @@ object FolderPickerHelper {
 
     // Persist permission.
     fun takePersistablePermission(contentResolver: ContentResolver, uri: Uri) {
-        contentResolver.takePersistableUriPermission(
-            uri,
-            Intent.FLAG_GRANT_READ_URI_PERMISSION
-        )
+        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
 
     // Get display path.

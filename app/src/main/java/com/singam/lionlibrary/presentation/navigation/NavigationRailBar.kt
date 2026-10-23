@@ -1,63 +1,42 @@
 package com.singam.lionlibrary.presentation.navigation
 
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.NavigationRailItemDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.singam.lionlibrary.ui.theme.DarkSurface
-import com.singam.lionlibrary.ui.theme.OrangeAccent
-import com.singam.lionlibrary.ui.theme.TextSecondary
-import com.singam.lionlibrary.ui.theme.TextTertiary
 
 @Composable
 fun NavigationRailBar(navController: NavHostController) {
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
-
+    val entry by navController.currentBackStackEntryAsState()
     NavigationRail(
-        containerColor = DarkSurface,
-        modifier = Modifier.fillMaxHeight()
+        modifier = Modifier.fillMaxHeight(),
+        containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
-        bottomNavItems.forEach { item ->
-            val baseRoute = currentRoute?.substringBefore("?")
-            val itemBaseRoute = item.route.substringBefore("?")
-            val selected = baseRoute == itemBaseRoute
-            
+        Spacer(Modifier.weight(1f))
+        topLevelDestinations.forEach { item ->
             NavigationRailItem(
-                selected = selected,
-                onClick = {
-                    if (currentRoute != item.route) {
-                        navController.navigate(item.route) {
-                            popUpTo(Routes.HOME) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                },
-                icon = {
-                    Icon(
-                        imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
-                        contentDescription = item.label
+                selected = entry?.destination?.hasRoute(item.route::class) == true,
+                onClick = { navController.openTopLevel(item.route) },
+                icon = { Icon(item.icon, contentDescription = null) },
+                label = {
+                    Text(
+                        stringResource(item.label),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 },
-                label = { Text(item.label) },
-                colors = NavigationRailItemDefaults.colors(
-                    selectedIconColor = OrangeAccent,
-                    selectedTextColor = TextSecondary,
-                    unselectedIconColor = TextTertiary,
-                    unselectedTextColor = TextTertiary,
-                    indicatorColor = DarkSurface
-                )
+                colors =
+                    NavigationRailItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                        indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+                    ),
             )
         }
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
+        Spacer(Modifier.weight(1f))
     }
 }

@@ -2,155 +2,179 @@ package com.singam.lionlibrary.presentation.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import androidx.compose.ui.unit.sp
+import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.JumpBackInItem
-import java.io.File
 
 @Composable
 fun JumpBackInCard(
     item: JumpBackInItem,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     onLongClick: () -> Unit = {},
-    modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .width(260.dp)
-            .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(8.dp))
+    val separateCaption = LocalDensity.current.fontScale > 1.4f
+    val moreActions = stringResource(R.string.more_actions)
+    val background = MaterialTheme.colorScheme.background
+    val status = item.resumeCardStatus()
+    Column(
+        modifier
+            .width(247.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onLongClick
+                onLongClick = onLongClick,
+                onLongClickLabel = moreActions,
             )
-    ) {
-        val imagePath = if (item.mediaType == com.singam.lionlibrary.domain.model.MediaType.MOVIE) {
-            item.backdropPath ?: item.posterPath
-        } else {
-            item.thumbnailPath ?: item.backdropPath ?: item.posterPath
-        }
-
-        if (imagePath != null) {
-            AsyncImage(
-                model = File(imagePath),
-                contentDescription = item.mediaTitle,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-            )
-        }
-
-        // Bottom gradient.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.6f),
-                            Color.Black.copy(alpha = 0.9f)
-                        ),
-                        startY = 0f
+            .semantics {
+                customActions =
+                    listOf(
+                        CustomAccessibilityAction(moreActions) {
+                            onLongClick()
+                            true
+                        }
                     )
-                )
-        )
-        
-        if (item.isNextUp) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp)
-                    .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "Next Up",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White
-                )
             }
-        }
-
-        androidx.compose.foundation.layout.Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .padding(8.dp)
-                .padding(bottom = 4.dp)
-        ) {
-            if (item.mediaType != com.singam.lionlibrary.domain.model.MediaType.MOVIE && item.seasonNumber != null && item.episodeNumber != null) {
-                Text(
-                    text = "S${item.seasonNumber} E${item.episodeNumber}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.8f)
-                )
-            }
-            Text(
-                text = item.mediaTitle,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    ) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+            LocalArtwork(
+                listOf(item.thumbnailPath, item.backdropPath, item.posterPath),
+                null,
+                Modifier.fillMaxSize().drawWithCache {
+                    val brush =
+                        Brush.verticalGradient(
+                            colorStops =
+                                arrayOf(
+                                    0f to Color.Transparent,
+                                    .6f to background.copy(alpha = .70f),
+                                    1f to background.copy(alpha = .95f),
+                                ),
+                            startY = size.height * .45f,
+                            endY = size.height,
+                        )
+                    onDrawWithContent {
+                        drawContent()
+                        drawRect(brush)
+                    }
+                },
             )
-            if (item.mediaType != com.singam.lionlibrary.domain.model.MediaType.MOVIE && !item.episodeTitle.isNullOrBlank()) {
-                Text(
-                    text = item.episodeTitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        if (item.progress != null && item.progress > 0f) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            Surface(
+                Modifier.align(Alignment.TopEnd).padding(7.dp),
+                color = MaterialTheme.colorScheme.scrim.copy(alpha = .72f),
+                shape = RoundedCornerShape(6.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(item.progress)
-                        .height(4.dp)
-                        .background(com.singam.lionlibrary.ui.theme.OrangeAccent, RoundedCornerShape(2.dp))
+                Text(
+                    resumeStatusText(status),
+                    Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                    style =
+                        MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
                 )
             }
+            if (!separateCaption)
+                ResumeCaption(item, Modifier.align(Alignment.BottomStart).padding(10.dp))
+            item.progress
+                ?.takeIf { it.isFinite() && it > 0f && !item.isNextUp }
+                ?.let { progress ->
+                    LinearProgressIndicator(
+                        progress = { progress.coerceIn(0f, 1f) },
+                        modifier =
+                            Modifier.align(Alignment.BottomCenter)
+                                .padding(horizontal = 9.dp, vertical = 4.dp)
+                                .fillMaxWidth()
+                                .height(3.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.scrim.copy(alpha = .30f),
+                        gapSize = 0.dp,
+                        drawStopIndicator = {},
+                    )
+                }
         }
+        if (separateCaption) ResumeCaption(item, Modifier.padding(10.dp))
     }
 }
 
+@Composable
+private fun resumeStatusText(status: ResumeCardStatus): String =
+    when (status) {
+        ResumeCardStatus.NextUp -> stringResource(R.string.ui_next_up)
+        is ResumeCardStatus.Watched ->
+            stringResource(R.string.resume_percent_watched, status.percent)
+        is ResumeCardStatus.Remaining ->
+            if (status.minutes >= 60L)
+                stringResource(
+                    R.string.resume_hours_minutes_left,
+                    status.minutes / 60L,
+                    status.minutes % 60L,
+                )
+            else
+                pluralStringResource(
+                    R.plurals.resume_minutes_left,
+                    status.minutes.toInt(),
+                    status.minutes,
+                )
+    }
 
+@Composable
+private fun ResumeCaption(item: JumpBackInItem, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (item.seasonNumber != null && item.episodeNumber != null)
+            Text(
+                stringResource(R.string.episode_number, item.seasonNumber, item.episodeNumber),
+                style =
+                    MaterialTheme.typography.labelMedium.copy(
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        Text(
+            item.mediaTitle,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        item.episodeTitle
+            ?.takeIf { it.isNotBlank() }
+            ?.let { title ->
+                Text(
+                    title,
+                    style =
+                        MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = .72f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+    }
+}

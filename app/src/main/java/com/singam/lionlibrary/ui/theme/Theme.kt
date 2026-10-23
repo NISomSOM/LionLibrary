@@ -10,25 +10,29 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val LionLibraryColorScheme = darkColorScheme(
-    primary = OrangeAccent,
-    onPrimary = Color.White,
-    primaryContainer = DarkOrangeAccent,
-    onPrimaryContainer = Color.White,
-    secondary = DarkSurfaceVariant,
-    onSecondary = TextPrimary,
-    background = DarkBackground,
-    onBackground = TextPrimary,
-    surface = DarkSurface,
-    onSurface = TextSecondary,
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = TextTertiary,
-    error = ErrorRed,
-    onError = Color.White
-)
+private val LionLibraryColorScheme =
+    darkColorScheme(
+        primary = OrangeAccent,
+        onPrimary = DarkBackground,
+        primaryContainer = Color(0xFF36221B),
+        onPrimaryContainer = OrangeAccent,
+        secondary = OrangeAccent,
+        onSecondary = DarkBackground,
+        secondaryContainer = DarkSurfaceVariant,
+        onSecondaryContainer = TextPrimary,
+        background = DarkBackground,
+        onBackground = TextPrimary,
+        surface = DarkSurface,
+        onSurface = TextSecondary,
+        surfaceVariant = DarkSurfaceVariant,
+        onSurfaceVariant = TextTertiary,
+        outline = DarkSurfaceVariant,
+        error = ErrorRed,
+        onError = Color.White,
+    )
 
 @Composable
-fun LionLibraryTheme(content: @Composable () -> Unit) {
+fun LionLibraryTheme(artworkRevision: Long = 0L, content: @Composable () -> Unit) {
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -44,10 +48,13 @@ fun LionLibraryTheme(content: @Composable () -> Unit) {
         }
     }
 
-    MaterialTheme(
-        colorScheme = LionLibraryColorScheme,
-        typography = Typography,
-        content = content
-    )
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.singam.lionlibrary.presentation.components.LocalArtworkRevision provides artworkRevision
+    ) {
+        MaterialTheme(
+            colorScheme = LionLibraryColorScheme,
+            typography = Typography,
+            content = content,
+        )
+    }
 }
-

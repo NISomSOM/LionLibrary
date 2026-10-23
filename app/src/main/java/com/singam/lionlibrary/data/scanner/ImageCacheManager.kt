@@ -1,81 +1,115 @@
 package com.singam.lionlibrary.data.scanner
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import com.singam.lionlibrary.domain.repository.ArtworkRepository
 import com.singam.lionlibrary.util.Constants
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.File
 
-// Local image cache.
-class ImageCacheManager(
-    private val context: Context,
-    private val okHttpClient: OkHttpClient
-) {
+class ImageCacheManager(private val context: Context, private val client: OkHttpClient) :
+    ArtworkRepository {
+    private val mutableRevision = MutableStateFlow(0L)
+    override val revision = mutableRevision.asStateFlow()
 
-    private val cacheDir: File by lazy {
+    fun isUsable(path: String?): Boolean {
+        if (path == null) return false
+        val file = File(path)
+        if (!file.isFile || file.length() == 0L) return false
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+        bounds.inJustDecodeBounds = false
+        bounds.inSampleSize = (maxOf(bounds.outWidth, bounds.outHeight) / 256).coerceAtLeast(1)
+        val bitmap = BitmapFactory.decodeFile(path, bounds) ?: return false
+        bitmap.recycle()
+        return true
+    }
+
+    private val directory by lazy {
         File(context.filesDir, Constants.IMAGE_CACHE_DIR).also { it.mkdirs() }
     }
+    private val locks = ConcurrentHashMap<String, Mutex>()
 
-    // Cache poster (w500).
-    suspend fun cachePoster(remotePath: String, filename: String): String? {
-        val url = "${Constants.TMDB_IMAGE_BASE_URL_W500}$remotePath"
-        return downloadAndCache(url, filename)
-    }
+    suspend fun cachePoster(path: String, name: String) =
+        download("${Constants.TMDB_IMAGE_BASE_URL_W500}$path", name)
 
-    // Cache backdrop (w1280).
-    suspend fun cacheBackdrop(remotePath: String, filename: String): String? {
-        val url = "${Constants.TMDB_IMAGE_BASE_URL_W1280}$remotePath"
-        return downloadAndCache(url, filename)
-    }
+    suspend fun cacheBackdrop(path: String, name: String) =
+        download("${Constants.TMDB_IMAGE_BASE_URL_W1280}$path", name)
 
-    // Cache episode still.
-    suspend fun cacheEpisodeStill(remotePath: String, filename: String): String? {
-        val w780Url = "${Constants.TMDB_IMAGE_BASE_URL_W780}$remotePath"
-        val path = downloadAndCache(w780Url, filename)
-        if (path != null) return path
-        
-        val originalUrl = "${Constants.TMDB_IMAGE_BASE_URL_ORIGINAL}$remotePath"
-        return downloadAndCache(originalUrl, filename)
-    }
+    suspend fun cacheLogo(path: String, name: String) =
+        download("${Constants.TMDB_IMAGE_BASE_URL_ORIGINAL}$path", name)
 
-    // Cache logo.
-    suspend fun cacheLogo(remotePath: String, filename: String): String? {
-        val url = "${Constants.TMDB_IMAGE_BASE_URL_ORIGINAL}$remotePath"
-        return downloadAndCache(url, filename)
-    }
+    suspend fun cacheEpisodeStill(path: String, name: String) =
+        download("${Constants.TMDB_IMAGE_BASE_URL_W780}$path", name)
+            ?: download("${Constants.TMDB_IMAGE_BASE_URL_ORIGINAL}$path", name)
 
-    // Download or return cached path.
-    private suspend fun downloadAndCache(url: String, filename: String): String? =
+    private suspend fun download(url: String, name: String): String? =
         withContext(Dispatchers.IO) {
-            try {
-                val file = File(cacheDir, filename)
-                if (file.exists()) return@withContext file.absolutePath
-
-                val request = Request.Builder().url(url).build()
-                val response = okHttpClient.newCall(request).execute()
-
-                response.use { resp ->
-                    if (!resp.isSuccessful) return@withContext null
-
-                    val tempFile = File(cacheDir, "$filename.tmp")
+            locks
+                .getOrPut(name) { Mutex() }
+                .withLock {
+                    require(File(name).name == name) { "Artwork name must be a basename" }
+                    val destination = File(directory, name)
+                    if (isUsable(destination.absolutePath)) return@withLock destination.absolutePath
+                    var temporary: File? = null
                     try {
-                        resp.body?.byteStream()?.use { input ->
-                            tempFile.outputStream().use { output ->
-                                input.copyTo(output)
+                        client.newCall(Request.Builder().url(url).build()).execute().use { response
+                            ->
+                            if (!response.isSuccessful) return@withLock null
+                            val body = response.body ?: return@withLock null
+                            val staging = File.createTempFile("art_", ".tmp", directory)
+                            temporary = staging
+                            body.byteStream().use { input ->
+                                staging.outputStream().use { output ->
+                                    val buffer = ByteArray(16 * 1024)
+                                    while (true) {
+                                        currentCoroutineContext().ensureActive()
+                                        val count = input.read(buffer)
+                                        if (count < 0) break
+                                        output.write(buffer, 0, count)
+                                    }
+                                }
                             }
+                            currentCoroutineContext().ensureActive()
+                            if (!isUsable(staging.absolutePath)) return@withLock null
+                            if (staging.renameTo(destination)) {
+                                mutableRevision.update { it + 1 }
+                                destination.absolutePath
+                            } else null
                         }
-                        tempFile.renameTo(file)
-                        file.absolutePath
-                    } catch (e: Exception) {
-                        tempFile.delete()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: IOException) {
                         null
+                    } catch (_: SecurityException) {
+                        null
+                    } finally {
+                        temporary?.delete()
                     }
                 }
-            } catch (e: Exception) {
-                null
+        }
+
+    /** Grace period prevents deleting newly downloaded art before its transaction commits. */
+    suspend fun pruneOrphans(referenced: Set<String>, now: Long = System.currentTimeMillis()) =
+        withContext(Dispatchers.IO) {
+            directory.listFiles()?.forEach { file ->
+                currentCoroutineContext().ensureActive()
+                if (
+                    file.isFile &&
+                        file.absolutePath !in referenced &&
+                        now - file.lastModified() > 48 * 60 * 60 * 1000L
+                )
+                    file.delete()
             }
         }
 }
-

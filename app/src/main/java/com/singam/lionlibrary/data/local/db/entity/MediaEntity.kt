@@ -6,12 +6,13 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "media",
-    indices = [
-        Index(value = ["mediaType"]),
-        Index(value = ["title"]),
-        Index(value = ["tmdbId"]),
-        Index(value = ["filePath"], unique = true)
-    ]
+    indices =
+        [
+            Index(value = ["mediaType"]),
+            Index(value = ["title"]),
+            Index(value = ["tmdbId"]),
+            Index(value = ["filePath"], unique = true),
+        ],
 )
 data class MediaEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -33,6 +34,14 @@ data class MediaEntity(
     val lastUpdated: Long,
     val filePath: String? = null,
     val externalSubtitlePath: String? = null,
-    val preferredEngine: String = "EXOPLAYER"
+    val preferredEngine: String = "EXOPLAYER",
+    val letterboxdRating: Float? = null, // Out of 5; fetched lazily on Details open.
+    val letterboxdUpdatedAt: Long? = null,
+    @androidx.room.ColumnInfo(defaultValue = "0") val isWatchlisted: Boolean = false,
+    @androidx.room.ColumnInfo(defaultValue = "0") val addedAt: Long = lastUpdated,
+    val sourceShowTitle: String? = null,
+    val sourceSeason: Int? = null,
+    val sourceEpisode: Int? = null,
+    val sourceEpisodeEnd: Int? = null,
+    val identificationFailure: String? = null,
 )
-

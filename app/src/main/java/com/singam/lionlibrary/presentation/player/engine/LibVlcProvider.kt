@@ -2,36 +2,35 @@ package com.singam.lionlibrary.presentation.player.engine
 
 import android.content.Context
 import android.system.Os
-import org.videolan.libvlc.LibVLC
 import java.io.File
+import org.videolan.libvlc.LibVLC
 
 // LibVLC singleton.
 object LibVlcProvider {
-    @Volatile
-    private var sharedVlc: LibVLC? = null
+    @Volatile private var sharedVlc: LibVLC? = null
     private var fontconfigInitialized = false
 
-    private val vlcOptions = arrayListOf(
-        "--no-drop-late-frames",
-        "--no-skip-frames",
-        "--rtsp-tcp",
-        "--aout=opensles",
-        "--audio-time-stretch",
-        "--avcodec-skiploopfilter=0",
-        "--avcodec-skip-frame=0",
-        "--avcodec-skip-idct=0",
-        "--subsdec-encoding=UTF-8",
-        "--no-sub-autodetect-file",
-        "--freetype-font=/system/fonts/Roboto-Regular.ttf",
-        "--stats",
-        "--network-caching=1500",
-        "--sout-keep"
-    )
+    private val vlcOptions =
+        arrayListOf(
+            // Use VLC's normal late-frame handling so overloaded decoders can catch up.
+            "--rtsp-tcp",
+            // Let libVLC select its device-compatible Android audio output.
+            // Forcing OpenSL ES failed to create an audio output on the API 36 phone.
+            "--audio-time-stretch",
+            "--avcodec-skiploopfilter=0",
+            "--avcodec-skip-frame=0",
+            "--avcodec-skip-idct=0",
+            "--subsdec-encoding=UTF-8",
+            "--no-sub-autodetect-file",
+            "--freetype-font=/system/fonts/Roboto-Regular.ttf",
+            "--stats",
+            "--network-caching=1500",
+            "--sout-keep",
+        )
 
     // Fontconfig setup to avoid 30s delay.
     private fun initFontconfig(context: Context) {
         if (fontconfigInitialized) return
-        fontconfigInitialized = true
 
         try {
             val fontsDir = File(context.filesDir, "vlc_fontconfig")
@@ -41,7 +40,7 @@ object LibVlcProvider {
             cacheDir.mkdirs()
 
             val fontsConf = File(fontsDir, "fonts.conf")
-            
+
             val singleFontDir = File(fontsDir, "fonts")
             singleFontDir.mkdirs()
             val targetFont = File(singleFontDir, "Roboto-Regular.ttf")
@@ -58,8 +57,9 @@ object LibVlcProvider {
                     } catch (_: Exception) {}
                 }
             }
-            
-            fontsConf.writeText("""<?xml version="1.0"?>
+
+            fontsConf.writeText(
+                """<?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
     <dir>${singleFontDir.absolutePath}</dir>
@@ -70,14 +70,16 @@ object LibVlcProvider {
         </rescan>
     </config>
 </fontconfig>
-""")
+"""
+            )
 
             Os.setenv("FONTCONFIG_FILE", fontsConf.absolutePath, true)
             Os.setenv("FONTCONFIG_PATH", fontsDir.absolutePath, true)
+            fontconfigInitialized = true
 
             android.util.Log.i(
                 "LibVlcProvider",
-                "Fontconfig env set: FONTCONFIG_FILE=${fontsConf.absolutePath}"
+                "Fontconfig env set: FONTCONFIG_FILE=${fontsConf.absolutePath}",
             )
         } catch (e: Exception) {
             android.util.Log.e("LibVlcProvider", "Failed to init fontconfig", e)
@@ -91,23 +93,26 @@ object LibVlcProvider {
         Thread {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
             try {
-                initFontconfig(appContext)
                 android.util.Log.i("LibVlcProvider", "Starting LibVLC singleton prewarm")
                 getSharedInstance(appContext)
                 android.util.Log.i("LibVlcProvider", "LibVLC singleton prewarm complete")
             } catch (e: Exception) {
                 android.util.Log.e("LibVlcProvider", "LibVLC singleton prewarm failed", e)
             }
-        }.start()
+        }
+            .start()
     }
 
     // Get or create shared LibVLC.
     fun getSharedInstance(context: Context): LibVLC {
-        initFontconfig(context)
-        return sharedVlc ?: synchronized(this) {
-            sharedVlc ?: LibVLC(context.applicationContext, vlcOptions).also {
-                sharedVlc = it
+        return sharedVlc
+            ?: synchronized(this) {
+                sharedVlc
+                    ?: run {
+                        // Font setup and native construction share a lock with startup prewarming.
+                        initFontconfig(context.applicationContext)
+                        LibVLC(context.applicationContext, vlcOptions).also { sharedVlc = it }
+                    }
             }
-        }
     }
 }

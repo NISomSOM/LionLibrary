@@ -11,61 +11,53 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface TmdbApiService {
+    @GET("authentication")
+    suspend fun validateKey(@Query("api_key") key: String): kotlinx.serialization.json.JsonObject
 
     @GET("search/movie")
     suspend fun searchMovie(
         @Query("api_key") key: String,
         @Query("query") query: String,
-        @Query("year") year: Int? = null
+        @Query("year") year: Int? = null,
     ): MovieSearchResponse
 
     @GET("search/tv")
     suspend fun searchTv(
         @Query("api_key") key: String,
-        @Query("query") query: String
+        @Query("query") query: String,
     ): TvSearchResponse
 
     @GET("movie/{id}?append_to_response=release_dates")
-    suspend fun getMovieDetails(
-        @Path("id") id: Int,
-        @Query("api_key") key: String
-    ): MovieDetailsDto
+    suspend fun getMovieDetails(@Path("id") id: Int, @Query("api_key") key: String): MovieDetailsDto
 
     @GET("tv/{id}?append_to_response=content_ratings")
-    suspend fun getTvDetails(
-        @Path("id") id: Int,
-        @Query("api_key") key: String
-    ): TvDetailsDto
+    suspend fun getTvDetails(@Path("id") id: Int, @Query("api_key") key: String): TvDetailsDto
 
     @GET("tv/{id}/season/{season}")
     suspend fun getSeasonDetails(
         @Path("id") id: Int,
         @Path("season") season: Int,
-        @Query("api_key") key: String
+        @Query("api_key") key: String,
     ): SeasonDetailsDto
 
     @GET("tv/{id}/images")
-    suspend fun getTvImages(
-        @Path("id") id: Int,
-        @Query("api_key") key: String
-    ): TvImagesResponseDto
+    suspend fun getTvImages(@Path("id") id: Int, @Query("api_key") key: String): TvImagesResponseDto
 
     @GET("movie/{id}/images")
     suspend fun getMovieImages(
         @Path("id") id: Int,
-        @Query("api_key") key: String
+        @Query("api_key") key: String,
     ): TvImagesResponseDto
 
     @GET("tv/{id}/alternative_titles")
     suspend fun getTvAlternativeTitles(
         @Path("id") id: Int,
-        @Query("api_key") key: String
+        @Query("api_key") key: String,
     ): com.singam.lionlibrary.data.remote.dto.AlternativeTitlesResponse
 
     @GET("movie/{id}/alternative_titles")
     suspend fun getMovieAlternativeTitles(
         @Path("id") id: Int,
-        @Query("api_key") key: String
+        @Query("api_key") key: String,
     ): com.singam.lionlibrary.data.remote.dto.AlternativeTitlesResponse
 }
-

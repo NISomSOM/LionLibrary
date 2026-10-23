@@ -7,6 +7,5 @@ data class WatchProgress(
     val lastPositionMs: Long,
     val durationMs: Long,
     val lastWatched: Long,
-    val completed: Boolean
+    val completed: Boolean,
 )
-

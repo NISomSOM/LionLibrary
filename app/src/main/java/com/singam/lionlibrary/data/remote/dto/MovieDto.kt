@@ -13,6 +13,5 @@ data class MovieDto(
     @SerialName("backdrop_path") val backdropPath: String? = null,
     @SerialName("vote_average") val voteAverage: Float? = null,
     @SerialName("release_date") val releaseDate: String? = null,
-    @SerialName("genre_ids") val genreIds: List<Int>? = null
+    @SerialName("genre_ids") val genreIds: List<Int>? = null,
 )
-

@@ -14,6 +14,7 @@ data class JumpBackInItem(
     val progress: Float?,
     val isNextUp: Boolean = false,
     val filePath: String?,
-    val lastWatched: Long
+    val lastWatched: Long,
+    val durationMs: Long = 0L,
+    val positionMs: Long = 0L,
 )
-

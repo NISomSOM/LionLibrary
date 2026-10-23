@@ -6,9 +6,7 @@ import android.net.Uri
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
 
 // Fires an ACTION_VIEW intent to play video.
-class AndroidLaunchPlayerUseCase(
-    private val context: Context
-) : LaunchPlayerUseCase {
+class AndroidLaunchPlayerUseCase(private val context: Context) : LaunchPlayerUseCase {
 
     override fun invoke(fileUri: Uri, positionMs: Long): Intent {
         return Intent(Intent.ACTION_VIEW).apply {
@@ -17,4 +15,3 @@ class AndroidLaunchPlayerUseCase(
         }
     }
 }
-

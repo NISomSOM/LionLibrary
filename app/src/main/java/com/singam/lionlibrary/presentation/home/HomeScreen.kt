@@ -1,25 +1,39 @@
 package com.singam.lionlibrary.presentation.home
 
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,48 +41,53 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
+import com.singam.lionlibrary.domain.model.JumpBackInItem
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
-import com.singam.lionlibrary.domain.model.JumpBackInItem
+import com.singam.lionlibrary.presentation.components.ArtworkTitle
 import com.singam.lionlibrary.presentation.components.JumpBackInCard
+import com.singam.lionlibrary.presentation.components.LocalArtwork
 import com.singam.lionlibrary.presentation.components.MediaCard
-import org.koin.androidx.compose.koinViewModel
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.ui.draw.clip
-import java.io.File
+import com.singam.lionlibrary.presentation.components.ShelfHeading
+import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
+import com.singam.lionlibrary.ui.theme.LionLayout
+import com.singam.lionlibrary.ui.theme.LionMotion
+import kotlin.math.abs
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-
-import androidx.compose.material3.windowsizeclass.WindowSizeClass
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import org.koin.androidx.compose.koinViewModel
 
 @androidx.compose.foundation.ExperimentalFoundationApi
 @Composable
@@ -79,19 +98,22 @@ fun HomeRoot(
     onNavigateToMovieDetails: (Long) -> Unit,
     onNavigateToShowDetails: (Long) -> Unit,
     onNavigateToPlayer: (String, Long) -> Unit,
-    onNavigateToSearch: (com.singam.lionlibrary.domain.model.MediaFilter) -> Unit
+    onNavigateToLibrary: (com.singam.lionlibrary.domain.model.MediaFilter) -> Unit,
+    onSettingsClick: () -> Unit = {},
+    onMediaClick: (Long, MediaType) -> Unit = { _, _ -> },
+    onLibraryClick: (com.singam.lionlibrary.domain.model.MediaFilter) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-
     LaunchedEffect(viewModel.events) {
         viewModel.events.collect { event ->
             when (event) {
-                is HomeEvent.NavigateToMovieDetails -> onNavigateToMovieDetails(event.mediaId)
-                is HomeEvent.NavigateToShowDetails -> onNavigateToShowDetails(event.mediaId)
                 is HomeEvent.NavigateToPlayer -> onNavigateToPlayer(event.mediaType, event.mediaId)
-                is HomeEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
+                is HomeEvent.ShowMessage ->
+                    snackbarHostState.showSnackbar(event.message.resolve(context))
+                is HomeEvent.ShowError ->
+                    snackbarHostState.showSnackbar(event.message.resolve(context))
                 is HomeEvent.LaunchPlayer -> {
                     try {
                         context.startActivity(event.intent)
@@ -99,17 +121,20 @@ fun HomeRoot(
                         snackbarHostState.showSnackbar("Failed to launch player")
                     }
                 }
-                is HomeEvent.NavigateToSearch -> onNavigateToSearch(event.filter)
             }
         }
     }
 
-
-
     HomeScreen(
         state = state,
         windowSizeClass = windowSizeClass,
-        onAction = viewModel::onAction
+        onAction = viewModel::onAction,
+        onSettingsClick = onSettingsClick,
+        onMediaClick = { id, type ->
+            if (type == MediaType.MOVIE) onNavigateToMovieDetails(id)
+            else onNavigateToShowDetails(id)
+        },
+        onLibraryClick = onNavigateToLibrary,
     )
 }
 
@@ -119,10 +144,40 @@ fun HomeRoot(
 fun HomeScreen(
     state: HomeState,
     windowSizeClass: WindowSizeClass,
-    onAction: (HomeAction) -> Unit
+    onAction: (HomeAction) -> Unit,
+    onSettingsClick: () -> Unit = {},
+    onMediaClick: (Long, MediaType) -> Unit = { _, _ -> },
+    onLibraryClick: (com.singam.lionlibrary.domain.model.MediaFilter) -> Unit = {},
 ) {
-    var selectedJumpBackInItem by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<JumpBackInItem?>(null) }
+    val selectedJumpBackInItem = state.selectedJumpBackInItem
     val sheetState = rememberModalBottomSheetState()
+    com.singam.lionlibrary.presentation.components.DeletionDialog(
+        state.deletion,
+        { onAction(HomeAction.ConfirmDelete) },
+        { onAction(HomeAction.DismissDelete) },
+    )
+    state.selectedMediaForOptions?.let { media ->
+        ModalBottomSheet(
+            onDismissRequest = { onAction(HomeAction.MediaOptions(null)) },
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                Text(
+                    media.title,
+                    Modifier.padding(24.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                JumpBackInOptionItem(
+                    Icons.Default.Delete,
+                    androidx.compose.ui.res.stringResource(
+                        com.singam.lionlibrary.R.string.delete_from_device
+                    ),
+                    { onAction(HomeAction.RequestDelete(media.id)) },
+                    iconTint = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
 
     if (state.isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -131,56 +186,82 @@ fun HomeScreen(
         return
     }
 
-    if (state.carouselItems.isEmpty() && 
-        state.jumpBackInItems.isEmpty() && 
-        state.movies.isEmpty() && 
-        state.tvShows.isEmpty() && 
-        state.anime.isEmpty() && 
-        state.recentlyAdded.isEmpty()
-    ) {
+    state.error?.let { error ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
-            contentAlignment = Alignment.Center
+            Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = "Your library is empty. Go to to Settings to add your media folders and scan.",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center
-            )
+            Text(error.resolve(LocalContext.current), color = MaterialTheme.colorScheme.error)
+        }
+        return
+    }
+    if (
+        state.carouselItems.isEmpty() &&
+            state.jumpBackInItems.isEmpty() &&
+            state.movies.isEmpty() &&
+            state.tvShows.isEmpty() &&
+            state.anime.isEmpty() &&
+            state.recentlyAdded.isEmpty()
+    ) {
+        Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.library_empty_help
+                        ),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                )
+                Button(onClick = onSettingsClick) {
+                    Text(
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.open_settings
+                        )
+                    )
+                }
+            }
         }
         return
     }
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 16.dp)
+        state = listState,
+        modifier =
+            Modifier.fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+        contentPadding = PaddingValues(bottom = LocalFloatingNavigationInset.current + 16.dp),
     ) {
         val heroItems = state.carouselItems
         if (heroItems.isNotEmpty()) {
             item {
                 HeroBannerCarousel(
                     mediaItems = heroItems,
-                    windowSizeClass = windowSizeClass,
-                    onPlayClick = { id, type -> onAction(HomeAction.OnPlayClick(id, type)) },
-                    onInfoClick = { id, type -> onAction(HomeAction.OnMediaClick(id, type)) }
+                    verticalScrollOffset = {
+                        if (listState.firstVisibleItemIndex == 0)
+                            listState.firstVisibleItemScrollOffset.toFloat()
+                        else 0f
+                    },
+                    onInfoClick = { id, type -> onMediaClick(id, type) },
+                    onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
                 )
             }
         } else {
-            item {
-                Spacer(modifier = Modifier.height(32.dp))
-            }
+            item { Spacer(modifier = Modifier.height(32.dp)) }
         }
 
         if (state.jumpBackInItems.isNotEmpty()) {
             item {
                 JumpBackInRow(
-                    title = "Jump Back In",
+                    title =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.ui_jump_back_in
+                        ),
                     items = state.jumpBackInItems,
                     onItemClick = { onAction(HomeAction.OnJumpBackInClick(it)) },
-                    onItemLongClick = { selectedJumpBackInItem = it }
+                    onItemLongClick = { onAction(HomeAction.SelectOptions(it)) },
                 )
             }
         }
@@ -188,10 +269,16 @@ fun HomeScreen(
         if (state.movies.isNotEmpty()) {
             item {
                 MediaRow(
-                    title = "Movies",
+                    title =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.movies
+                        ),
                     items = state.movies,
-                    onItemClick = { onAction(HomeAction.OnMediaClick(it.id, it.mediaType)) },
-                    onHeaderClick = { onAction(HomeAction.OnHeaderClick(com.singam.lionlibrary.domain.model.MediaFilter.MOVIES)) }
+                    onItemClick = { onMediaClick(it.id, it.mediaType) },
+                    onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    onHeaderClick = {
+                        onLibraryClick(com.singam.lionlibrary.domain.model.MediaFilter.MOVIES)
+                    },
                 )
             }
         }
@@ -199,10 +286,16 @@ fun HomeScreen(
         if (state.tvShows.isNotEmpty()) {
             item {
                 MediaRow(
-                    title = "TV Shows",
+                    title =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.tv_shows
+                        ),
                     items = state.tvShows,
-                    onItemClick = { onAction(HomeAction.OnMediaClick(it.id, it.mediaType)) },
-                    onHeaderClick = { onAction(HomeAction.OnHeaderClick(com.singam.lionlibrary.domain.model.MediaFilter.TV_SHOWS)) }
+                    onItemClick = { onMediaClick(it.id, it.mediaType) },
+                    onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    onHeaderClick = {
+                        onLibraryClick(com.singam.lionlibrary.domain.model.MediaFilter.TV_SHOWS)
+                    },
                 )
             }
         }
@@ -210,10 +303,16 @@ fun HomeScreen(
         if (state.anime.isNotEmpty()) {
             item {
                 MediaRow(
-                    title = "Anime",
+                    title =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.anime
+                        ),
                     items = state.anime,
-                    onItemClick = { onAction(HomeAction.OnMediaClick(it.id, it.mediaType)) },
-                    onHeaderClick = { onAction(HomeAction.OnHeaderClick(com.singam.lionlibrary.domain.model.MediaFilter.ANIME)) }
+                    onItemClick = { onMediaClick(it.id, it.mediaType) },
+                    onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    onHeaderClick = {
+                        onLibraryClick(com.singam.lionlibrary.domain.model.MediaFilter.ANIME)
+                    },
                 )
             }
         }
@@ -221,9 +320,13 @@ fun HomeScreen(
         if (state.recentlyAdded.isNotEmpty()) {
             item {
                 MediaRow(
-                    title = "Recently Added",
+                    title =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.ui_recently_added
+                        ),
                     items = state.recentlyAdded,
-                    onItemClick = { onAction(HomeAction.OnMediaClick(it.id, it.mediaType)) }
+                    onItemClick = { onMediaClick(it.id, it.mediaType) },
+                    onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
                 )
             }
         }
@@ -234,7 +337,8 @@ fun HomeScreen(
                     MediaRow(
                         title = genre,
                         items = items,
-                        onItemClick = { onAction(HomeAction.OnMediaClick(it.id, it.mediaType)) }
+                        onItemClick = { onMediaClick(it.id, it.mediaType) },
+                        onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
                     )
                 }
             }
@@ -243,35 +347,28 @@ fun HomeScreen(
 
     selectedJumpBackInItem?.let { item ->
         ModalBottomSheet(
-            onDismissRequest = { selectedJumpBackInItem = null },
+            onDismissRequest = { onAction(HomeAction.SelectOptions(null)) },
             sheetState = sheetState,
-            containerColor = Color(0xFF1E1E1E)
+            containerColor = MaterialTheme.colorScheme.surface,
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 32.dp)
-            ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val imagePath = if (item.mediaType == MediaType.MOVIE) {
-                        item.posterPath ?: item.backdropPath
-                    } else {
-                        item.thumbnailPath ?: item.backdropPath ?: item.posterPath
-                    }
+                    val imagePath =
+                        if (item.mediaType == MediaType.MOVIE) {
+                            item.posterPath ?: item.backdropPath
+                        } else {
+                            item.thumbnailPath ?: item.backdropPath ?: item.posterPath
+                        }
                     if (imagePath != null) {
-                        AsyncImage(
-                            model = File(imagePath),
+                        LocalArtwork(
+                            paths = listOf(imagePath),
                             contentDescription = item.mediaTitle,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .width(125.dp)
-                                .height(70.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                            modifier =
+                                Modifier.width(125.dp).height(70.dp).clip(RoundedCornerShape(8.dp)),
                         )
                     }
                     Spacer(modifier = Modifier.width(16.dp))
@@ -280,13 +377,14 @@ fun HomeScreen(
                             text = item.mediaTitle,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = Color.White,
                         )
                         if (item.mediaType != MediaType.MOVIE) {
                             Text(
-                                text = "S${item.seasonNumber}E${item.episodeNumber} • ${item.episodeTitle ?: ""}",
+                                text =
+                                    "S${item.seasonNumber}E${item.episodeNumber} • ${item.episodeTitle ?: ""}",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.Gray
+                                color = Color.Gray,
                             )
                         }
                     }
@@ -296,38 +394,59 @@ fun HomeScreen(
 
                 JumpBackInOptionItem(
                     icon = Icons.Default.Info,
-                    text = "Go to details",
+                    text =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.ui_go_to_details
+                        ),
                     onClick = {
-                        selectedJumpBackInItem = null
-                        onAction(HomeAction.OnMediaClick(item.mediaId, item.mediaType))
-                    }
+                        onAction(HomeAction.SelectOptions(null))
+                        onMediaClick(item.mediaId, item.mediaType)
+                    },
                 )
                 JumpBackInOptionItem(
                     icon = Icons.Default.PlayArrow,
-                    text = "Play in external player",
+                    text =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.ui_play_in_external_player
+                        ),
                     onClick = {
-                        selectedJumpBackInItem = null
+                        onAction(HomeAction.SelectOptions(null))
                         onAction(HomeAction.OnPlayExternal(item))
                     },
-                    iconTint = com.singam.lionlibrary.ui.theme.OrangeAccent
+                    iconTint = MaterialTheme.colorScheme.primary,
                 )
                 JumpBackInOptionItem(
                     icon = Icons.Default.Refresh,
-                    text = "Start from beginning",
+                    text =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.ui_start_from_beginning
+                        ),
                     onClick = {
-                        selectedJumpBackInItem = null
+                        onAction(HomeAction.SelectOptions(null))
                         onAction(HomeAction.OnStartFromBeginning(item))
                     },
-                    iconTint = com.singam.lionlibrary.ui.theme.OrangeAccent
+                    iconTint = MaterialTheme.colorScheme.primary,
                 )
                 JumpBackInOptionItem(
                     icon = Icons.Default.Delete,
-                    text = "Remove",
+                    text =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.ui_remove
+                        ),
                     onClick = {
-                        selectedJumpBackInItem = null
+                        onAction(HomeAction.SelectOptions(null))
                         onAction(HomeAction.OnRemoveWatchProgress(item))
                     },
-                    iconTint = com.singam.lionlibrary.ui.theme.OrangeAccent
+                    iconTint = MaterialTheme.colorScheme.primary,
+                )
+                JumpBackInOptionItem(
+                    icon = Icons.Default.Delete,
+                    text =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.delete_from_device
+                        ),
+                    onClick = { onAction(HomeAction.RequestDelete(item.mediaId)) },
+                    iconTint = MaterialTheme.colorScheme.error,
                 )
             }
         }
@@ -339,268 +458,298 @@ private fun JumpBackInOptionItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     text: String,
     onClick: () -> Unit,
-    iconTint: Color = Color.White
+    iconTint: Color = Color.White,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
+        modifier =
+            Modifier.fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = text,
             tint = iconTint,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(24.dp),
         )
         Spacer(modifier = Modifier.width(24.dp))
         Text(
             text = text,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            color = Color.White
+            color = Color.White,
         )
     }
 }
 
-// Hero carousel constants.
-private const val HERO_CONTENT_PARALLAX = 0.70f
 private const val HERO_AUTO_SCROLL_MS = 8_000L
-private const val HERO_VIEWPORT_RATIO = 0.65f
-private val HERO_MIN_HEIGHT = 200.dp
-private val HERO_MAX_HEIGHT = 560.dp
 
 @androidx.compose.foundation.ExperimentalFoundationApi
 @Composable
-fun HeroBannerCarousel(
+internal fun HeroBannerCarousel(
     mediaItems: List<MediaItem>,
-    windowSizeClass: WindowSizeClass,
-    onPlayClick: (Long, MediaType) -> Unit,
-    onInfoClick: (Long, MediaType) -> Unit
+    onInfoClick: (Long, MediaType) -> Unit,
+    modifier: Modifier = Modifier,
+    verticalScrollOffset: () -> Float = { 0f },
+    onItemLongClick: (MediaItem) -> Unit = {},
 ) {
-    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { mediaItems.size })
-    val coroutineScope = rememberCoroutineScope()
-
-    // Auto-scroll timer.
-    val autoScrollPage = pagerState.currentPage
-    LaunchedEffect(autoScrollPage, mediaItems.size) {
-        if (mediaItems.size <= 1) return@LaunchedEffect
+    if (mediaItems.isEmpty()) return
+    val pagerState =
+        androidx.compose.foundation.pager.rememberPagerState(pageCount = { mediaItems.size })
+    // Rotation is decorative. Stop after interaction and for accessibility/reduced motion.
+    val context = LocalContext.current
+    val accessibility =
+        remember(context) {
+            context.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE)
+                as android.view.accessibility.AccessibilityManager
+        }
+    var exploring by remember {
+        androidx.compose.runtime.mutableStateOf(accessibility.isTouchExplorationEnabled)
+    }
+    androidx.compose.runtime.DisposableEffect(accessibility) {
+        val listener =
+            android.view.accessibility.AccessibilityManager.TouchExplorationStateChangeListener {
+                exploring = it
+            }
+        accessibility.addTouchExplorationStateChangeListener(listener)
+        onDispose { accessibility.removeTouchExplorationStateChangeListener(listener) }
+    }
+    var interacted by
+        androidx.compose.runtime.saveable.rememberSaveable {
+            androidx.compose.runtime.mutableStateOf(false)
+        }
+    val dragging by pagerState.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(dragging) { if (dragging) interacted = true }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val lifecycleState by lifecycle.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+    val motionEnabled =
+        android.provider.Settings.Global.getFloat(
+            context.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) > 0f
+    LaunchedEffect(
+        pagerState.settledPage,
+        mediaItems.size,
+        exploring,
+        interacted,
+        lifecycleState,
+        motionEnabled,
+    ) {
+        if (
+            mediaItems.size <= 1 ||
+                exploring ||
+                interacted ||
+                !motionEnabled ||
+                !lifecycleState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        )
+            return@LaunchedEffect
         delay(HERO_AUTO_SCROLL_MS)
-        while (pagerState.isScrollInProgress) {
-            delay(100L)
-        }
-        val nextPage = (pagerState.currentPage + 1) % mediaItems.size
-        coroutineScope.launch {
-            pagerState.animateScrollToPage(nextPage)
-        }
+        if (!pagerState.isScrollInProgress)
+            pagerState.animateScrollToPage(
+                (pagerState.settledPage + 1) % mediaItems.size,
+                animationSpec = tween(LionMotion.Standard, easing = LionMotion.Easing),
+            )
     }
 
-    // Calculate hero height.
     val configuration = LocalConfiguration.current
-    val heroHeight = (configuration.screenHeightDp.dp * HERO_VIEWPORT_RATIO).coerceIn(HERO_MIN_HEIGHT, HERO_MAX_HEIGHT)
-    val heroWidthPx = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx() }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(heroHeight)
-            .clip(RoundedCornerShape(0.dp))
-    ) {
-        androidx.compose.foundation.pager.HorizontalPager(
+    val fontScale = LocalDensity.current.fontScale
+    val heroHeight =
+        (configuration.screenHeightDp.dp * .58f).coerceIn(360.dp, 600.dp) +
+            (80.dp * (fontScale - 1f).coerceIn(0f, 1f))
+    val logoHeight = 80.dp * fontScale.coerceIn(1f, 1.6f)
+    val background = MaterialTheme.colorScheme.background
+    val optionsLabel =
+        androidx.compose.ui.res.stringResource(com.singam.lionlibrary.R.string.media_options)
+    val scrim = MaterialTheme.colorScheme.scrim
+    val gradient =
+        remember(background, scrim) {
+            Brush.verticalGradient(
+                colorStops =
+                    arrayOf(
+                        0f to scrim.copy(alpha = .1f),
+                        .45f to Color.Transparent,
+                        .72f to scrim.copy(alpha = .55f),
+                        1f to background,
+                    )
+            )
+        }
+    Column(modifier.fillMaxWidth().height(heroHeight)) {
+        Box(Modifier.fillMaxWidth().weight(1f).clip(androidx.compose.ui.graphics.RectangleShape)) {
+            // Pager supplies native swipe/fling semantics. Visual layers move less than a full
+            // page and crossfade; read offsets in draw to keep frames out of composition.
+            androidx.compose.foundation.pager.HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize()
-            ) { page ->
-                val mediaItem = mediaItems[page]
-                val imagePath = mediaItem.backdropPath ?: mediaItem.posterPath
-
-                // Parallax offset.
-                val signedOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
-                val pageOffset = kotlin.math.abs(signedOffset)
-                val pageAlpha = 1f - pageOffset.coerceIn(0f, 1f)
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            alpha = pageAlpha
+                modifier =
+                    Modifier.fillMaxSize()
+                        .testTag("hero-interaction")
+                        .semantics {
+                            onLongClick(optionsLabel) {
+                                interacted = true
+                                onItemLongClick(mediaItems[pagerState.currentPage])
+                                true
+                            }
                         }
-                ) {
-                    // Background image.
-                    if (imagePath != null) {
-                        AsyncImage(
-                            model = File(imagePath),
-                            contentDescription = mediaItem.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                        .pointerInput(mediaItems) {
+                            detectTapGestures(
+                                onLongPress = {
+                                    interacted = true
+                                    onItemLongClick(mediaItems[pagerState.currentPage])
+                                }
+                            )
+                        },
+                key = { mediaItems[it].id },
+            ) {
+                Box(Modifier.fillMaxSize())
+            }
+            val visiblePages =
+                ((pagerState.currentPage - 1).coerceAtLeast(0)..(pagerState.currentPage + 1)
+                        .coerceAtMost(mediaItems.lastIndex))
+            visiblePages.forEach { page ->
+                key(mediaItems[page].id) {
+                    val media = mediaItems[page]
+                    LocalArtwork(
+                        listOf(media.backdropPath, media.posterPath),
+                        null,
+                        Modifier.fillMaxSize().graphicsLayer {
+                            val offset =
+                                (pagerState.currentPage - page) +
+                                    pagerState.currentPageOffsetFraction
+                            alpha = (1f - abs(offset)).coerceIn(0f, 1f)
+                            translationX = if (motionEnabled) -offset * size.width * .055f else 0f
+                            translationY = if (motionEnabled) verticalScrollOffset() * .22f else 0f
+                            scaleX = if (motionEnabled) 1.14f else 1f
+                            scaleY = if (motionEnabled) 1.14f else 1f
+                        },
+                    )
+                }
+            }
+            Box(Modifier.fillMaxSize().background(gradient))
+            visiblePages.forEach { page ->
+                key(mediaItems[page].id) {
+                    val media = mediaItems[page]
+                    Column(
+                        Modifier.align(Alignment.BottomCenter)
+                            .graphicsLayer {
+                                val offset =
+                                    (pagerState.currentPage - page) +
+                                        pagerState.currentPageOffsetFraction
+                                alpha = (1f - abs(offset)).coerceIn(0f, 1f)
+                                translationX =
+                                    if (motionEnabled) -offset * size.width * .18f else 0f
+                            }
+                            .then(
+                                if (page != pagerState.currentPage) Modifier.clearAndSetSemantics {}
+                                else Modifier
+                            )
+                            .padding(horizontal = LionLayout.Gutter, vertical = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        ArtworkTitle(
+                            media.title,
+                            media.logoPath,
+                            Modifier.fillMaxWidth(.72f).height(logoHeight),
+                        )
+                        HeroMetadataLine(
+                            media.year?.toString(),
+                            media.genres,
+                            media.rating
+                                ?.takeIf { it > 0f }
+                                ?.let {
+                                    androidx.compose.ui.res.stringResource(
+                                        com.singam.lionlibrary.R.string.star_rating_value,
+                                        it,
+                                    )
+                                },
                         )
                     }
-
-                    // Gradient overlay.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colorStops = arrayOf(
-                                        0.00f to Color.Transparent,
-                                        0.30f to Color.Black.copy(alpha = 0.05f),
-                                        0.50f to Color.Black.copy(alpha = 0.15f),
-                                        0.65f to Color.Black.copy(alpha = 0.35f),
-                                        0.75f to Color.Black.copy(alpha = 0.55f),
-                                        0.85f to Color.Black.copy(alpha = 0.75f),
-                                        0.92f to Color.Black.copy(alpha = 0.92f),
-                                        1.00f to Color.Black
-                                    )
-                                )
-                            )
-                    )
-
-                    // Content layer.
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 110.dp, start = 24.dp, end = 24.dp)
-                            .graphicsLayer {
-                                translationX = -signedOffset * heroWidthPx * HERO_CONTENT_PARALLAX
-                                val scale = 1f - (pageOffset * 0.15f).coerceIn(0f, 0.15f)
-                                scaleX = scale
-                                scaleY = scale
-                            },
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        if (mediaItem.logoPath != null) {
-                            AsyncImage(
-                                model = File(mediaItem.logoPath),
-                                contentDescription = "Show Logo",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier
-                                    .fillMaxWidth(0.6f)
-                                    .height(80.dp)
-                                    .padding(bottom = 4.dp)
-                            )
-                        } else {
-                            Text(
-                                text = mediaItem.title,
-                                style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        val subtitleInfo = buildString {
-                            if (mediaItem.year != null) append(mediaItem.year).append(" \u2022 ")
-                            if (mediaItem.genres != null) append(mediaItem.genres.split(",").take(2).joinToString(", ")).append(" \u2022 ")
-                            if (mediaItem.rating != null) append(mediaItem.rating).append(" \u2605")
-                        }.trimEnd(' ', '\u2022')
-
-                        if (subtitleInfo.isNotBlank()) {
-                            Text(
-                                text = subtitleInfo,
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-                                color = Color.White.copy(alpha = 0.9f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
                 }
             }
-
-            // Bottom controls.
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp, start = 24.dp, end = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                val currentItem = mediaItems[pagerState.currentPage]
-
-                Button(
-                    onClick = { onInfoClick(currentItem.id, currentItem.mediaType) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black
+        }
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // Wait until a swipe settles so the action always opens the title currently on screen.
+            val current = mediaItems[pagerState.settledPage.coerceIn(mediaItems.indices)]
+            Button(
+                onClick = {
+                    interacted = true
+                    onInfoClick(current.id, current.mediaType)
+                },
+                enabled = !pagerState.isScrollInProgress,
+                shape = RoundedCornerShape(50),
+                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
+                modifier = Modifier.heightIn(min = 48.dp),
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.onBackground,
+                        contentColor = MaterialTheme.colorScheme.background,
+                        disabledContainerColor = MaterialTheme.colorScheme.onBackground,
+                        disabledContentColor = MaterialTheme.colorScheme.background,
                     ),
-                    shape = RoundedCornerShape(24.dp),
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
-                    modifier = Modifier.fillMaxWidth(0.6f)
+            ) {
+                Text(
+                    androidx.compose.ui.res.stringResource(
+                        com.singam.lionlibrary.R.string.ui_view_details
+                    ),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            if (mediaItems.size > 1) {
+                val neutral = MaterialTheme.colorScheme.onBackground
+                val accent = MaterialTheme.colorScheme.primary
+                Canvas(
+                    Modifier.padding(top = 16.dp)
+                        .width((mediaItems.size * 16 + 16).dp)
+                        .height(8.dp)
+                        .testTag("hero-indicators")
                 ) {
-                    Text("View Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                }
-
-                // Pill indicators.
-                if (mediaItems.size > 1) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        repeat(mediaItems.size) { index ->
-                            val isActive = pagerState.currentPage == index
-                            val pillWidth by androidx.compose.animation.core.animateDpAsState(
-                                targetValue = if (isActive) 24.dp else 8.dp,
-                                animationSpec = tween(durationMillis = 300),
-                                label = "pillWidth"
-                            )
-                            val pillAlpha by androidx.compose.animation.core.animateFloatAsState(
-                                targetValue = if (isActive) 1f else 0.4f,
-                                animationSpec = tween(durationMillis = 300),
-                                label = "pillAlpha"
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .padding(horizontal = 3.dp)
-                                    .width(pillWidth)
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(Color.White.copy(alpha = pillAlpha))
-                            )
-                        }
+                    var x = 0f
+                    repeat(mediaItems.size) { index ->
+                        val offset =
+                            (pagerState.currentPage - index) + pagerState.currentPageOffsetFraction
+                        val active = (1f - abs(offset)).coerceIn(0f, 1f)
+                        val width = (8 + 24 * active).dp.toPx()
+                        drawRoundRect(
+                            lerp(neutral.copy(alpha = .35f), accent, active),
+                            topLeft = Offset(x, 0f),
+                            size = Size(width, size.height),
+                            cornerRadius = CornerRadius(size.height / 2f),
+                        )
+                        x += width + 8.dp.toPx()
                     }
                 }
             }
         }
     }
+}
 
 @Composable
 fun MediaRow(
     title: String,
     items: List<MediaItem>,
     onItemClick: (MediaItem) -> Unit,
-    onHeaderClick: (() -> Unit)? = null
+    onHeaderClick: (() -> Unit)? = null,
+    onItemLongClick: (MediaItem) -> Unit = {},
 ) {
-    Column(modifier = Modifier.padding(vertical = 12.dp)) {
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .then(if (onHeaderClick != null) Modifier.clickable(onClick = onHeaderClick) else Modifier)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .width(40.dp)
-                    .height(3.dp)
-                    .background(com.singam.lionlibrary.ui.theme.OrangeAccent, androidx.compose.foundation.shape.RoundedCornerShape(1.5.dp))
-            )
-        }
-        
+    Column(modifier = Modifier.padding(bottom = LionLayout.SectionGap)) {
+        ShelfHeading(
+            title,
+            Modifier.padding(horizontal = LionLayout.Gutter).padding(bottom = 10.dp),
+            onClick = onHeaderClick,
+        )
+
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(items, key = { it.id }) { item ->
                 MediaCard(
                     mediaItem = item,
-                    onClick = { onItemClick(item) }
+                    onClick = { onItemClick(item) },
+                    onLongClick = { onItemLongClick(item) },
                 )
             }
         }
@@ -612,34 +761,99 @@ fun JumpBackInRow(
     title: String,
     items: List<JumpBackInItem>,
     onItemClick: (JumpBackInItem) -> Unit,
-    onItemLongClick: (JumpBackInItem) -> Unit = {}
+    onItemLongClick: (JumpBackInItem) -> Unit = {},
 ) {
-    Column(modifier = Modifier.padding(vertical = 12.dp)) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .width(40.dp)
-                    .height(3.dp)
-                    .background(com.singam.lionlibrary.ui.theme.OrangeAccent, androidx.compose.foundation.shape.RoundedCornerShape(1.5.dp))
-            )
-        }
-        
+    Column(modifier = Modifier.padding(bottom = LionLayout.SectionGap)) {
+        ShelfHeading(
+            title,
+            Modifier.padding(horizontal = LionLayout.Gutter).padding(bottom = 10.dp),
+        )
+
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(items, key = { "${it.mediaId}-${it.episodeId}" }) { item ->
                 JumpBackInCard(
                     item = item,
                     onClick = { onItemClick(item) },
-                    onLongClick = { onItemLongClick(item) }
+                    onLongClick = { onItemLongClick(item) },
                 )
             }
         }
+    }
+}
+
+@androidx.compose.ui.tooling.preview.Preview(name = "Hero with one local title")
+@androidx.compose.ui.tooling.preview.Preview(
+    name = "Hero enlarged text",
+    widthDp = 320,
+    fontScale = 2f,
+)
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun SingleHeroPreview() {
+
+    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+        HeroBannerCarousel(
+            listOf(com.singam.lionlibrary.presentation.components.PreviewFilm),
+            { _, _ -> },
+        )
+    }
+}
+
+@androidx.compose.ui.tooling.preview.Preview(name = "Hero carousel", widthDp = 840)
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun CarouselPreview() {
+
+    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+        val film = com.singam.lionlibrary.presentation.components.PreviewFilm
+
+        HeroBannerCarousel(listOf(film, film.copy(id = 2, title = "Michael")), { _, _ -> })
+    }
+}
+
+@androidx.compose.ui.tooling.preview.Preview(name = "Media shelf")
+@Composable
+private fun ShelfPreview() {
+
+    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+        MediaRow(
+            "Movies",
+            listOf(com.singam.lionlibrary.presentation.components.PreviewFilm),
+            {},
+            {},
+        )
+    }
+}
+
+@androidx.compose.ui.tooling.preview.Preview(name = "Continue watching shelf")
+@Composable
+private fun ResumeShelfPreview() {
+
+    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+        JumpBackInRow(
+            "Jump Back In",
+            listOf(
+                JumpBackInItem(
+                    1,
+                    MediaType.MOVIE,
+                    "Michael",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    .5f,
+                    filePath = "content://fixture/movie",
+                    lastWatched = 1,
+                )
+            ),
+            {},
+            {},
+        )
     }
 }

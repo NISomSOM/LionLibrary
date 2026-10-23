@@ -1,27 +1,31 @@
 [versions]
 agp = "9.4.1"
-kotlin = "2.2.10"
-ksp = "2.3.6"
-composeBom = "2026.06.01"
-coreKtx = "1.19.0"
+kotlin = "2.4.21"
+ksp = "2.3.12"
+composeBom = "2026.09.00"
+coreKtx = "1.19.1"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
-navigationCompose = "2.9.8"
+navigationCompose = "2.10.2"
 koin = "4.2.2"
-room = "2.8.4"
+room = "2.8.5"
 datastore = "1.2.1"
 retrofit = "3.0.0"
-okhttp = "5.4.0"
+okhttp = "5.5.0"
 kotlinxSerialization = "1.11.0"
-retrofitKotlinxConverter = "1.0.0"
-coil = "2.7.0"
+coil = "3.6.3"
 coroutines = "1.11.0"
 documentfile = "1.1.0"
 junit = "4.13.2"
 junitVersion = "1.3.0"
 espressoCore = "3.7.0"
-media3 = "1.10.1"
-libvlc = "3.7.5"
+media3 = "1.11.1"
+libvlc = "3.7.7"
+
+junitBom = "6.1.3"
+assertk = "0.28.1"
+turbine = "1.2.1"
+ktfmt = "0.64"
 
 [libraries]
 # Core
@@ -62,13 +66,13 @@ datastore-preferences = { group = "androidx.datastore", name = "datastore-prefer
 retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
-retrofit-kotlinx-serialization = { group = "com.jakewharton.retrofit", name = "retrofit2-kotlinx-serialization-converter", version.ref = "retrofitKotlinxConverter" }
+retrofit-kotlinx-serialization = { group = "com.squareup.retrofit2", name = "converter-kotlinx-serialization", version.ref = "retrofit" }
 
 # Kotlinx Serialization
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 
 # Coil
-coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 
 # Coroutines
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
@@ -80,18 +84,25 @@ androidx-documentfile = { group = "androidx.documentfile", name = "documentfile"
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 androidx-media3-common = { group = "androidx.media3", name = "media3-common", version.ref = "media3" }
+androidx-media3-inspector = { group = "androidx.media3", name = "media3-inspector", version.ref = "media3" }
 
 # libVLC
 libvlc-all = { group = "org.videolan.android", name = "libvlc-all", version.ref = "libvlc" }
 
 # Testing
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junitBom" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+junit-vintage = { module = "org.junit.vintage:junit-vintage-engine" }
+assertk = { module = "com.willowtreeapps.assertk:assertk", version.ref = "assertk" }
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+ktfmt = { module = "com.facebook:ktfmt", version.ref = "ktfmt" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

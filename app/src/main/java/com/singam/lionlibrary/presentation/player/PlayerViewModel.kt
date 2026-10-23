@@ -1,491 +1,660 @@
 package com.singam.lionlibrary.presentation.player
 
-import android.app.Application
 import android.content.Intent
 import android.net.Uri
-import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.singam.lionlibrary.data.local.db.dao.EpisodeDao
-import com.singam.lionlibrary.data.local.db.dao.MediaDao
-import com.singam.lionlibrary.data.local.db.dao.WatchProgressDao
-import com.singam.lionlibrary.data.local.db.entity.EpisodeEntity
-import com.singam.lionlibrary.data.local.db.entity.MediaEntity
-import com.singam.lionlibrary.domain.model.MediaType
-import com.singam.lionlibrary.data.local.db.entity.WatchProgressEntity
+import androidx.core.net.toUri
+import androidx.lifecycle.*
+import com.singam.lionlibrary.R
+import com.singam.lionlibrary.domain.model.*
+import com.singam.lionlibrary.domain.repository.*
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
-import com.singam.lionlibrary.domain.repository.SettingsRepository
-import com.singam.lionlibrary.presentation.player.engine.EnginePlaybackState
-import com.singam.lionlibrary.presentation.player.engine.EngineState
-import com.singam.lionlibrary.presentation.player.engine.EngineType
-import com.singam.lionlibrary.presentation.player.engine.ExoPlayerEngine
-import com.singam.lionlibrary.presentation.player.engine.LibVlcPlayerEngine
-import com.singam.lionlibrary.presentation.player.engine.LionPlayerEngine
-import com.singam.lionlibrary.presentation.player.engine.TrackLanguageMatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
+import com.singam.lionlibrary.presentation.common.*
+import com.singam.lionlibrary.presentation.player.engine.*
+import kotlin.math.roundToInt
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class PlayerState(
     val title: String = "",
     val subtitle: String = "",
     val isPlaying: Boolean = false,
     val playbackState: EnginePlaybackState = EnginePlaybackState.IDLE,
-    val currentPositionMs: Long = 0L,
-    val durationMs: Long = 0L,
+    val currentPositionMs: Long = 0,
+    val durationMs: Long = 0,
     val showControls: Boolean = true,
     val isExternalFallbackLoading: Boolean = false,
+    val engineType: EngineType = EngineType.EXOPLAYER,
+    val session: Long = 0,
+    val failure: UiText? = null,
+    val audioTracks: List<EngineTrackInfo> = emptyList(),
+    val subtitleTracks: List<EngineTrackInfo> = emptyList(),
+    val isEpisode: Boolean = false,
     val hasNext: Boolean = false,
     val hasPrevious: Boolean = false,
-    val engineType: EngineType = EngineType.EXOPLAYER
+    val isLocked: Boolean = false,
+    val panel: PlayerPanel = PlayerPanel.NONE,
+    val playbackSpeed: Float = 1f,
+    val aspectMode: AspectMode = AspectMode.FIT,
+    val subtitleDelayMs: Long = 0,
+    val subtitleScale: Float = 1f,
+    val supportsSubtitleDelay: Boolean = false,
+    val supportsSubtitleScale: Boolean = false,
+    /** null shows every language; "" groups tracks without a language tag. */
+    val subtitleLanguageFilter: String? = null,
+    val info: PlayerInfoUi? = null,
+    val logoPath: String? = null,
+    val overview: String? = null,
+)
+
+enum class PlayerPanel {
+    NONE,
+    SUBTITLES,
+    AUDIO,
+    SPEED,
+    INFO,
+}
+
+/** Snapshot for the info overlay, taken when it opens. */
+data class PlayerInfoUi(
+    val fileName: String,
+    val engineType: EngineType,
+    val video: EngineVideoInfo?,
+    val audio: EngineTrackInfo?,
+    val subtitle: EngineTrackInfo?,
 )
 
 sealed interface PlayerAction {
     data object OnPlayPause : PlayerAction
+
+    data object Pause : PlayerAction
+
     data class OnSeek(val positionMs: Long) : PlayerAction
+
     data object OnSeekForward : PlayerAction
+
     data object OnSeekBackward : PlayerAction
+
     data class OnScrub(val positionMs: Long) : PlayerAction
+
     data object OnScrubEnd : PlayerAction
+
     data class OnControlsVisibilityChanged(val isVisible: Boolean) : PlayerAction
+
     data object OnPlayNext : PlayerAction
+
     data object OnPlayPrevious : PlayerAction
+
     data object OnExternalFallback : PlayerAction
+
+    data class ExternalLaunchResult(val succeeded: Boolean) : PlayerAction
+
+    data class SelectAudio(val id: String) : PlayerAction
+
+    data class SelectSubtitle(val id: String?) : PlayerAction
+
+    data object RefreshTracks : PlayerAction
+
+    data object Retry : PlayerAction
+
+    data class OnLockChange(val isLocked: Boolean) : PlayerAction
+
+    data class OnPanelChange(val panel: PlayerPanel) : PlayerAction
+
+    data class OnSpeedSelect(val speed: Float) : PlayerAction
+
+    data object OnAspectCycle : PlayerAction
+
+    data class OnSubtitleDelayChange(val deltaMs: Long) : PlayerAction
+
+    data object OnSubtitleDelayReset : PlayerAction
+
+    data class OnSubtitleScaleChange(val delta: Float) : PlayerAction
+
+    data class OnSubtitleLanguageFilter(val language: String?) : PlayerAction
 }
 
 sealed interface PlayerEvent {
     data object NavigateBack : PlayerEvent
+
     data class LaunchExternalPlayer(val intent: Intent) : PlayerEvent
-    data class ShowError(val message: String) : PlayerEvent
+
+    data class ShowError(val message: UiText) : PlayerEvent
 }
 
 class PlayerViewModel(
     savedStateHandle: SavedStateHandle,
-    private val application: Application,
-    private val mediaDao: MediaDao,
-    private val episodeDao: EpisodeDao,
-    private val watchProgressDao: WatchProgressDao,
+    private val repository: PlaybackRepository,
     private val launchPlayerUseCase: LaunchPlayerUseCase,
-    private val settingsRepository: SettingsRepository
+    private val settings: SettingsRepository,
+    private val factory: PlayerEngineFactory,
+    private val focus: PlaybackAudioFocus,
+    private val trackPreferences: TrackPreferenceRepository,
 ) : ViewModel() {
-
-    private val mediaTypeString: String = checkNotNull(savedStateHandle["mediaType"])
-    private val mediaId: Long = checkNotNull(savedStateHandle["mediaId"])
-    private val mediaType = MediaType.valueOf(mediaTypeString)
-
-    private val _state = MutableStateFlow(PlayerState())
-    val state = _state.asStateFlow()
-
-    private val _events = Channel<PlayerEvent>()
-    val events = _events.receiveAsFlow()
-
-    // Engine created on-demand.
+    private val mediaType =
+        MediaType.valueOf(checkNotNull(savedStateHandle.get<String>("mediaType")))
+    private val mediaId = checkNotNull(savedStateHandle.get<Long>("mediaId"))
+    private val mutableState = MutableStateFlow(PlayerState())
+    val state = mutableState.asStateFlow()
+    private val mutableEvents = Channel<PlayerEvent>(Channel.BUFFERED)
+    val events = mutableEvents.receiveAsFlow()
     var engine: LionPlayerEngine? = null
         private set
 
-    private var uiUpdateJob: Job? = null
-    private var persistenceJob: Job? = null
-
-    private var currentMedia: MediaEntity? = null
-    private var currentEpisode: EpisodeEntity? = null
-    private var showIdForEpisode: Long = -1L
-
-    private var isScrubbing = false
-    private var defaultTracksApplied = false
+    private var target: PlaybackTarget? = null
+    private var observer: Job? = null
+    private var ticker: Job? = null
+    private var scrubbing = false
+    private var audioDefaultApplied = false
+    private var subtitleDefaultApplied = false
+    private var trackRevision = -1L
+    private var recovered = false
+    private var ended = false
+    private var transitioning = false
+    private var pausedByLifecycle = false
+    /** Remembered choice for the current title; null until loaded or when there is none. */
+    private var trackPreference: TrackPreference? = null
+    private val transition = Mutex()
 
     init {
-        loadInitialMedia()
-    }
-
-    // Pick engine based on settings/probe.
-    private suspend fun resolveEngine(preferredEngine: String): LionPlayerEngine {
-        val forceLibVlc = settingsRepository.forceLibVlc.first()
-        val engineType = if (forceLibVlc) {
-            EngineType.LIBVLC
-        } else {
-            try { EngineType.valueOf(preferredEngine) } catch (_: Exception) { EngineType.EXOPLAYER }
-        }
-
-        return when (engineType) {
-            EngineType.EXOPLAYER -> ExoPlayerEngine(application)
-            EngineType.LIBVLC -> withContext(Dispatchers.IO) { LibVlcPlayerEngine(application) }
-        }
-    }
-
-    private fun initEngine(selectedEngine: LionPlayerEngine) {
-        engine = selectedEngine
-        _state.update { it.copy(engineType = selectedEngine.engineType) }
-        observeEngineState()
-    }
-
-
-    private fun observeEngineState() {
         viewModelScope.launch {
-            engine?.state?.collect { engineState: EngineState ->
-                _state.update {
+            transition.withLock {
+                try {
+                    val initial = repository.target(mediaType, mediaId)
+                    if (initial == null)
+                        mutableState.update {
+                            it.copy(failure = UiText.Resource(R.string.file_access_error))
+                        }
+                    else open(initial)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    mutableState.update {
+                        it.copy(failure = UiText.Resource(R.string.playback_failure))
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun open(next: PlaybackTarget) {
+        transitioning = true
+        try {
+            // Previous progress has already been captured. Detach its observer before releasing it.
+            observer?.cancelAndJoin()
+            ticker?.cancelAndJoin()
+            focus.abandon()
+            engine?.release()
+            engine = null
+            target = next
+            ended = false
+            recovered = false
+            audioDefaultApplied = false
+            subtitleDefaultApplied = false
+            trackRevision = -1L
+            trackPreference = trackPreferences.get(next.mediaId)
+            val preferred =
+                if (settings.forceLibVlc.first()) EngineType.LIBVLC
+                else
+                    EngineType.entries.find { it.name == next.preferredEngine }
+                        ?: EngineType.EXOPLAYER
+            val selected = factory.create(preferred)
+            engine = selected
+            val previous = state.value
+            selected.setPlaybackSpeed(previous.playbackSpeed)
+            selected.setAspectMode(previous.aspectMode)
+            selected.setSubtitleScale(previous.subtitleScale)
+            mutableState.value =
+                PlayerState(
+                    title = next.title,
+                    subtitle =
+                        next.season?.let { season ->
+                            "S$season E${next.episode}" +
+                                (next.episodeEnd?.let { "–E$it" } ?: "") +
+                                next.episodeTitle?.let { " · $it" }.orEmpty()
+                        } ?: next.year?.toString().orEmpty(),
+                    engineType = preferred,
+                    session = state.value.session + 1,
+                    isEpisode = next.episodeId != 0L,
+                    logoPath = next.logoPath,
+                    overview = next.overview,
+                    isLocked = previous.isLocked,
+                    playbackSpeed = previous.playbackSpeed,
+                    aspectMode = previous.aspectMode,
+                    subtitleScale = previous.subtitleScale,
+                    supportsSubtitleDelay = selected.supportsSubtitleDelay,
+                    supportsSubtitleScale = selected.supportsSubtitleScale,
+                )
+            if (next.episodeId != 0L) {
+                val hasNext = repository.adjacent(next, true) != null
+                val hasPrevious = repository.adjacent(next, false) != null
+                mutableState.update { it.copy(hasNext = hasNext, hasPrevious = hasPrevious) }
+            }
+            val path = next.filePath
+            if (path == null) {
+                mutableState.update {
+                    it.copy(failure = UiText.Resource(R.string.file_access_error))
+                }
+                return
+            }
+            val progress = repository.progress(next)
+            selected.setMedia(Uri.parse(path), next.subtitlePath?.let(Uri::parse))
+            if (progress != null && !progress.completed && progress.lastPositionMs > 0) {
+                selected.seekTo(progress.lastPositionMs)
+                mutableState.update { it.copy(currentPositionMs = progress.lastPositionMs) }
+            }
+            observe(selected)
+            ticker = viewModelScope.launch {
+                var ticks = 0
+                while (isActive) {
+                    delay(500)
+                    if (!scrubbing)
+                        mutableState.update {
+                            it.copy(currentPositionMs = selected.currentPositionMs.coerceAtLeast(0))
+                        }
+                    if (state.value.isPlaying && ++ticks % 16 == 0)
+                        save()?.let { checkSave(it.await()) }
+                }
+            }
+            if (!pausedByLifecycle) play()
+        } finally {
+            transitioning = false
+        }
+    }
+
+    private fun observe(selected: LionPlayerEngine) {
+        observer = viewModelScope.launch {
+            selected.state.collect { value ->
+                // Completion is captured before exposing ENDED to lifecycle/UI observers.
+                val newlyEnded = value.playbackState == EnginePlaybackState.ENDED && !ended
+                val completion =
+                    if (newlyEnded) {
+                        ended = true
+                        save(true)
+                    } else null
+                mutableState.update {
                     it.copy(
-                        isPlaying = engineState.isPlaying,
-                        playbackState = engineState.playbackState,
-                        durationMs = if (engineState.durationMs > 0) engineState.durationMs else it.durationMs
+                        isPlaying = value.isPlaying,
+                        playbackState = value.playbackState,
+                        durationMs = value.durationMs.coerceAtLeast(0),
                     )
                 }
-
-                when (engineState.playbackState) {
-                    EnginePlaybackState.READY -> {
-                        if (!defaultTracksApplied) {
-                            defaultTracksApplied = true
-                            applyDefaultTrackSelection()
+                if (
+                    value.playbackState == EnginePlaybackState.READY &&
+                        trackRevision != value.trackRevision
+                ) {
+                    applyDefaults()
+                    refreshTracks()
+                    trackRevision = value.trackRevision
+                }
+                if (newlyEnded && !transitioning) {
+                    transitioning = true
+                    val completedTarget = target
+                    runTransition {
+                        completion?.let { checkSave(it.await()) }
+                        val current = target
+                        if (current != null && current == completedTarget) {
+                            repository.adjacent(current, true)?.let { open(it) } ?: focus.abandon()
                         }
                     }
-                    EnginePlaybackState.ENDED -> {
-                        persistProgress(markAsCompleted = true)
-                        onAction(PlayerAction.OnPlayNext)
-                    }
-                    else -> {}
                 }
-
-                if (engineState.isPlaying) {
-                    startUiUpdateJob()
-                    startPersistenceJob()
-                } else {
-                    stopUiUpdateJob()
-                    persistProgress()
-                    stopPersistenceJob()
-                }
-
-                // Error recovery: reset tracks.
-                engineState.error?.let { errorMsg ->
-                    viewModelScope.launch {
-                        val recoveryPositionMs = _state.value.currentPositionMs
-                        val filePath = if (mediaType == MediaType.MOVIE) {
-                            currentMedia?.filePath
-                        } else {
-                            currentEpisode?.filePath
-                        }
-                        val subtitlePath = if (mediaType == MediaType.MOVIE) {
-                            currentMedia?.externalSubtitlePath
-                        } else {
-                            currentEpisode?.externalSubtitlePath
-                        }
-
-                        engine?.resetToDefaultTrackSelection()
-                        if (filePath != null) {
-                            engine?.setMedia(
-                                Uri.parse(filePath),
-                                subtitlePath?.let { Uri.parse(it) }
+                value.error?.let { failure ->
+                    if (failure == PlaybackFailure.TRACK && !recovered) {
+                        recovered = true
+                        val position = selected.currentPositionMs.coerceAtLeast(0)
+                        val current = target
+                        selected.resetToDefaultTrackSelection()
+                        current?.filePath?.let {
+                            selected.setMedia(
+                                Uri.parse(it),
+                                current.subtitlePath?.let(Uri::parse),
                             )
-                            engine?.seekTo(recoveryPositionMs)
-                            engine?.play()
+                            selected.seekTo(position)
+                            play()
                         }
-                        _events.send(
-                            PlayerEvent.ShowError(
-                                "That audio track isn't supported on this device. " +
-                                    "Reverted to the default track."
+                        mutableEvents.send(
+                            PlayerEvent.ShowError(UiText.Resource(R.string.audio_track_recovered))
+                        )
+                    } else {
+                        selected.pause()
+                        focus.abandon()
+                        mutableState.update {
+                            it.copy(
+                                failure =
+                                    UiText.Resource(
+                                        if (failure == PlaybackFailure.FILE_ACCESS)
+                                            R.string.file_access_error
+                                        else R.string.playback_failure
+                                    ),
+                                showControls = true,
                             )
-                        )
+                        }
                     }
                 }
             }
         }
     }
 
-    private fun loadInitialMedia() {
-        viewModelScope.launch {
-            if (mediaType == MediaType.MOVIE) {
-                currentMedia = mediaDao.getById(mediaId)
-                currentMedia?.let { media ->
-                    initEngine(resolveEngine(media.preferredEngine))
-
-                    _state.update {
-                        it.copy(
-                            title = media.title,
-                            subtitle = media.year?.toString() ?: "",
-                            hasPrevious = false,
-                            hasNext = false
-                        )
-                    }
-                    preparePlayer(media.filePath, media.externalSubtitlePath)
-                } ?: run {
-                    // Fallback engine.
-                    initEngine(ExoPlayerEngine(application))
-                    _events.send(PlayerEvent.ShowError("Media not found"))
-                    _events.send(PlayerEvent.NavigateBack)
-                }
-            } else {
-                currentEpisode = episodeDao.getById(mediaId)
-                currentEpisode?.let { ep ->
-                    initEngine(resolveEngine(ep.preferredEngine))
-
-                    showIdForEpisode = ep.showId
-                    val show = mediaDao.getById(showIdForEpisode)
-                    _state.update {
-                        it.copy(
-                            title = show?.title ?: "Unknown Show",
-                            subtitle = "S${ep.seasonNumber} E${ep.episodeNumber} - ${ep.title ?: ""}"
-                        )
-                    }
-                    checkNextPrevious(ep)
-                    preparePlayer(ep.filePath, ep.externalSubtitlePath)
-                } ?: run {
-                    initEngine(ExoPlayerEngine(application))
-                    _events.send(PlayerEvent.ShowError("Episode not found"))
-                    _events.send(PlayerEvent.NavigateBack)
-                }
-            }
-        }
+    private fun play() {
+        if (focus.request { onAction(PlayerAction.Pause) }) engine?.play()
     }
 
-    private fun preparePlayer(filePath: String?, externalSubtitlePath: String?) {
-        if (filePath == null) return
-
-        val uri = Uri.parse(filePath)
-        val subtitleUri = externalSubtitlePath?.let { Uri.parse(it) }
-
-        engine?.setMedia(uri, subtitleUri)
-
-        viewModelScope.launch {
-            val progressId = if (mediaType == MediaType.MOVIE) 0L else (currentEpisode?.id ?: mediaId)
-            val mediaIdToUse = if (mediaType == MediaType.MOVIE) mediaId else showIdForEpisode
-            val watchProgress = watchProgressDao.getProgress(mediaIdToUse, progressId)
-            if (watchProgress != null && watchProgress.lastPositionMs > 5000L && !watchProgress.completed) {
-                engine?.seekTo(watchProgress.lastPositionMs)
-                _state.update { it.copy(currentPositionMs = watchProgress.lastPositionMs) }
-            }
-            engine?.play()
-        }
+    private fun pause() {
+        pausedByLifecycle = true
+        engine?.pause()
+        focus.abandon()
+        save()
     }
 
-    private suspend fun checkNextPrevious(ep: EpisodeEntity) {
-        val next = episodeDao.getNextEpisode(ep.showId, ep.seasonNumber, ep.episodeNumber)
-        val prev = episodeDao.getPreviousEpisode(ep.showId, ep.seasonNumber, ep.episodeNumber)
-        _state.update {
+    private fun applyDefaults() {
+        val saved = trackPreference
+        val audioTracks = engine?.getAudioTracks().orEmpty()
+        if (!audioDefaultApplied)
+            saved
+                ?.audio
+                ?.let { SavedTrackMatcher.find(audioTracks, it) }
+                ?.let {
+                    engine?.selectAudioTrack(it.id)
+                    audioDefaultApplied = true
+                }
+        val subtitleTracks = engine?.getSubtitleTracks().orEmpty()
+        if (!subtitleDefaultApplied && saved?.subtitlesOff == true && subtitleTracks.isNotEmpty()) {
+            engine?.selectSubtitleTrack(null)
+            subtitleDefaultApplied = true
+        }
+        if (!subtitleDefaultApplied)
+            saved
+                ?.subtitle
+                ?.let { SavedTrackMatcher.find(subtitleTracks, it) }
+                ?.let {
+                    engine?.selectSubtitleTrack(it.id)
+                    subtitleDefaultApplied = true
+                }
+        // Without a remembered match, fall back to the language defaults.
+        if (!audioDefaultApplied)
+            TrackLanguageMatcher.findBestAudioTrack(
+                    engine?.getAudioTracks().orEmpty(),
+                    if (target?.preferJapaneseAudio == true) MediaType.ANIME
+                    else target?.type ?: mediaType,
+                )
+                ?.let {
+                    engine?.selectAudioTrack(it.id)
+                    audioDefaultApplied = true
+                }
+        if (!subtitleDefaultApplied)
+            TrackLanguageMatcher.findBestSubtitleTrack(engine?.getSubtitleTracks().orEmpty())?.let {
+                engine?.selectSubtitleTrack(it.id)
+                subtitleDefaultApplied = true
+            }
+    }
+
+    private fun refreshTracks() {
+        mutableState.update {
             it.copy(
-                hasNext = next != null,
-                hasPrevious = prev != null
+                audioTracks = engine?.getAudioTracks().orEmpty(),
+                subtitleTracks = engine?.getSubtitleTracks().orEmpty(),
             )
-        }
-    }
-
-    fun getAudioTracks() = engine?.getAudioTracks() ?: emptyList()
-    fun selectAudioTrack(id: String) = engine?.selectAudioTrack(id)
-    fun getSubtitleTracks() = engine?.getSubtitleTracks() ?: emptyList()
-    fun selectSubtitleTrack(id: String?) = engine?.selectSubtitleTrack(id)
-
-    // Default track selection.
-    private fun applyDefaultTrackSelection() {
-        val audioTracks = engine?.getAudioTracks() ?: return
-        val subtitleTracks = engine?.getSubtitleTracks() ?: return
-
-        val bestAudio = TrackLanguageMatcher.findBestAudioTrack(audioTracks, mediaType)
-        if (bestAudio != null && !bestAudio.isSelected) {
-            engine?.selectAudioTrack(bestAudio.id)
-        }
-
-        val bestSub = TrackLanguageMatcher.findBestSubtitleTrack(subtitleTracks)
-        if (bestSub != null && !bestSub.isSelected) {
-            engine?.selectSubtitleTrack(bestSub.id)
         }
     }
 
     fun onAction(action: PlayerAction) {
         when (action) {
-            is PlayerAction.OnPlayPause -> {
-                if (_state.value.isPlaying) engine?.pause() else engine?.play()
+            PlayerAction.OnPlayPause -> {
+                if (ended) {
+                    onAction(PlayerAction.Retry)
+                } else if (state.value.isPlaying) {
+                    pause()
+                } else {
+                    pausedByLifecycle = false
+                    play()
+                }
             }
-            is PlayerAction.OnSeek -> {
-                engine?.seekTo(action.positionMs)
-                _state.update { it.copy(currentPositionMs = action.positionMs) }
-            }
-            is PlayerAction.OnSeekForward -> {
-                val newPos = (_state.value.currentPositionMs + 10_000).coerceAtMost(_state.value.durationMs)
-                engine?.seekTo(newPos)
-                _state.update { it.copy(currentPositionMs = newPos) }
-            }
-            is PlayerAction.OnSeekBackward -> {
-                val newPos = (_state.value.currentPositionMs - 10_000).coerceAtLeast(0)
-                engine?.seekTo(newPos)
-                _state.update { it.copy(currentPositionMs = newPos) }
-            }
+            PlayerAction.Pause -> pause()
+            is PlayerAction.OnSeek -> seek(action.positionMs)
+            PlayerAction.OnSeekForward -> seek(state.value.currentPositionMs + 10_000)
+            PlayerAction.OnSeekBackward -> seek(state.value.currentPositionMs - 10_000)
             is PlayerAction.OnScrub -> {
-                isScrubbing = true
-                _state.update { it.copy(currentPositionMs = action.positionMs) }
-            }
-            is PlayerAction.OnScrubEnd -> {
-                isScrubbing = false
-                engine?.seekTo(_state.value.currentPositionMs)
-            }
-            is PlayerAction.OnControlsVisibilityChanged -> {
-                _state.update { it.copy(showControls = action.isVisible) }
-            }
-            is PlayerAction.OnPlayNext -> {
-                if (mediaType != MediaType.MOVIE && currentEpisode != null) {
-                    viewModelScope.launch {
-                        val next = episodeDao.getNextEpisode(
-                            showIdForEpisode,
-                            currentEpisode!!.seasonNumber,
-                            currentEpisode!!.episodeNumber
-                        )
-                        next?.let { playNewEpisode(it) }
-                    }
+                scrubbing = true
+                mutableState.update {
+                    it.copy(currentPositionMs = action.positionMs.coerceAtLeast(0))
                 }
             }
-            is PlayerAction.OnPlayPrevious -> {
-                if (mediaType != MediaType.MOVIE && currentEpisode != null) {
-                    viewModelScope.launch {
-                        val prev = episodeDao.getPreviousEpisode(
-                            showIdForEpisode,
-                            currentEpisode!!.seasonNumber,
-                            currentEpisode!!.episodeNumber
+            PlayerAction.OnScrubEnd -> {
+                scrubbing = false
+                seek(state.value.currentPositionMs)
+            }
+            is PlayerAction.OnControlsVisibilityChanged ->
+                mutableState.update { it.copy(showControls = action.isVisible) }
+            PlayerAction.OnPlayNext -> move(true)
+            PlayerAction.OnPlayPrevious -> move(false)
+            PlayerAction.OnExternalFallback -> external()
+            is PlayerAction.ExternalLaunchResult ->
+                viewModelScope.launch {
+                    if (action.succeeded) mutableEvents.send(PlayerEvent.NavigateBack)
+                    else
+                        mutableEvents.send(
+                            PlayerEvent.ShowError(UiText.Resource(R.string.external_launch_error))
                         )
-                        prev?.let { playNewEpisode(it) }
+                }
+            is PlayerAction.SelectAudio -> {
+                audioDefaultApplied = true
+                val chosen = state.value.audioTracks.firstOrNull { it.id == action.id }
+                engine?.selectAudioTrack(action.id)
+                refreshTracks()
+                chosen?.let { rememberTracks { copy(audio = SavedTrackMatcher.toSaved(it)) } }
+            }
+            is PlayerAction.SelectSubtitle -> {
+                subtitleDefaultApplied = true
+                val chosen = state.value.subtitleTracks.firstOrNull { it.id == action.id }
+                engine?.selectSubtitleTrack(action.id)
+                refreshTracks()
+                if (action.id == null) rememberTracks { copy(subtitlesOff = true) }
+                else
+                    chosen?.let {
+                        rememberTracks {
+                            copy(subtitle = SavedTrackMatcher.toSaved(it), subtitlesOff = false)
+                        }
+                    }
+            }
+            PlayerAction.RefreshTracks -> refreshTracks()
+            is PlayerAction.OnLockChange ->
+                mutableState.update {
+                    it.copy(
+                        isLocked = action.isLocked,
+                        panel = PlayerPanel.NONE,
+                        showControls = !action.isLocked,
+                    )
+                }
+            is PlayerAction.OnPanelChange -> openPanel(action.panel)
+            is PlayerAction.OnSpeedSelect -> {
+                val speed = action.speed.coerceIn(MIN_SPEED, MAX_SPEED)
+                engine?.setPlaybackSpeed(speed)
+                mutableState.update { it.copy(playbackSpeed = speed) }
+            }
+            PlayerAction.OnAspectCycle -> {
+                val next =
+                    AspectMode.entries[
+                            (state.value.aspectMode.ordinal + 1) % AspectMode.entries.size]
+                engine?.setAspectMode(next)
+                mutableState.update { it.copy(aspectMode = next) }
+            }
+            is PlayerAction.OnSubtitleDelayChange ->
+                setSubtitleDelay(state.value.subtitleDelayMs + action.deltaMs)
+            PlayerAction.OnSubtitleDelayReset -> setSubtitleDelay(0)
+            is PlayerAction.OnSubtitleScaleChange -> {
+                val scale = ((state.value.subtitleScale + action.delta) * 100).roundToInt() / 100f
+                val bounded = scale.coerceIn(MIN_SUBTITLE_SCALE, MAX_SUBTITLE_SCALE)
+                engine?.setSubtitleScale(bounded)
+                mutableState.update { it.copy(subtitleScale = bounded) }
+            }
+            is PlayerAction.OnSubtitleLanguageFilter ->
+                mutableState.update { it.copy(subtitleLanguageFilter = action.language) }
+            PlayerAction.Retry -> {
+                if (!transitioning) {
+                    transitioning = true
+                    val snapshot = save()
+                    runTransition {
+                        snapshot?.let { checkSave(it.await()) }
+                        target?.let {
+                            pausedByLifecycle = false
+                            open(it)
+                        }
                     }
                 }
-            }
-            is PlayerAction.OnExternalFallback -> {
-                handleExternalFallback()
             }
         }
     }
 
-    private fun playNewEpisode(ep: EpisodeEntity) {
-        // Stop before engine switch.
-        engine?.stop()
-        defaultTracksApplied = false
-        currentEpisode = ep
-        viewModelScope.launch {
-            val show = mediaDao.getById(showIdForEpisode)
-            _state.update {
-                it.copy(
-                    title = show?.title ?: "Unknown Show",
-                    subtitle = "S${ep.seasonNumber} E${ep.episodeNumber} - ${ep.title ?: ""}",
-                    currentPositionMs = 0L
-                )
-            }
-            checkNextPrevious(ep)
-            preparePlayer(ep.filePath, ep.externalSubtitlePath)
+    /** Saves the viewer's track choice for the whole movie or show. */
+    private fun rememberTracks(change: TrackPreference.() -> TrackPreference) {
+        val mediaId = target?.mediaId ?: return
+        val updated = (trackPreference ?: TrackPreference()).change()
+        trackPreference = updated
+        viewModelScope.launch { trackPreferences.save(mediaId, updated) }
+    }
+
+    private fun openPanel(panel: PlayerPanel) {
+        if (panel == PlayerPanel.SUBTITLES || panel == PlayerPanel.AUDIO) refreshTracks()
+        mutableState.update {
+            it.copy(
+                panel = panel,
+                info = if (panel == PlayerPanel.INFO) infoSnapshot() else null,
+                // Keep controls up underneath so closing a panel returns to them.
+                showControls = it.showControls || panel != PlayerPanel.NONE,
+            )
         }
     }
 
-    private fun handleExternalFallback() {
-        val path = if (mediaType == MediaType.MOVIE) currentMedia?.filePath else currentEpisode?.filePath
-        if (path == null) return
+    private fun infoSnapshot(): PlayerInfoUi? {
+        val current = target ?: return null
+        val selected = engine ?: return null
+        return PlayerInfoUi(
+            fileName =
+                current.filePath
+                    ?.let { it.toUri().lastPathSegment }
+                    ?.substringAfterLast('/')
+                    ?.ifBlank { null } ?: current.title,
+            engineType = selected.engineType,
+            video = selected.getVideoInfo(),
+            audio = selected.getAudioTracks().firstOrNull { it.isSelected },
+            subtitle = selected.getSubtitleTracks().firstOrNull { it.isSelected },
+        )
+    }
 
+    private fun setSubtitleDelay(delayMs: Long) {
+        val bounded = delayMs.coerceIn(-MAX_SUBTITLE_DELAY_MS, MAX_SUBTITLE_DELAY_MS)
+        engine?.setSubtitleDelay(bounded)
+        mutableState.update { it.copy(subtitleDelayMs = bounded) }
+    }
+
+    private fun seek(position: Long) {
+        val duration = state.value.durationMs
+        val bounded =
+            if (duration > 0) position.coerceIn(0, duration) else position.coerceAtLeast(0)
+        engine?.seekTo(bounded)
+        mutableState.update { it.copy(currentPositionMs = bounded) }
+    }
+
+    private fun move(next: Boolean) {
+        if (transitioning) return
+        transitioning = true
+        // Capture immediately, before querying or switching identity.
+        val snapshot = save()
+        runTransition {
+            snapshot?.let { checkSave(it.await()) }
+            val current = target
+            if (current != null)
+                repository.adjacent(current, next)?.let {
+                    pausedByLifecycle = false
+                    open(it)
+                }
+        }
+    }
+
+    private fun runTransition(block: suspend () -> Unit) {
         viewModelScope.launch {
-            _state.update { it.copy(isExternalFallbackLoading = true) }
-            engine?.pause()
-            persistProgress()
-
             try {
-                val progressToPass = _state.value.currentPositionMs
-                val intent = launchPlayerUseCase(Uri.parse(path), progressToPass)
-                _events.send(PlayerEvent.LaunchExternalPlayer(intent))
-                _events.send(PlayerEvent.NavigateBack)
-            } catch (e: Exception) {
-                _events.send(PlayerEvent.ShowError("Failed to launch external player"))
-            } finally {
-                _state.update { it.copy(isExternalFallbackLoading = false) }
-            }
-        }
-    }
-
-    private fun startUiUpdateJob() {
-        uiUpdateJob?.cancel()
-        uiUpdateJob = viewModelScope.launch {
-            while (isActive) {
-                if (!isScrubbing) {
-                    val pos = engine?.currentPositionMs ?: _state.value.currentPositionMs
-                    _state.update { it.copy(currentPositionMs = pos) }
+                transition.withLock { block() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                engine?.pause()
+                focus.abandon()
+                mutableState.update {
+                    it.copy(
+                        isPlaying = false,
+                        failure = UiText.Resource(R.string.playback_failure),
+                        showControls = true,
+                    )
                 }
-                delay(500)
+            } finally {
+                transitioning = false
             }
         }
     }
 
-    private fun stopUiUpdateJob() {
-        uiUpdateJob?.cancel()
-        uiUpdateJob = null
-        if (!isScrubbing) {
-            val pos = engine?.currentPositionMs ?: _state.value.currentPositionMs
-            _state.update { it.copy(currentPositionMs = pos) }
-        }
-    }
-
-    private fun startPersistenceJob() {
-        persistenceJob?.cancel()
-        persistenceJob = viewModelScope.launch {
-            while (isActive) {
-                delay(8000)
-                persistProgress()
-            }
-        }
-    }
-
-    private fun stopPersistenceJob() {
-        persistenceJob?.cancel()
-        persistenceJob = null
-    }
-
-    private fun persistProgress(markAsCompleted: Boolean = false) {
-        val currentPos = engine?.currentPositionMs ?: _state.value.currentPositionMs
-        val dur = (engine?.durationMs ?: _state.value.durationMs).coerceAtLeast(1L)
-        if (currentPos == 0L && !markAsCompleted) return
-
+    private fun external() {
+        if (state.value.isExternalFallbackLoading) return
+        val current = target ?: return
+        val path = current.filePath ?: return
+        pause()
+        mutableState.update { it.copy(isExternalFallbackLoading = true) }
         viewModelScope.launch {
-            val progressId = if (mediaType == MediaType.MOVIE) 0L else (currentEpisode?.id ?: return@launch)
-            val mId = if (mediaType == MediaType.MOVIE) mediaId else showIdForEpisode
-
-            watchProgressDao.upsert(
-                WatchProgressEntity(
-                    mediaId = mId,
-                    episodeId = progressId,
-                    progress = if (markAsCompleted) 1f else (currentPos.toFloat() / dur),
-                    lastPositionMs = if (markAsCompleted) 0L else currentPos,
-                    durationMs = dur,
-                    lastWatched = System.currentTimeMillis(),
-                    completed = markAsCompleted || (currentPos >= dur * 0.95f)
+            try {
+                mutableEvents.send(
+                    PlayerEvent.LaunchExternalPlayer(
+                        launchPlayerUseCase(Uri.parse(path), state.value.currentPositionMs)
+                    )
                 )
-            )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutableEvents.send(
+                    PlayerEvent.ShowError(UiText.Resource(R.string.external_launch_error))
+                )
+            } finally {
+                mutableState.update { it.copy(isExternalFallbackLoading = false) }
+            }
         }
     }
 
-    // Save final progress.
-    private fun persistProgressFinal() {
-        val currentPos = engine?.currentPositionMs ?: _state.value.currentPositionMs
-        val dur = (engine?.durationMs ?: _state.value.durationMs).coerceAtLeast(1L)
-        if (currentPos == 0L) return
-
-        val progressId = if (mediaType == MediaType.MOVIE) 0L else (currentEpisode?.id ?: return)
-        val mId = if (mediaType == MediaType.MOVIE) mediaId else showIdForEpisode
-
-        CoroutineScope(Dispatchers.IO + NonCancellable).launch {
-            watchProgressDao.upsert(
-                WatchProgressEntity(
-                    mediaId = mId,
-                    episodeId = progressId,
-                    progress = currentPos.toFloat() / dur,
-                    lastPositionMs = currentPos,
-                    durationMs = dur,
-                    lastWatched = System.currentTimeMillis(),
-                    completed = currentPos >= dur * 0.95f
-                )
+    private fun save(completed: Boolean = ended): Deferred<OperationResult<Unit, DataError>>? {
+        val current = target ?: return null
+        val position = (engine?.currentPositionMs ?: state.value.currentPositionMs).coerceAtLeast(0)
+        if (position == 0L && !completed) return null
+        return repository.save(
+            PlaybackSnapshot(
+                current.mediaId,
+                current.episodeId,
+                position,
+                engine?.durationMs ?: state.value.durationMs,
+                completed,
+                System.currentTimeMillis(),
             )
-        }
+        )
+    }
+
+    private suspend fun checkSave(result: OperationResult<Unit, DataError>) {
+        if (result is OperationResult.Failure)
+            mutableEvents.send(PlayerEvent.ShowError(result.error.toUiText()))
+    }
+
+    companion object {
+        const val MIN_SPEED = 0.25f
+        const val MAX_SPEED = 3f
+        const val MIN_SUBTITLE_SCALE = 0.5f
+        const val MAX_SUBTITLE_SCALE = 2f
+        const val MAX_SUBTITLE_DELAY_MS = 60_000L
     }
 
     override fun onCleared() {
-        super.onCleared()
-        persistProgressFinal()
+        save()
+        observer?.cancel()
+        ticker?.cancel()
+        focus.abandon()
         engine?.release()
+        engine = null
     }
 }

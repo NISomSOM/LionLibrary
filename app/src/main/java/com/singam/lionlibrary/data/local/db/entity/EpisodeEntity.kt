@@ -7,18 +7,16 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "episodes",
-    foreignKeys = [
-        ForeignKey(
-            entity = MediaEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["showId"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [
-        Index(value = ["showId"]),
-        Index(value = ["filePath"], unique = true)
-    ]
+    foreignKeys =
+        [
+            ForeignKey(
+                entity = MediaEntity::class,
+                parentColumns = ["id"],
+                childColumns = ["showId"],
+                onDelete = ForeignKey.CASCADE,
+            )
+        ],
+    indices = [Index(value = ["showId"]), Index(value = ["filePath"], unique = true)],
 )
 data class EpisodeEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -32,6 +30,6 @@ data class EpisodeEntity(
     val thumbnailPath: String?,
     val filePath: String,
     val externalSubtitlePath: String? = null,
-    val preferredEngine: String = "EXOPLAYER"
+    val preferredEngine: String = "EXOPLAYER",
+    val episodeEndNumber: Int? = null,
 )
-

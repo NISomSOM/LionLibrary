@@ -12,10 +12,8 @@ object JaroWinkler {
 
         val jaroScore = jaroSimilarity(s1, s2)
 
-        val prefixLength = s1.zip(s2)
-            .takeWhile { (a, b) -> a == b }
-            .count()
-            .coerceAtMost(MAX_PREFIX_LENGTH)
+        val prefixLength =
+            s1.zip(s2).takeWhile { (a, b) -> a == b }.count().coerceAtMost(MAX_PREFIX_LENGTH)
 
         return (jaroScore + prefixLength * WINKLER_PREFIX_WEIGHT * (1 - jaroScore)).toFloat()
     }
@@ -54,7 +52,7 @@ object JaroWinkler {
         }
 
         return (matches.toDouble() / s1.length +
-                matches.toDouble() / s2.length +
-                (matches - transpositions / 2.0) / matches) / 3.0
+            matches.toDouble() / s2.length +
+            (matches - transpositions / 2.0) / matches) / 3.0
     }
 }

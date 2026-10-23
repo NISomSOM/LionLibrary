@@ -19,6 +19,18 @@ data class MediaItem(
     val certification: String? = null,
     val lastUpdated: Long,
     val filePath: String? = null,
-    val preferredEngine: String = "EXOPLAYER"
+    val preferredEngine: String = "EXOPLAYER",
+    val letterboxdRating: Float? = null,
+    val isWatchlisted: Boolean = false,
+    val addedAt: Long = lastUpdated,
+    val externalSubtitlePath: String? = null,
+    val letterboxdUpdatedAt: Long? = null,
+    val sourceShowTitle: String? = null,
+    val sourceSeason: Int? = null,
+    val sourceEpisode: Int? = null,
+    val sourceEpisodeEnd: Int? = null,
+    val identificationFailure: String? = null,
 )
 
+val MediaItem.isSingleFile: Boolean
+    get() = mediaType == MediaType.MOVIE || (isUnidentified && filePath != null)

@@ -37,3 +37,11 @@
 # libVLC
 -keep class org.videolan.libvlc.** { *; }
 -keepclassmembers class org.videolan.libvlc.** { *; }
+
+# Release logcat: drop verbose/debug/info diagnostics (they include content URIs).
+# Warnings and errors are kept.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}

@@ -16,6 +16,11 @@ interface WatchProgressRepository {
 
     suspend fun markAsWatched(mediaId: Long, episodeId: Long)
 
+    /** Same result as marking each in order; implementations may apply it as one write. */
+    suspend fun markAllAsWatched(mediaId: Long, episodeIds: List<Long>) {
+        episodeIds.forEach { markAsWatched(mediaId, it) }
+    }
+
     suspend fun markAsUnwatched(mediaId: Long, episodeId: Long)
 
     suspend fun deleteProgress(mediaId: Long, episodeId: Long)
@@ -26,4 +31,3 @@ interface WatchProgressRepository {
 
     suspend fun clearAll()
 }
-

@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.singam.lionlibrary.data.local.db.entity.JumpBackInEntity
 import com.singam.lionlibrary.data.local.db.entity.WatchProgressEntity
 import kotlinx.coroutines.flow.Flow
@@ -26,14 +27,19 @@ interface WatchProgressDao {
             e.thumbnailPath,
             w.progress,
             w.completed,
+            w.durationMs,
+            w.lastPositionMs,
             COALESCE(e.filePath, m.filePath) AS filePath,
-            MAX(w.lastWatched) AS lastWatched
+            w.lastWatched AS lastWatched
         FROM watch_progress w
         INNER JOIN media m ON m.id = w.mediaId
         LEFT JOIN episodes e ON e.id = w.episodeId
-        WHERE w.isHidden = 0
-        GROUP BY m.id
-        ORDER BY lastWatched DESC
+        WHERE w.isHidden = 0 AND w.episodeId = (
+            SELECT latest.episodeId FROM watch_progress latest
+            WHERE latest.mediaId=w.mediaId AND latest.isHidden=0
+            ORDER BY latest.lastWatched DESC, latest.episodeId DESC LIMIT 1
+        )
+        ORDER BY lastWatched DESC, m.id ASC
         LIMIT 20
         """
     )
@@ -57,7 +63,25 @@ interface WatchProgressDao {
     @Query("UPDATE watch_progress SET isHidden = 1 WHERE mediaId = :mediaId")
     suspend fun hideMediaFromJumpBackIn(mediaId: Long)
 
-    @Query("DELETE FROM watch_progress")
-    suspend fun clearAll()
-}
+    @Query("DELETE FROM watch_progress") suspend fun clearAll()
 
+    /** One transaction, one invalidation; timestamps still advance per episode as before. */
+    @Transaction
+    suspend fun markAllWatched(mediaId: Long, episodeIds: List<Long>) {
+        for (episodeId in episodeIds) {
+            val existing = getProgress(mediaId, episodeId)
+            upsert(
+                WatchProgressEntity(
+                    mediaId = mediaId,
+                    episodeId = episodeId,
+                    progress = 1.0f,
+                    lastPositionMs = existing?.lastPositionMs ?: 0L,
+                    durationMs = existing?.durationMs ?: 0L,
+                    lastWatched = System.currentTimeMillis(),
+                    completed = true,
+                    isHidden = false,
+                )
+            )
+        }
+    }
+}

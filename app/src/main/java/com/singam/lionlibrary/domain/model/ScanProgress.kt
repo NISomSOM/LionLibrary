@@ -4,7 +4,7 @@ data class ScanProgress(
     val total: Int,
     val processed: Int,
     val currentFile: String,
-    val status: ScanStatus
+    val status: ScanStatus,
 )
 
 enum class ScanStatus {
@@ -17,6 +17,5 @@ enum class ScanStatus {
     API_KEY_MISSING,
     INVALID_API_KEY,
     NO_INTERNET,
-    PERMISSION_REVOKED
+    PERMISSION_REVOKED,
 }
-

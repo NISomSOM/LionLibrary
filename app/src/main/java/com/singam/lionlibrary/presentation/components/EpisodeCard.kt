@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -26,14 +27,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.singam.lionlibrary.domain.model.Episode
-import java.io.File
 
 @Composable
 fun EpisodeCard(
@@ -42,83 +39,91 @@ fun EpisodeCard(
     progress: Float?,
     onMarkWatched: (Long) -> Unit,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     onLongClick: () -> Unit = {},
-    modifier: Modifier = Modifier
+    fallbackArtwork: List<String?> = emptyList(),
 ) {
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
-            .background(Color.Transparent)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .background(Color.Transparent)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Box(
-                modifier = Modifier
-                    .width(130.dp)
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(8.dp))
+                modifier =
+                    Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp))
             ) {
-                if (episode.thumbnailPath != null) {
-                    AsyncImage(
-                        model = File(episode.thumbnailPath),
-                        contentDescription = "Thumbnail",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(modifier = Modifier.fillMaxSize().background(Color.DarkGray))
-                }
-                
+                LocalArtwork(
+                    listOf(episode.thumbnailPath) + fallbackArtwork,
+                    episode.title,
+                    Modifier.fillMaxSize()
+                        .background(
+                            androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                )
+
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "Play",
+                    contentDescription =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.play
+                        ),
                     tint = Color.White,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 8.dp, bottom = 8.dp)
-                        .size(20.dp)
+                    modifier =
+                        Modifier.align(Alignment.BottomStart)
+                            .padding(start = 8.dp, bottom = 8.dp)
+                            .size(20.dp),
                 )
 
                 val progressValue = if (isWatched) 1f else (progress ?: 0f)
                 if (progressValue > 0f) {
                     Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth(progressValue)
-                            .height(4.dp)
-                            .background(com.singam.lionlibrary.ui.theme.OrangeAccent)
+                        modifier =
+                            Modifier.align(Alignment.BottomStart)
+                                .fillMaxWidth(progressValue)
+                                .height(4.dp)
+                                .background(com.singam.lionlibrary.ui.theme.OrangeAccent)
                     )
                 }
             }
 
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.weight(1f).padding(start = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = episode.title ?: "Episode ${episode.episodeNumber}",
-                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        style =
+                            androidx.compose.material3.MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
                         color = Color.White,
                         maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
                     )
 
                     Spacer(modifier = Modifier.height(2.dp))
 
                     val subtitleParts = mutableListOf<String>()
-                    subtitleParts.add("S${episode.seasonNumber} E${episode.episodeNumber}")
+                    subtitleParts.add(
+                        if (episode.episodeEndNumber != null)
+                            androidx.compose.ui.res.stringResource(
+                                com.singam.lionlibrary.R.string.episode_range,
+                                episode.seasonNumber,
+                                episode.episodeNumber,
+                                episode.episodeEndNumber,
+                            )
+                        else
+                            androidx.compose.ui.res.stringResource(
+                                com.singam.lionlibrary.R.string.episode_number,
+                                episode.seasonNumber,
+                                episode.episodeNumber,
+                            )
+                    )
                     if (!episode.airDate.isNullOrBlank()) {
                         subtitleParts.add(episode.airDate)
                     }
@@ -130,19 +135,35 @@ fun EpisodeCard(
                         style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
                         color = Color.Gray,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
 
-                IconButton(
-                    onClick = { onMarkWatched(episode.id) },
-                    modifier = Modifier.size(36.dp)
-                ) {
+                IconButton(onClick = onLongClick) {
                     Icon(
-                        imageVector = if (isWatched) Icons.Rounded.CheckCircle else Icons.Outlined.CheckCircle,
-                        contentDescription = if (isWatched) "Mark as Unwatched" else "Mark as Watched",
+                        Icons.Default.MoreVert,
+                        contentDescription =
+                            androidx.compose.ui.res.stringResource(
+                                com.singam.lionlibrary.R.string.more_actions
+                            ),
+                    )
+                }
+                IconButton(onClick = { onMarkWatched(episode.id) }, modifier = Modifier) {
+                    Icon(
+                        imageVector =
+                            if (isWatched) Icons.Rounded.CheckCircle
+                            else Icons.Outlined.CheckCircle,
+                        contentDescription =
+                            if (isWatched)
+                                androidx.compose.ui.res.stringResource(
+                                    com.singam.lionlibrary.R.string.ui_mark_as_unwatched
+                                )
+                            else
+                                androidx.compose.ui.res.stringResource(
+                                    com.singam.lionlibrary.R.string.ui_mark_as_watched
+                                ),
                         tint = if (isWatched) Color.White else Color.Gray,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             }
@@ -155,7 +176,7 @@ fun EpisodeCard(
                 style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
                 color = Color.Gray,
                 maxLines = 3,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
             )
         }
 
@@ -163,7 +184,7 @@ fun EpisodeCard(
         androidx.compose.material3.HorizontalDivider(
             modifier = Modifier.fillMaxWidth(),
             color = Color(0xFF333333),
-            thickness = 1.dp
+            thickness = 1.dp,
         )
     }
 }

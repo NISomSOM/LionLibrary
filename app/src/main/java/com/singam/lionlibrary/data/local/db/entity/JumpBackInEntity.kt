@@ -14,6 +14,7 @@ data class JumpBackInEntity(
     val progress: Float?,
     val completed: Boolean,
     val filePath: String?,
-    val lastWatched: Long
+    val lastWatched: Long,
+    val durationMs: Long = 0L,
+    val lastPositionMs: Long = 0L,
 )
-

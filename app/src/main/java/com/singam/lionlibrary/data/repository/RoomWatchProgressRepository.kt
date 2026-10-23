@@ -12,25 +12,34 @@ import kotlinx.coroutines.flow.map
 
 class RoomWatchProgressRepository(
     private val watchProgressDao: WatchProgressDao,
-    private val episodeDao: com.singam.lionlibrary.data.local.db.dao.EpisodeDao
+    private val episodeDao: com.singam.lionlibrary.data.local.db.dao.EpisodeDao,
 ) : WatchProgressRepository {
 
     override fun getJumpBackInItems(): Flow<List<JumpBackInItem>> {
         return watchProgressDao.getJumpBackInItems().map { entities ->
             entities.mapNotNull { entity ->
                 if (entity.completed && entity.mediaType != "MOVIE") {
-                    val nextEp = episodeDao.getNextEpisode(entity.mediaId, entity.seasonNumber ?: 0, entity.episodeNumber ?: 0)
-                    if (nextEp != null) {
-                        entity.toJumpBackInItem().copy(
-                            episodeId = nextEp.id,
-                            episodeTitle = nextEp.title,
-                            seasonNumber = nextEp.seasonNumber,
-                            episodeNumber = nextEp.episodeNumber,
-                            thumbnailPath = nextEp.thumbnailPath,
-                            filePath = nextEp.filePath,
-                            progress = 0f,
-                            isNextUp = true
+                    val nextEp =
+                        episodeDao.getNextEpisode(
+                            entity.mediaId,
+                            entity.seasonNumber ?: 0,
+                            entity.episodeNumber ?: 0,
                         )
+                    if (nextEp != null) {
+                        entity
+                            .toJumpBackInItem()
+                            .copy(
+                                episodeId = nextEp.id,
+                                episodeTitle = nextEp.title,
+                                seasonNumber = nextEp.seasonNumber,
+                                episodeNumber = nextEp.episodeNumber,
+                                thumbnailPath = nextEp.thumbnailPath,
+                                filePath = nextEp.filePath,
+                                progress = 0f,
+                                isNextUp = true,
+                                durationMs = 0L,
+                                positionMs = 0L,
+                            )
                     } else {
                         // Series done
                         null
@@ -58,17 +67,17 @@ class RoomWatchProgressRepository(
     override suspend fun markAsStarted(mediaId: Long, episodeId: Long) {
         val existing = watchProgressDao.getProgress(mediaId, episodeId)
         if (existing?.completed == true) return // Already watched, skip.
-        
+
         watchProgressDao.upsert(
             WatchProgressEntity(
                 mediaId = mediaId,
                 episodeId = episodeId,
-                progress = 0.01f,
+                progress = existing?.progress ?: 0.01f,
                 lastPositionMs = existing?.lastPositionMs ?: 0L,
                 durationMs = existing?.durationMs ?: 0L,
                 lastWatched = System.currentTimeMillis(),
                 completed = false,
-                isHidden = false
+                isHidden = false,
             )
         )
     }
@@ -84,9 +93,13 @@ class RoomWatchProgressRepository(
                 durationMs = existing?.durationMs ?: 0L,
                 lastWatched = System.currentTimeMillis(),
                 completed = true,
-                isHidden = false
+                isHidden = false,
             )
         )
+    }
+
+    override suspend fun markAllAsWatched(mediaId: Long, episodeIds: List<Long>) {
+        watchProgressDao.markAllWatched(mediaId, episodeIds)
     }
 
     override suspend fun markAsUnwatched(mediaId: Long, episodeId: Long) {
@@ -99,7 +112,7 @@ class RoomWatchProgressRepository(
                 durationMs = 0L,
                 lastWatched = System.currentTimeMillis(),
                 completed = false,
-                isHidden = false
+                isHidden = false,
             )
         )
     }
@@ -120,4 +133,3 @@ class RoomWatchProgressRepository(
         watchProgressDao.clearAll()
     }
 }
-

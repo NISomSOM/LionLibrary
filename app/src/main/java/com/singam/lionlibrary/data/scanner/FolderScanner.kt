@@ -10,30 +10,45 @@ import kotlinx.coroutines.withContext
 
 class FolderPermissionException(message: String) : Exception(message)
 
-class FolderScanner(
-    private val context: Context,
-    private val parser: FileNameParser
-) {
+class FolderScanner(private val context: Context, private val parser: FileNameParser) {
 
     private val seasonPattern1 = Regex("""(?:^|\s)Season\s*(\d+)""", RegexOption.IGNORE_CASE)
     private val seasonPattern2 = Regex("""(?:^|\s)S(\d+)(?:\s|$)""", RegexOption.IGNORE_CASE)
     private val specialsPattern = Regex("""^Specials?$""", RegexOption.IGNORE_CASE)
 
     // Non-season show subfolders whose videos are kept as extras (Season 0).
-    private val extrasFolderNames = setOf(
-        "trailers", "other", "others", "extras", "extra", "featurettes",
-        "behind the scenes", "deleted scenes", "interviews", "scenes", "shorts",
-        "bonus", "nc", "ncop", "nced", "creditless"
-    )
+    private val extrasFolderNames =
+        setOf(
+            "trailers",
+            "other",
+            "others",
+            "extras",
+            "extra",
+            "featurettes",
+            "behind the scenes",
+            "deleted scenes",
+            "interviews",
+            "scenes",
+            "shorts",
+            "bonus",
+            "nc",
+            "ncop",
+            "nced",
+            "creditless",
+        )
 
     // excludedTreeUri: the Shows folder, skipped if it lives inside the Movies folder.
     suspend fun scanMoviesFolder(treeUri: Uri, excludedTreeUri: Uri? = null): List<MediaCandidate> =
         withContext(Dispatchers.IO) {
             try {
-                val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext emptyList()
+                val root =
+                    DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext emptyList()
                 val results = mutableListOf<MediaCandidate>()
                 val excludeKey = excludedTreeUri?.let { uri ->
-                    runCatching { "${uri.authority}:${DocumentsContract.getTreeDocumentId(uri)}" }.getOrNull()
+                    runCatching {
+                        "${uri.authority}:${DocumentsContract.getTreeDocumentId(uri)}"
+                    }
+                        .getOrNull()
                 }
 
                 val allFiles = root.listFiles()
@@ -42,12 +57,22 @@ class FolderScanner(
                 for (entry in allFiles) {
                     if (entry.isFile && isVideoFile(entry.name)) {
                         val nameWithoutExt = entry.name!!.substringBeforeLast('.')
-                        val subtitleUri = subtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
+                        val subtitleUri =
+                            subtitles
+                                .find { it.name?.substringBeforeLast('.') == nameWithoutExt }
+                                ?.uri
                         val (title, year) = parser.parseMovieTitle(nameWithoutExt)
                         if (title.isNotBlank()) {
                             results.add(MediaCandidate.Movie(entry.uri, title, year, subtitleUri))
                         } else {
-                            results.add(MediaCandidate.Unknown(entry.uri, entry.name ?: "", "Blank title", com.singam.lionlibrary.domain.model.MediaType.MOVIE))
+                            results.add(
+                                MediaCandidate.Unknown(
+                                    entry.uri,
+                                    entry.name ?: "",
+                                    "Blank title",
+                                    com.singam.lionlibrary.domain.model.MediaType.MOVIE,
+                                )
+                            )
                         }
                     } else if (entry.isDirectory) {
                         scanMovieDirectory(entry, 1, excludeKey, results)
@@ -63,7 +88,7 @@ class FolderScanner(
         dir: DocumentFile,
         depth: Int,
         excludeKey: String?,
-        results: MutableList<MediaCandidate>
+        results: MutableList<MediaCandidate>,
     ) {
         if (excludeKey != null && documentKey(dir) == excludeKey) return
 
@@ -73,7 +98,8 @@ class FolderScanner(
         if (videos.size == 1) {
             val video = videos.first()
             val nameWithoutExt = video.name!!.substringBeforeLast('.')
-            val subtitleUri = dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
+            val subtitleUri =
+                dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
             var (title, year) = parser.parseMovieTitle(dir.name ?: "")
             if (title.isBlank()) {
                 val fallback = parser.parseMovieTitle(nameWithoutExt)
@@ -83,17 +109,32 @@ class FolderScanner(
             if (title.isNotBlank()) {
                 results.add(MediaCandidate.Movie(video.uri, title, year, subtitleUri))
             } else {
-                results.add(MediaCandidate.Unknown(video.uri, video.name ?: "", "Blank title", com.singam.lionlibrary.domain.model.MediaType.MOVIE))
+                results.add(
+                    MediaCandidate.Unknown(
+                        video.uri,
+                        video.name ?: "",
+                        "Blank title",
+                        com.singam.lionlibrary.domain.model.MediaType.MOVIE,
+                    )
+                )
             }
         } else if (videos.size > 1) {
             for (video in videos) {
                 val nameWithoutExt = video.name!!.substringBeforeLast('.')
-                val subtitleUri = dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
+                val subtitleUri =
+                    dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
                 val (title, year) = parser.parseMovieTitle(nameWithoutExt)
                 if (title.isNotBlank()) {
                     results.add(MediaCandidate.Movie(video.uri, title, year, subtitleUri))
                 } else {
-                    results.add(MediaCandidate.Unknown(video.uri, video.name ?: "", "Blank title", com.singam.lionlibrary.domain.model.MediaType.MOVIE))
+                    results.add(
+                        MediaCandidate.Unknown(
+                            video.uri,
+                            video.name ?: "",
+                            "Blank title",
+                            com.singam.lionlibrary.domain.model.MediaType.MOVIE,
+                        )
+                    )
                 }
             }
         } else if (depth < Constants.MAX_MOVIE_FOLDER_DEPTH) {
@@ -107,13 +148,15 @@ class FolderScanner(
     suspend fun scanShowsFolder(treeUri: Uri): List<MediaCandidate> =
         withContext(Dispatchers.IO) {
             try {
-                val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext emptyList()
+                val root =
+                    DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext emptyList()
                 val rawCandidates = mutableListOf<MediaCandidate.Show>()
                 val results = mutableListOf<MediaCandidate>()
 
                 for (entry in root.listFiles()) {
                     if (entry.isDirectory) {
-                        val (embeddedSeason, identity) = parser.parseShowFolderIdentity(entry.name ?: "")
+                        val (embeddedSeason, identity) =
+                            parser.parseShowFolderIdentity(entry.name ?: "")
                         if (identity.isBlank()) continue
 
                         val seasonsMap = mutableMapOf<Int, MutableList<EpisodeFile>>()
@@ -123,12 +166,14 @@ class FolderScanner(
                             rawCandidates.add(MediaCandidate.Show(identity, seasonsMap))
                         }
                     } else if (entry.isFile && isVideoFile(entry.name)) {
-                        results.add(MediaCandidate.Unknown(
-                            entry.uri, 
-                            entry.name ?: "", 
-                            "Place inside a folder named after the show", 
-                            com.singam.lionlibrary.domain.model.MediaType.TV_SHOW
-                        ))
+                        results.add(
+                            MediaCandidate.Unknown(
+                                entry.uri,
+                                entry.name ?: "",
+                                "Place inside a folder named after the show",
+                                com.singam.lionlibrary.domain.model.MediaType.TV_SHOW,
+                            )
+                        )
                     }
                 }
 
@@ -142,7 +187,23 @@ class FolderScanner(
                         }
                     }
                     mergedSeasons[0]?.let { numberExtras(it) }
-                    MediaCandidate.Show(identity, mergedSeasons)
+                    MediaCandidate.Show(
+                        identity,
+                        mergedSeasons.mapValues { (_, episodes) ->
+                            episodes
+                                .groupBy { it.uri.toString() }
+                                .values
+                                .map { group ->
+                                    val first = group.minBy { it.episodeNumber }
+                                    first.copy(
+                                        episodeEndNumber =
+                                            group
+                                                .maxOf { it.episodeNumber }
+                                                .takeIf { it > first.episodeNumber }
+                                    )
+                                }
+                        },
+                    )
                 }
 
                 results.addAll(mergedCandidates)
@@ -157,7 +218,7 @@ class FolderScanner(
         identity: String,
         embeddedSeason: Int?,
         seasonsMap: MutableMap<Int, MutableList<EpisodeFile>>,
-        depth: Int
+        depth: Int,
     ) {
         val dirEntries = dir.listFiles()
         val regularBefore = countRegularEpisodes(seasonsMap)
@@ -174,7 +235,10 @@ class FolderScanner(
 
                 for (video in dirFiles.filter { it.isFile && isVideoFile(it.name) }) {
                     val nameWithoutExt = video.name!!.substringBeforeLast('.')
-                    val subtitleUri = dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
+                    val subtitleUri =
+                        dirSubtitles
+                            .find { it.name?.substringBeforeLast('.') == nameWithoutExt }
+                            ?.uri
                     val (_, epNums) = parser.parseSeasonAndEpisodeNumbers(nameWithoutExt)
                     for (epNum in epNums) {
                         eps.add(EpisodeFile(video.uri, epNum, subtitleUri))
@@ -186,14 +250,16 @@ class FolderScanner(
             }
         }
 
-        // Loose videos count unless a regular season folder exists (a Specials folder alone doesn't hide them).
+        // Loose videos count unless a regular season folder exists (a Specials folder alone doesn't
+        // hide them).
         if (!foundRegularSeasonSubfolder) {
             val defaultSeasonNum = embeddedSeason ?: 1
             val dirSubtitles = dirEntries.filter { it.isFile && isSubtitleFile(it.name) }
 
             for (video in dirEntries.filter { it.isFile && isVideoFile(it.name) }) {
                 val nameWithoutExt = video.name!!.substringBeforeLast('.')
-                val subtitleUri = dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
+                val subtitleUri =
+                    dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
                 val (parsedSeason, epNums) = parser.parseSeasonAndEpisodeNumbers(nameWithoutExt)
                 val finalSeason = parsedSeason ?: defaultSeasonNum
 
@@ -211,24 +277,45 @@ class FolderScanner(
                 val dirSubtitles = dirFiles.filter { it.isFile && isSubtitleFile(it.name) }
                 for (video in dirFiles.filter { it.isFile && isVideoFile(it.name) }) {
                     val nameWithoutExt = video.name!!.substringBeforeLast('.')
-                    val subtitleUri = dirSubtitles.find { it.name?.substringBeforeLast('.') == nameWithoutExt }?.uri
-                    seasonsMap.getOrPut(0) { mutableListOf() }.add(
-                        EpisodeFile(video.uri, 0, subtitleUri, parser.parseExtraTitle(nameWithoutExt, identity))
-                    )
+                    val subtitleUri =
+                        dirSubtitles
+                            .find { it.name?.substringBeforeLast('.') == nameWithoutExt }
+                            ?.uri
+                    seasonsMap
+                        .getOrPut(0) { mutableListOf() }
+                        .add(
+                            EpisodeFile(
+                                video.uri,
+                                0,
+                                subtitleUri,
+                                extraTitle = parser.parseExtraTitle(nameWithoutExt, identity),
+                            )
+                        )
                 }
             }
         }
 
         // Nothing found: the episodes may sit in a wrapper subfolder (Show/Show/S01E01.mkv).
         // Title stays from the outer show folder.
-        if (!foundRegularSeasonSubfolder &&
-            countRegularEpisodes(seasonsMap) == regularBefore &&
-            depth < Constants.MAX_SHOW_WRAPPER_DEPTH
+        if (
+            !foundRegularSeasonSubfolder &&
+                countRegularEpisodes(seasonsMap) == regularBefore &&
+                depth < Constants.MAX_SHOW_WRAPPER_DEPTH
         ) {
             for (subEntry in dirEntries) {
-                if (subEntry.isDirectory && !isSeasonFolder(subEntry.name) && !isExtrasFolder(subEntry.name)) {
+                if (
+                    subEntry.isDirectory &&
+                        !isSeasonFolder(subEntry.name) &&
+                        !isExtrasFolder(subEntry.name)
+                ) {
                     val innerSeason = parser.parseShowFolderIdentity(subEntry.name ?: "").first
-                    collectShowEpisodes(subEntry, identity, embeddedSeason ?: innerSeason, seasonsMap, depth + 1)
+                    collectShowEpisodes(
+                        subEntry,
+                        identity,
+                        embeddedSeason ?: innerSeason,
+                        seasonsMap,
+                        depth + 1,
+                    )
                 }
             }
         }
@@ -243,16 +330,21 @@ class FolderScanner(
         if (extras.isEmpty()) return
         val regular = specials.filter { it.extraTitle == null }
         var next = (regular.maxOfOrNull { it.episodeNumber } ?: 0) + 1
-        val numbered = extras
-            .sortedWith(compareBy<EpisodeFile>({ it.extraTitle!!.lowercase() }, { it.uri.toString() }))
-            .map { it.copy(episodeNumber = next++) }
+        val numbered =
+            extras
+                .sortedWith(
+                    compareBy<EpisodeFile>({ it.extraTitle!!.lowercase() }, { it.uri.toString() })
+                )
+                .map { it.copy(episodeNumber = next++) }
         specials.clear()
         specials.addAll(regular)
         specials.addAll(numbered)
     }
 
-    private fun documentKey(file: DocumentFile): String? =
-        runCatching { "${file.uri.authority}:${DocumentsContract.getDocumentId(file.uri)}" }.getOrNull()
+    private fun documentKey(file: DocumentFile): String? = runCatching {
+        "${file.uri.authority}:${DocumentsContract.getDocumentId(file.uri)}"
+    }
+        .getOrNull()
 
     private fun isExtrasFolder(name: String?): Boolean {
         if (name == null) return false
@@ -273,13 +365,19 @@ class FolderScanner(
 
     private fun isSeasonFolder(name: String?): Boolean {
         if (name == null) return false
-        return seasonPattern1.matches(name) || seasonPattern2.matches(name) || specialsPattern.matches(name)
+        return seasonPattern1.matches(name) ||
+            seasonPattern2.matches(name) ||
+            specialsPattern.matches(name)
     }
 
     private fun extractSeasonNumber(name: String): Int {
         if (specialsPattern.matches(name)) return 0
-        seasonPattern1.find(name)?.let { return it.groupValues[1].toInt() }
-        seasonPattern2.find(name)?.let { return it.groupValues[1].toInt() }
+        seasonPattern1.find(name)?.let {
+            return it.groupValues[1].toInt()
+        }
+        seasonPattern2.find(name)?.let {
+            return it.groupValues[1].toInt()
+        }
         return 1
     }
 }

@@ -5,6 +5,5 @@ data class HomeContent(
     val movies: List<MediaItem>,
     val tvShows: List<MediaItem>,
     val anime: List<MediaItem>,
-    val recentlyAdded: List<MediaItem>
+    val recentlyAdded: List<MediaItem>,
 )
-

@@ -5,6 +5,5 @@ data class Season(
     val showId: Long,
     val seasonNumber: Int,
     val name: String?,
-    val posterPath: String?
+    val posterPath: String?,
 )
-

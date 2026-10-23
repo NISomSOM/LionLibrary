@@ -1,23 +1,24 @@
 package com.singam.lionlibrary.presentation.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
-import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.navArgument
-import com.singam.lionlibrary.presentation.settings.SettingsRoot
-
-import com.singam.lionlibrary.presentation.home.HomeRoot
-
+import androidx.navigation.compose.*
+import androidx.navigation.toRoute
+import com.singam.lionlibrary.domain.model.MediaFilter
 import com.singam.lionlibrary.presentation.details.DetailsRoot
-import com.singam.lionlibrary.presentation.search.SearchRoot
+import com.singam.lionlibrary.presentation.home.HomeRoot
+import com.singam.lionlibrary.presentation.library.LibraryRoot
 import com.singam.lionlibrary.presentation.player.PlayerRoot
-
-import androidx.compose.material3.windowsizeclass.WindowSizeClass
-import androidx.compose.foundation.ExperimentalFoundationApi
+import com.singam.lionlibrary.presentation.settings.SettingsRoot
+import com.singam.lionlibrary.ui.theme.LionMotion
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -25,102 +26,67 @@ fun LionLibraryNavHost(
     navController: NavHostController,
     snackbarHostState: SnackbarHostState,
     windowSizeClass: WindowSizeClass,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     NavHost(
-        navController = navController,
-        startDestination = Routes.HOME,
-        modifier = modifier
+        navController,
+        startDestination = HomeRoute,
+        modifier = modifier,
+        enterTransition = { fadeIn(tween(LionMotion.Standard, easing = LionMotion.Easing)) },
+        exitTransition = {
+            val openingMedia =
+                targetState.destination.hasRoute<DetailsRoute>() ||
+                    targetState.destination.hasRoute<PlayerRoute>()
+            fadeOut(tween(if (openingMedia) 90 else LionMotion.Fast, easing = LionMotion.Easing))
+        },
+        popEnterTransition = { fadeIn(tween(LionMotion.Standard, easing = LionMotion.Easing)) },
+        popExitTransition = { fadeOut(tween(LionMotion.Fast, easing = LionMotion.Easing)) },
     ) {
-        // Home
-        composable(Routes.HOME) {
+        composable<HomeRoute> {
             HomeRoot(
                 snackbarHostState = snackbarHostState,
                 windowSizeClass = windowSizeClass,
-                onNavigateToMovieDetails = { mediaId ->
-                    navController.navigate(Routes.MOVIE_DETAILS.replace("{mediaId}", mediaId.toString()))
-                },
-                onNavigateToShowDetails = { mediaId ->
-                    navController.navigate(Routes.SHOW_DETAILS.replace("{mediaId}", mediaId.toString()))
-                },
-                onNavigateToPlayer = { mediaType, mediaId ->
-                    navController.navigate(Routes.player(mediaType, mediaId))
-                },
-                onNavigateToSearch = { filter ->
-                    navController.navigate(Routes.searchWithFilter(filter.name)) {
-                        popUpTo(Routes.HOME) { saveState = true }
+                onNavigateToMovieDetails = { navController.navigate(DetailsRoute(it)) },
+                onNavigateToShowDetails = { navController.navigate(DetailsRoute(it)) },
+                onNavigateToPlayer = { type, id -> navController.navigate(PlayerRoute(type, id)) },
+                onNavigateToLibrary = {
+                    navController.navigate(LibraryRoute(it.name)) {
+                        popUpTo<HomeRoute> { saveState = true }
                         launchSingleTop = true
                     }
-                }
-            )
-        }
-
-        // Search
-        composable(
-            route = Routes.SEARCH_ROUTE,
-            arguments = listOf(navArgument("filter") {
-                type = NavType.StringType
-                nullable = true
-                defaultValue = null
-            })
-        ) {
-            SearchRoot(
-                windowSizeClass = windowSizeClass,
-                onNavigateToMovieDetails = { mediaId ->
-                    navController.navigate(Routes.MOVIE_DETAILS.replace("{mediaId}", mediaId.toString()))
                 },
-                onNavigateToShowDetails = { mediaId ->
-                    navController.navigate(Routes.SHOW_DETAILS.replace("{mediaId}", mediaId.toString()))
+                onSettingsClick = { navController.navigate(SettingsRoute) },
+            )
+        }
+        composable<LibraryRoute> { entry ->
+            val filter =
+                entry.toRoute<LibraryRoute>().filter?.let { value ->
+                    MediaFilter.entries.find { it.name == value }
                 }
+            LibraryRoot(
+                initialFilter = filter,
+                onMediaClick = { id, _ -> navController.navigate(DetailsRoute(id)) },
+                onSettingsClick = { navController.navigate(SettingsRoute) },
             )
         }
-
-        // Settings
-        composable(Routes.SETTINGS) {
-            SettingsRoot(
-                snackbarHostState = snackbarHostState,
-                windowSizeClass = windowSizeClass
-            )
-        }
-
-        // Movie Details
-        composable(
-            route = Routes.MOVIE_DETAILS,
-            arguments = listOf(navArgument("mediaId") { type = NavType.LongType })
-        ) { _ ->
+        composable<SettingsRoute> { SettingsRoot(snackbarHostState, windowSizeClass) }
+        composable<DetailsRoute>(
+            enterTransition = { fadeIn(tween(240, delayMillis = 70, easing = LionMotion.Easing)) },
+            exitTransition = { fadeOut(tween(100, easing = LionMotion.Easing)) },
+            popEnterTransition = { fadeIn(tween(240, easing = LionMotion.Easing)) },
+            popExitTransition = { fadeOut(tween(100, easing = LionMotion.Easing)) },
+        ) { entry ->
             DetailsRoot(
                 snackbarHostState = snackbarHostState,
                 windowSizeClass = windowSizeClass,
-                onNavigateToPlayer = { mediaType, mediaId ->
-                    navController.navigate(Routes.player(mediaType, mediaId))
-                }
+                onNavigateToPlayer = { type, id -> navController.navigate(PlayerRoute(type, id)) },
+                onBack = { navController.popBackStack() },
             )
         }
-
-        // Show Details
-        composable(
-            route = Routes.SHOW_DETAILS,
-            arguments = listOf(navArgument("mediaId") { type = NavType.LongType })
-        ) { _ ->
-            DetailsRoot(
-                snackbarHostState = snackbarHostState,
-                windowSizeClass = windowSizeClass,
-                onNavigateToPlayer = { mediaType, mediaId ->
-                    navController.navigate(Routes.player(mediaType, mediaId))
-                }
-            )
-        }
-
-        // Player
-        composable(
-            route = Routes.PLAYER,
-            arguments = listOf(
-                navArgument("mediaType") { type = NavType.StringType },
-                navArgument("mediaId") { type = NavType.LongType }
-            )
-        ) { _ ->
-            PlayerRoot(navController = navController)
+        composable<PlayerRoute>(
+            enterTransition = { fadeIn(tween(240, delayMillis = 70, easing = LionMotion.Easing)) }
+        ) {
+            PlayerRoot(onBack = { navController.popBackStack() })
         }
     }
 }
-

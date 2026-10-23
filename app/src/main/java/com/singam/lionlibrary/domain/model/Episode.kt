@@ -11,6 +11,7 @@ data class Episode(
     val airDate: String?,
     val thumbnailPath: String?,
     val filePath: String,
-    val preferredEngine: String = "EXOPLAYER"
+    val preferredEngine: String = "EXOPLAYER",
+    val episodeEndNumber: Int? = null,
+    val externalSubtitlePath: String? = null,
 )
-

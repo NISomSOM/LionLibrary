@@ -5,7 +5,17 @@ import android.view.ViewGroup
 import kotlinx.coroutines.flow.StateFlow
 
 enum class EnginePlaybackState {
-    IDLE, BUFFERING, READY, ENDED
+    IDLE,
+    BUFFERING,
+    READY,
+    ENDED,
+}
+
+enum class PlaybackFailure {
+    TRACK,
+    FILE_ACCESS,
+    DECODER,
+    UNKNOWN,
 }
 
 data class EngineState(
@@ -13,17 +23,40 @@ data class EngineState(
     val playbackState: EnginePlaybackState = EnginePlaybackState.IDLE,
     val currentPositionMs: Long = 0L,
     val durationMs: Long = 0L,
-    val error: String? = null
+    val error: PlaybackFailure? = null,
+    val trackRevision: Long = 0,
 )
 
 data class EngineTrackInfo(
     val id: String,
     val label: String,
-    val isSelected: Boolean
+    val isSelected: Boolean,
+    /** ISO 639 code as reported by the container, when present. */
+    val language: String? = null,
+    val codec: String? = null,
+    val channels: Int? = null,
+    val sampleRateHz: Int? = null,
+    /** True for a sidecar subtitle file loaded next to the video. */
+    val isExternal: Boolean = false,
 )
 
+data class EngineVideoInfo(
+    val codec: String?,
+    val width: Int,
+    val height: Int,
+    val frameRate: Float?,
+    val bitrate: Int?,
+)
+
+enum class AspectMode {
+    FIT,
+    FILL,
+    ZOOM,
+}
+
 enum class EngineType {
-    EXOPLAYER, LIBVLC
+    EXOPLAYER,
+    LIBVLC,
 }
 
 // Video engine interface.
@@ -36,10 +69,12 @@ interface LionPlayerEngine {
     val engineType: EngineType
 
     // Load media.
-    fun setMedia(uri: Uri, subtitleUri: Uri?)
+    suspend fun setMedia(uri: Uri, subtitleUri: Uri?)
 
     fun play()
+
     fun pause()
+
     fun seekTo(positionMs: Long)
 
     // Audio tracks.
@@ -68,6 +103,25 @@ interface LionPlayerEngine {
 
     // Stop playback.
     fun stop()
+
+    // Speed and picture, kept across media changes by each engine.
+    fun setPlaybackSpeed(speed: Float) {}
+
+    fun setAspectMode(mode: AspectMode) {}
+
+    // Subtitle style; each engine supports a different subset at runtime.
+    val supportsSubtitleDelay: Boolean
+        get() = false
+
+    fun setSubtitleDelay(delayMs: Long) {}
+
+    val supportsSubtitleScale: Boolean
+        get() = false
+
+    fun setSubtitleScale(scale: Float) {}
+
+    // Details of the playing video stream, when the engine exposes them.
+    fun getVideoInfo(): EngineVideoInfo? = null
 
     // Release resources.
     fun release()

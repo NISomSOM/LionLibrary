@@ -8,6 +8,11 @@ import com.singam.lionlibrary.domain.model.Season
 import kotlinx.coroutines.flow.Flow
 
 interface MediaRepository {
+    fun browse(query: com.singam.lionlibrary.domain.model.LibraryQuery): Flow<List<MediaItem>>
+
+    fun getUnidentified(): Flow<List<MediaItem>>
+
+    suspend fun toggleWatchlist(id: Long)
 
     fun getByType(type: MediaType): Flow<List<MediaItem>>
 
@@ -37,4 +42,3 @@ interface MediaRepository {
 
     suspend fun getByFilePath(filePath: String): MediaItem?
 }
-

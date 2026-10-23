@@ -8,23 +8,16 @@ import com.singam.lionlibrary.domain.repository.MediaRepository
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import kotlinx.coroutines.flow.Flow
 
-data class MediaDetails(
-    val media: MediaItem,
-    val seasons: List<Season>,
-    val episodes: List<Episode>
-)
+// Seasons and episodes are observed separately through the flows below.
+data class MediaDetails(val media: MediaItem)
 
 class GetMediaDetailsUseCase(
     private val mediaRepository: MediaRepository,
-    private val watchProgressRepository: WatchProgressRepository
+    private val watchProgressRepository: WatchProgressRepository,
 ) {
     suspend operator fun invoke(mediaId: Long): MediaDetails? {
         val media = mediaRepository.getById(mediaId) ?: return null
-        return MediaDetails(
-            media = media,
-            seasons = emptyList(),
-            episodes = emptyList()
-        )
+        return MediaDetails(media = media)
     }
 
     fun getProgress(mediaId: Long): Flow<List<WatchProgress>> {

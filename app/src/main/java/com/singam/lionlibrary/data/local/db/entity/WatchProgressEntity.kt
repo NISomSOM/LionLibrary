@@ -1,12 +1,8 @@
 package com.singam.lionlibrary.data.local.db.entity
 
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 
-@Entity(
-    tableName = "watch_progress",
-    primaryKeys = ["mediaId", "episodeId"]
-)
+@Entity(tableName = "watch_progress", primaryKeys = ["mediaId", "episodeId"])
 data class WatchProgressEntity(
     val mediaId: Long,
     val episodeId: Long,
@@ -15,6 +11,5 @@ data class WatchProgressEntity(
     val durationMs: Long,
     val lastWatched: Long,
     val completed: Boolean,
-    val isHidden: Boolean = false
+    val isHidden: Boolean = false,
 )
-

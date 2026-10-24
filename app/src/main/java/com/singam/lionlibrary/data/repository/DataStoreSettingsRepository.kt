@@ -44,4 +44,9 @@ class DataStoreSettingsRepository(private val preferencesManager: PreferencesMan
 
     override suspend fun setForceExternalPlayer(enabled: Boolean) =
         preferencesManager.setForceExternalPlayer(enabled)
+
+    override val onlineSkipTimes: Flow<Boolean> = preferencesManager.onlineSkipTimes
+
+    override suspend fun setOnlineSkipTimes(enabled: Boolean) =
+        preferencesManager.setOnlineSkipTimes(enabled)
 }

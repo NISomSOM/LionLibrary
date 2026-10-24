@@ -17,6 +17,11 @@ data class PlaybackTarget(
     val logoPath: String? = null,
     /** Episode synopsis, falling back to the show's; the movie's for films. */
     val overview: String? = null,
+    /**
+     * TMDB id of the identified movie or show, used only to address online skip-time providers.
+     * Null for unidentified/raw files.
+     */
+    val tmdbId: Int? = null,
 )
 
 /** Captured before any suspension; never looks up a mutable current episode when saving. */

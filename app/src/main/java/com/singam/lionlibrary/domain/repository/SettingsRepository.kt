@@ -34,4 +34,9 @@ interface SettingsRepository {
     val forceExternalPlayer: Flow<Boolean>
 
     suspend fun setForceExternalPlayer(enabled: Boolean)
+
+    /** Whether the player may look up intro/credits times online (TheIntroDB/SkipDB). */
+    val onlineSkipTimes: Flow<Boolean>
+
+    suspend fun setOnlineSkipTimes(enabled: Boolean)
 }

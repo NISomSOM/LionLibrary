@@ -30,16 +30,22 @@ internal fun PlayerPauseOverlay(
     overview: String?,
     modifier: Modifier = Modifier,
 ) {
+    val scrim = MaterialTheme.colorScheme.scrim
     BoxWithConstraints(
-        modifier.background(
-            Brush.horizontalGradient(
-                listOf(
-                    MaterialTheme.colorScheme.scrim.copy(alpha = .85f),
-                    MaterialTheme.colorScheme.scrim.copy(alpha = .45f),
-                    Color.Transparent,
+        modifier
+            .background(
+                Brush.horizontalGradient(
+                    listOf(scrim.copy(alpha = .85f), scrim.copy(alpha = .45f), Color.Transparent)
                 )
             )
-        )
+            // The synopsis spans the full width, so the bottom also darkens on the right side.
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    .45f to Color.Transparent,
+                    1f to scrim.copy(alpha = .75f),
+                )
+            )
     ) {
         val compact = maxHeight < 420.dp
         Column(
@@ -99,8 +105,7 @@ internal fun PlayerPauseOverlay(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = if (compact) 2 else 3,
                     overflow = TextOverflow.Ellipsis,
-                    modifier =
-                        Modifier.padding(top = 12.dp).fillMaxWidth(if (compact) .8f else .6f),
+                    modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
                 )
             }
         }

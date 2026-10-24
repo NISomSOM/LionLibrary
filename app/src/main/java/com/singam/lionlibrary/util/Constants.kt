@@ -15,6 +15,10 @@ object Constants {
     const val TMDB_IMAGE_BASE_URL_W1280 = "https://image.tmdb.org/t/p/w1280"
     const val TMDB_IMAGE_BASE_URL_ORIGINAL = "https://image.tmdb.org/t/p/original"
 
+    // Skip-time providers (keyless reads).
+    const val THEINTRODB_BASE_URL = "https://api.theintrodb.org/v4/"
+    const val SKIPDB_BASE_URL = "https://api.skipdb.tv/"
+
     // Match threshold.
     const val MATCH_CONFIDENCE_THRESHOLD = 0.80f
 

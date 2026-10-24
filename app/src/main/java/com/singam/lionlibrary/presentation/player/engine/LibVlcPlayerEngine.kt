@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.view.ViewGroup
+import com.singam.lionlibrary.domain.model.PlaybackChapter
 import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -26,6 +27,10 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
     private val commands = PendingPlayback()
     private var surfaceReady = false
     private var mediaLoaded = false
+    private var chaptersRead = false
+    // While hidden the native track is off; this keeps the chosen track (-1: none) to restore.
+    private var subtitlesHidden = false
+    private var hiddenSpuTrack = -1
     private var released = false
     private var currentLayout: VLCVideoLayout? = null
     private var pendingMedia: PreparedMedia? = null
@@ -72,8 +77,13 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                         }
                         applyPendingSeek()
                         applyPlaybackOptions()
+                        if (mediaPlayer.isSeekable) readChapters()
                     }
-                    MediaPlayer.Event.SeekableChanged -> if (event.seekable) applyPendingSeek()
+                    MediaPlayer.Event.SeekableChanged ->
+                        if (event.seekable) {
+                            applyPendingSeek()
+                            readChapters()
+                        }
                     MediaPlayer.Event.Paused -> mutableState.update { it.copy(isPlaying = false) }
                     MediaPlayer.Event.Stopped ->
                         mutableState.update {
@@ -121,10 +131,13 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                                 it.copy(durationMs = event.lengthChanged)
                             }
                     MediaPlayer.Event.ESAdded,
-                    MediaPlayer.Event.ESDeleted ->
+                    MediaPlayer.Event.ESDeleted -> {
+                        keepSubtitlesHidden()
                         mutableState.update {
                             it.copy(trackRevision = it.trackRevision + 1)
                         }
+                    }
+                    MediaPlayer.Event.ESSelected -> keepSubtitlesHidden()
                 }
             }
         }
@@ -210,7 +223,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
     override fun getSubtitleTracks(): List<EngineTrackInfo> {
         if (!mediaLoaded) return emptyList()
         val tracks = mediaPlayer.spuTracks ?: return emptyList()
-        val selectedId = mediaPlayer.spuTrack
+        val selectedId = if (subtitlesHidden) hiddenSpuTrack else mediaPlayer.spuTrack
         val details = mediaTracks()
         val hasSidecar = activeMedia?.subtitleUri != null
         return tracks.mapNotNull { track ->
@@ -232,7 +245,35 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
 
     override fun selectSubtitleTrack(id: String?) {
         // null disables subs.
-        mediaPlayer.spuTrack = id?.toIntOrNull() ?: -1
+        val track = id?.toIntOrNull() ?: -1
+        if (subtitlesHidden) hiddenSpuTrack = track else mediaPlayer.spuTrack = track
+    }
+
+    override fun setSubtitlesHidden(hidden: Boolean) {
+        if (released || hidden == subtitlesHidden) return
+        if (!mediaLoaded) {
+            subtitlesHidden = false
+            return
+        }
+        subtitlesHidden = hidden
+        if (hidden) {
+            hiddenSpuTrack = mediaPlayer.spuTrack
+            if (hiddenSpuTrack != -1) mediaPlayer.spuTrack = -1
+        } else if (hiddenSpuTrack != -1) {
+            mediaPlayer.spuTrack = hiddenSpuTrack
+        }
+    }
+
+    /**
+     * libVLC may select a subtitle track by itself (input start, a new stream) while hidden; that
+     * track becomes the one to restore and stays off until then.
+     */
+    private fun keepSubtitlesHidden() {
+        if (!subtitlesHidden) return
+        val selected = mediaPlayer.spuTrack
+        if (selected == -1) return
+        hiddenSpuTrack = selected
+        mediaPlayer.spuTrack = -1
     }
 
     override fun setPlaybackSpeed(speed: Float) {
@@ -266,6 +307,34 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                 bitrate = it.bitrate.takeIf { rate -> rate > 0 },
             )
         }
+    }
+
+    /**
+     * Chapters of the current title, read once per file after native seekability is known (earlier
+     * reads can be empty). Uses this session's own player only; no second Media or player is
+     * created.
+     */
+    private fun readChapters() {
+        if (released || !mediaLoaded || chaptersRead) return
+        chaptersRead = true
+        val chapters =
+            mediaPlayer
+                .getChapters(-1)
+                .orEmpty()
+                .filter { it.timeOffset >= 0 }
+                .map { chapter ->
+                    PlaybackChapter(
+                        startMs = chapter.timeOffset,
+                        endMs =
+                            (chapter.timeOffset + chapter.duration).takeIf {
+                                chapter.duration > 0
+                            },
+                        title = chapter.name,
+                    )
+                }
+                .distinct()
+                .sortedBy { it.startMs }
+        mutableState.update { it.copy(chapters = chapters, isSeekable = true) }
     }
 
     /** Elementary streams of the loaded media keyed by ES id, which matches track ids. */
@@ -356,6 +425,9 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         pendingMedia = null
         activeMedia = prepared
         mediaLoaded = true
+        chaptersRead = false
+        subtitlesHidden = false
+        hiddenSpuTrack = -1
         listenForEvents()
         if (commands.playRequested) mediaPlayer.play()
     }

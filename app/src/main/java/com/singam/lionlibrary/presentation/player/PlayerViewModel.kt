@@ -8,6 +8,7 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.domain.repository.*
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
+import com.singam.lionlibrary.domain.usecase.SkipSegmentSession
 import com.singam.lionlibrary.presentation.common.*
 import com.singam.lionlibrary.presentation.player.engine.*
 import kotlin.math.roundToInt
@@ -47,7 +48,20 @@ data class PlayerState(
     val info: PlayerInfoUi? = null,
     val logoPath: String? = null,
     val overview: String? = null,
-)
+    /** Skip button for the segment the position is inside; shown even while controls are hidden. */
+    val skipButton: SkipSegmentType? = null,
+) {
+    /** The paused "You're watching" card: subtitles and the skip button step aside for it. */
+    val isPauseCardVisible: Boolean
+        get() =
+            !showControls &&
+                !isLocked &&
+                !isPlaying &&
+                playbackState == EnginePlaybackState.READY &&
+                panel == PlayerPanel.NONE &&
+                failure == null &&
+                durationMs > 0
+}
 
 enum class PlayerPanel {
     NONE,
@@ -114,6 +128,8 @@ sealed interface PlayerAction {
     data class OnSubtitleScaleChange(val delta: Float) : PlayerAction
 
     data class OnSubtitleLanguageFilter(val language: String?) : PlayerAction
+
+    data object OnSkipSegment : PlayerAction
 }
 
 sealed interface PlayerEvent {
@@ -132,6 +148,7 @@ class PlayerViewModel(
     private val factory: PlayerEngineFactory,
     private val focus: PlaybackAudioFocus,
     private val trackPreferences: TrackPreferenceRepository,
+    skipSegments: SkipSegmentRepository,
 ) : ViewModel() {
     private val mediaType =
         MediaType.valueOf(checkNotNull(savedStateHandle.get<String>("mediaType")))
@@ -157,8 +174,23 @@ class PlayerViewModel(
     /** Remembered choice for the current title; null until loaded or when there is none. */
     private var trackPreference: TrackPreference? = null
     private val transition = Mutex()
+    private val skipSession = SkipSegmentSession(skipSegments, viewModelScope)
+    private var engineSeekable = false
 
     init {
+        viewModelScope.launch {
+            settings.onlineSkipTimes.distinctUntilChanged().collect {
+                skipSession.setOnlineEnabled(it)
+            }
+        }
+        viewModelScope.launch { skipSession.segments.collect { refreshSkipButton() } }
+        viewModelScope.launch {
+            // Keyed by session so the next file's engine is hidden too when the card stays up.
+            state
+                .map { it.session to it.isPauseCardVisible }
+                .distinctUntilChanged()
+                .collect { (_, hidden) -> engine?.setSubtitlesHidden(hidden) }
+        }
         viewModelScope.launch {
             transition.withLock {
                 try {
@@ -194,6 +226,8 @@ class PlayerViewModel(
             audioDefaultApplied = false
             subtitleDefaultApplied = false
             trackRevision = -1L
+            engineSeekable = false
+            skipSession.start(next.skipLookupKey())
             trackPreference = trackPreferences.get(next.mediaId)
             val preferred =
                 if (settings.forceLibVlc.first()) EngineType.LIBVLC
@@ -250,10 +284,12 @@ class PlayerViewModel(
                 var ticks = 0
                 while (isActive) {
                     delay(500)
-                    if (!scrubbing)
+                    if (!scrubbing) {
                         mutableState.update {
                             it.copy(currentPositionMs = selected.currentPositionMs.coerceAtLeast(0))
                         }
+                        refreshSkipButton()
+                    }
                     if (state.value.isPlaying && ++ticks % 16 == 0)
                         save()?.let { checkSave(it.await()) }
                 }
@@ -281,6 +317,10 @@ class PlayerViewModel(
                         durationMs = value.durationMs.coerceAtLeast(0),
                     )
                 }
+                engineSeekable = value.isSeekable
+                // Starts the online lookup once a duration is known; playback never waits for it.
+                skipSession.onPlayback(value.durationMs, value.chapters)
+                refreshSkipButton()
                 if (
                     value.playbackState == EnginePlaybackState.READY &&
                         trackRevision != value.trackRevision
@@ -289,17 +329,7 @@ class PlayerViewModel(
                     refreshTracks()
                     trackRevision = value.trackRevision
                 }
-                if (newlyEnded && !transitioning) {
-                    transitioning = true
-                    val completedTarget = target
-                    runTransition {
-                        completion?.let { checkSave(it.await()) }
-                        val current = target
-                        if (current != null && current == completedTarget) {
-                            repository.adjacent(current, true)?.let { open(it) } ?: focus.abandon()
-                        }
-                    }
-                }
+                if (newlyEnded) advanceAfterCompletion(completion)
                 value.error?.let { failure ->
                     if (failure == PlaybackFailure.TRACK && !recovered) {
                         recovered = true
@@ -334,6 +364,59 @@ class PlayerViewModel(
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * The single guarded path after a file completes, whether it reached ENDED or its terminal
+     * credits were skipped: wait for the completion write, then open the next episode once.
+     */
+    private fun advanceAfterCompletion(completion: Deferred<OperationResult<Unit, DataError>>?) {
+        if (transitioning) return
+        transitioning = true
+        val completedTarget = target
+        runTransition {
+            completion?.let { checkSave(it.await()) }
+            val current = target
+            if (current != null && current == completedTarget) {
+                repository.adjacent(current, true)?.let { open(it) } ?: focus.abandon()
+            }
+        }
+    }
+
+    private fun refreshSkipButton() {
+        val current = state.value
+        val type =
+            if (!engineSeekable || ended || transitioning) null
+            else
+                SkipSegmentPolicy.active(
+                        skipSession.segments.value,
+                        current.currentPositionMs,
+                        current.durationMs,
+                    )
+                    ?.type
+        if (type != current.skipButton) mutableState.update { it.copy(skipButton = type) }
+    }
+
+    private fun skipSegment() {
+        val current = state.value
+        if (!engineSeekable || ended || transitioning) return
+        val segment =
+            SkipSegmentPolicy.active(
+                skipSession.segments.value,
+                current.currentPositionMs,
+                current.durationMs,
+            ) ?: return
+        val end = segment.endMs
+        if (end == null || SkipSegmentPolicy.isTerminal(segment, current.durationMs)) {
+            // Finishing the file is not a seek to its end: complete it exactly like ENDED. A paused
+            // viewer stays paused because pause() already set pausedByLifecycle.
+            engine?.pause()
+            ended = true
+            refreshSkipButton()
+            advanceAfterCompletion(save(true))
+        } else {
+            seek(end)
         }
     }
 
@@ -491,6 +574,7 @@ class PlayerViewModel(
             }
             is PlayerAction.OnSubtitleLanguageFilter ->
                 mutableState.update { it.copy(subtitleLanguageFilter = action.language) }
+            PlayerAction.OnSkipSegment -> skipSegment()
             PlayerAction.Retry -> {
                 if (!transitioning) {
                     transitioning = true
@@ -555,6 +639,7 @@ class PlayerViewModel(
             if (duration > 0) position.coerceIn(0, duration) else position.coerceAtLeast(0)
         engine?.seekTo(bounded)
         mutableState.update { it.copy(currentPositionMs = bounded) }
+        refreshSkipButton()
     }
 
     private fun move(next: Boolean) {

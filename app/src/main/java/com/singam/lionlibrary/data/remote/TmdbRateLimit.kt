@@ -12,24 +12,24 @@ private const val WaitSliceMs = 100L
 
 /**
  * Delay requested by a `Retry-After` header: whole seconds or an HTTP date. A missing, malformed or
- * past value uses [fallbackMs]. The result is bounded to [MaximumCooldownMs].
+ * past value uses [fallbackMs]. The result is bounded to [maximumMs].
  */
 internal fun retryAfterDelayMs(
     header: String?,
     nowMs: Long,
     fallbackMs: Long = DefaultCooldownMs,
+    maximumMs: Long = MaximumCooldownMs,
 ): Long {
     val value = header?.trim().orEmpty()
     val seconds = value.toLongOrNull()?.takeIf { it >= 0 }
     val delay =
         when {
-            seconds != null ->
-                if (seconds > MaximumCooldownMs / 1_000) MaximumCooldownMs else seconds * 1_000
+            seconds != null -> if (seconds > maximumMs / 1_000) maximumMs else seconds * 1_000
             value.isNotEmpty() ->
                 httpDateMs(value)?.let { it - nowMs }?.takeIf { it > 0 } ?: fallbackMs
             else -> fallbackMs
         }
-    return delay.coerceIn(0, MaximumCooldownMs)
+    return delay.coerceIn(0, maximumMs)
 }
 
 private fun httpDateMs(value: String): Long? =

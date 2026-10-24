@@ -133,6 +133,8 @@ dependencies {
     testRuntimeOnly(libs.junit.vintage)
     testImplementation(libs.assertk)
     testImplementation(libs.turbine)
+    // Local loopback HTTP for skip-time provider contracts; tests never reach the internet.
+    testImplementation(libs.okhttp.mockwebserver)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.coroutines.get()}")
     androidTestImplementation("androidx.room:room-testing:${libs.versions.room.get()}")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.coroutines.get()}")

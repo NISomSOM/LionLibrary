@@ -60,4 +60,17 @@ interface TmdbApiService {
         @Path("id") id: Int,
         @Query("api_key") key: String,
     ): com.singam.lionlibrary.data.remote.dto.AlternativeTitlesResponse
+
+    @GET("movie/{id}/external_ids")
+    suspend fun getMovieExternalIds(
+        @Path("id") id: Int,
+        @Query("api_key") key: String,
+    ): com.singam.lionlibrary.data.remote.dto.ExternalIdsDto
+
+    /** Show-level ids; SkipDB addresses episodes by the series IMDb id plus numbers. */
+    @GET("tv/{id}/external_ids")
+    suspend fun getTvExternalIds(
+        @Path("id") id: Int,
+        @Query("api_key") key: String,
+    ): com.singam.lionlibrary.data.remote.dto.ExternalIdsDto
 }

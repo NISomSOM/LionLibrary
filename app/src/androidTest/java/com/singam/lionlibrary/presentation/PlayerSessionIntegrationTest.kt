@@ -33,6 +33,7 @@ class PlayerSessionIntegrationTest {
                     factory,
                     focus,
                     TrackPreferencesFake(),
+                    SkipSegmentsFake(),
                 )
             val store = ViewModelStore()
             store.put("player", vm)
@@ -71,6 +72,7 @@ class PlayerSessionIntegrationTest {
                     factory,
                     FocusFake(),
                     TrackPreferencesFake(),
+                    SkipSegmentsFake(),
                 )
             val store = ViewModelStore()
             store.put("player", vm)
@@ -100,6 +102,7 @@ class PlayerSessionIntegrationTest {
                     factory,
                     FocusFake(),
                     TrackPreferencesFake(),
+                    SkipSegmentsFake(),
                 )
             val store = ViewModelStore().apply { put("player", vm) }
             try {
@@ -257,6 +260,7 @@ internal class SettingsFake : SettingsRepository {
     override val lastScanTime = flowOf(0L)
     override val forceLibVlc = flowOf(false)
     override val forceExternalPlayer = flowOf(false)
+    override val onlineSkipTimes = flowOf(false)
     override val keyVerified = flowOf(false)
     override val setupDismissed = flowOf(false)
     override val scanSummary = flowOf(ScanSummary())
@@ -272,6 +276,8 @@ internal class SettingsFake : SettingsRepository {
     override suspend fun setForceLibVlc(enabled: Boolean) {}
 
     override suspend fun setForceExternalPlayer(enabled: Boolean) {}
+
+    override suspend fun setOnlineSkipTimes(enabled: Boolean) {}
 
     override suspend fun setKeyVerified(verified: Boolean) {}
 
@@ -292,4 +298,13 @@ private class TrackPreferencesFake :
     ) {
         saved[mediaId] = preference
     }
+}
+
+/** No online skip times; these tests cover sessions and progress, not provider lookups. */
+private class SkipSegmentsFake : SkipSegmentRepository {
+    override suspend fun onlineSegments(
+        key: SkipLookupKey,
+        durationMs: Long,
+        types: Set<SkipSegmentType>,
+    ): OperationResult<List<SkipSegment>, DataError> = OperationResult.Success(emptyList())
 }

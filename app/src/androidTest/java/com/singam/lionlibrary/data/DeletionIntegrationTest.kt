@@ -373,6 +373,7 @@ private class DeletionSettings : SettingsRepository {
     override val lastScanTime = flowOf(0L)
     override val forceLibVlc = flowOf(false)
     override val forceExternalPlayer = flowOf(false)
+    override val onlineSkipTimes = flowOf(false)
     override val keyVerified = flowOf(false)
     override val setupDismissed = flowOf(false)
     override val scanSummary = flowOf(ScanSummary())
@@ -392,6 +393,8 @@ private class DeletionSettings : SettingsRepository {
     override suspend fun setForceLibVlc(enabled: Boolean) {}
 
     override suspend fun setForceExternalPlayer(enabled: Boolean) {}
+
+    override suspend fun setOnlineSkipTimes(enabled: Boolean) {}
 
     override suspend fun setKeyVerified(verified: Boolean) {}
 

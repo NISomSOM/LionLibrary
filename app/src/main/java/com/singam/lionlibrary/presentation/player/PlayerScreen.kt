@@ -486,14 +486,7 @@ fun PlayerScreen(
 
         val unlocked = !state.isLocked
         AnimatedVisibility(
-            visible =
-                !showControls &&
-                    unlocked &&
-                    !state.isPlaying &&
-                    state.playbackState == EnginePlaybackState.READY &&
-                    state.panel == PlayerPanel.NONE &&
-                    state.failure == null &&
-                    state.durationMs > 0,
+            visible = state.isPauseCardVisible,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize(),
@@ -595,6 +588,30 @@ fun PlayerScreen(
                             .safeDrawingPadding()
                             .padding(start = 24.dp, end = 24.dp, bottom = 20.dp),
                 )
+            }
+        }
+
+        // Independent of the controls so it stays while they auto-hide; it sits above the footer.
+        val skipButton = state.skipButton
+        AnimatedVisibility(
+            visible =
+                skipButton != null &&
+                    unlocked &&
+                    state.panel == PlayerPanel.NONE &&
+                    state.failure == null &&
+                    !state.isPauseCardVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier =
+                Modifier.align(Alignment.BottomEnd)
+                    .safeDrawingPadding()
+                    .padding(end = 24.dp, bottom = if (showControls) 140.dp else 32.dp),
+        ) {
+            // Keep the last label while fading out after the segment ends.
+            var shown by remember { mutableStateOf(skipButton) }
+            if (skipButton != null) shown = skipButton
+            shown?.let {
+                PlayerSkipButton(it, onSkipClick = { onAction(PlayerAction.OnSkipSegment) })
             }
         }
 

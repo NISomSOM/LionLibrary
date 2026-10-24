@@ -207,6 +207,13 @@ fun SettingsScreen(
                     state.forceExternalPlayer,
                     { onAction(SettingsAction.OnForceExternalPlayerToggle(it)) },
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                PlaybackSetting(
+                    stringResource(R.string.online_skip_times),
+                    state.onlineSkipTimes,
+                    { onAction(SettingsAction.OnOnlineSkipTimesToggle(it)) },
+                    description = stringResource(R.string.online_skip_times_description),
+                )
             }
             SettingsSection(stringResource(R.string.scan_library)) {
                 if (state.isScanning) {
@@ -302,6 +309,7 @@ fun SettingsScreen(
                         modifier = Modifier.width(180.dp).height(24.dp),
                     )
                     Text(stringResource(R.string.tmdb_attribution))
+                    Text(stringResource(R.string.skip_times_attribution))
                     Text(stringResource(R.string.third_party_credits))
                     notices.forEach { notice ->
                         TextButton(
@@ -428,18 +436,27 @@ private fun PlaybackSetting(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    description: String? = null,
 ) {
     Row(
         modifier.fillMaxWidth().heightIn(min = 56.dp),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            title,
-            Modifier.weight(1f),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else .45f),
-        )
+        Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else .45f),
+            )
+            description?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         Switch(
             checked,
             onCheckedChange,

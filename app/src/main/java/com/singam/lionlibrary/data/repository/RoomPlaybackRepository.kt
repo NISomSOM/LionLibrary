@@ -57,6 +57,12 @@ class RoomPlaybackRepository(
                 preferJapaneseAudio =
                     item.genres?.split(',')?.any { it.trim().equals("Anime", ignoreCase = true) } ==
                         true,
+                // Legacy raw rows stored as TV/anime also use this route; a show id is not a movie
+                // id.
+                tmdbId =
+                    item.tmdbId.takeIf {
+                        !item.isUnidentified && item.mediaType == MediaType.MOVIE.name
+                    },
             )
         }
         val ep = episodes.getById(id) ?: return null
@@ -81,6 +87,7 @@ class RoomPlaybackRepository(
             overview =
                 ep.overview?.takeIf { it.isNotBlank() }
                     ?: show?.overview?.takeIf { it.isNotBlank() },
+            tmdbId = show?.takeIf { !it.isUnidentified }?.tmdbId,
         )
     }
 

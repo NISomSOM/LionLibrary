@@ -48,7 +48,7 @@
     <string name="cancel_scan">Cancel scan</string>
     <string name="about">About and credits</string>
     <string name="tmdb_attribution">This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
-    <string name="privacy_summary">LionLibrary organizes your own local files. Metadata searches contact TMDB; movie ratings may contact Letterboxd. No analytics or cloud library sync is used.</string>
+    <string name="privacy_summary">LionLibrary organizes your own local files. Metadata searches contact TMDB; movie ratings may contact Letterboxd. While a video plays, intro and credits times may be looked up on TheIntroDB and SkipDB (turn off Online skip times to stop this). No analytics or cloud library sync is used.</string>
     <string name="playback_failure">Playback could not continue. Retry or open this file in an external player.</string>
     <string name="file_access_error">This file cannot be opened. Check that its folder or SD card is available.</string>
     <string name="audio_track_recovered">That audio track is unsupported. The default track was restored.</string>

@@ -3,6 +3,9 @@
 This product uses the TMDB API but is not endorsed or certified by TMDB.
 TMDB: https://www.themoviedb.org/ | https://developer.themoviedb.org/docs/faq
 Movie ratings and links: Letterboxd, https://letterboxd.com/
+Intro and credits times (Online skip times): TheIntroDB, https://theintrodb.org/, and
+SkipDB, https://skipdb.tv/. SkipDB data is made available under the Open Database License
+(ODbL) 1.0: https://opendatacommons.org/licenses/odbl/1-0/
 
 Inter: Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter).
 SIL Open Font License 1.1. Full text: licenses/Inter-OFL.txt.

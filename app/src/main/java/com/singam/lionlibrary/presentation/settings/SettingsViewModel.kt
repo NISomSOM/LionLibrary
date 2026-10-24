@@ -38,6 +38,7 @@ data class SettingsState(
     val isApiKeySaved: Boolean = false,
     val forceLibVlc: Boolean = false,
     val forceExternalPlayer: Boolean = false,
+    val onlineSkipTimes: Boolean = true,
 )
 
 sealed interface SettingsAction {
@@ -64,6 +65,8 @@ sealed interface SettingsAction {
     data class OnForceLibVlcToggle(val enabled: Boolean) : SettingsAction
 
     data class OnForceExternalPlayerToggle(val enabled: Boolean) : SettingsAction
+
+    data class OnOnlineSkipTimesToggle(val enabled: Boolean) : SettingsAction
 }
 
 sealed interface SettingsEvent {
@@ -121,6 +124,7 @@ class SettingsViewModel(
             is SettingsAction.OnForceLibVlcToggle -> toggleForceLibVlc(action.enabled)
             is SettingsAction.OnForceExternalPlayerToggle ->
                 toggleForceExternalPlayer(action.enabled)
+            is SettingsAction.OnOnlineSkipTimesToggle -> toggleOnlineSkipTimes(action.enabled)
         }
     }
 
@@ -163,6 +167,10 @@ class SettingsViewModel(
 
             settingsRepository.forceExternalPlayer.first().let { forced ->
                 _state.update { it.copy(forceExternalPlayer = forced) }
+            }
+
+            settingsRepository.onlineSkipTimes.first().let { enabled ->
+                _state.update { it.copy(onlineSkipTimes = enabled) }
             }
         }
     }
@@ -258,6 +266,13 @@ class SettingsViewModel(
         launchSetting {
             settingsRepository.setForceExternalPlayer(enabled)
             _state.update { it.copy(forceExternalPlayer = enabled) }
+        }
+    }
+
+    private fun toggleOnlineSkipTimes(enabled: Boolean) {
+        launchSetting {
+            settingsRepository.setOnlineSkipTimes(enabled)
+            _state.update { it.copy(onlineSkipTimes = enabled) }
         }
     }
 }

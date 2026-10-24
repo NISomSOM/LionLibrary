@@ -130,4 +130,12 @@ class PreferencesManager(context: Context) {
     suspend fun setForceExternalPlayer(enabled: Boolean) {
         portable.edit { prefs -> prefs[PreferencesKeys.FORCE_EXTERNAL_PLAYER] = enabled }
     }
+
+    /** Online intro/credits lookups; on by default. File chapters work regardless. */
+    val onlineSkipTimes: Flow<Boolean> =
+        portable.data.map { prefs -> prefs[PreferencesKeys.ONLINE_SKIP_TIMES] ?: true }
+
+    suspend fun setOnlineSkipTimes(enabled: Boolean) {
+        portable.edit { prefs -> prefs[PreferencesKeys.ONLINE_SKIP_TIMES] = enabled }
+    }
 }

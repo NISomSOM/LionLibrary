@@ -2,6 +2,7 @@ package com.singam.lionlibrary.presentation.player.engine
 
 import android.net.Uri
 import android.view.ViewGroup
+import com.singam.lionlibrary.domain.model.PlaybackChapter
 import kotlinx.coroutines.flow.StateFlow
 
 enum class EnginePlaybackState {
@@ -25,6 +26,9 @@ data class EngineState(
     val durationMs: Long = 0L,
     val error: PlaybackFailure? = null,
     val trackRevision: Long = 0,
+    /** Chapters of the current file, reset with each new media; empty when it has none. */
+    val chapters: List<PlaybackChapter> = emptyList(),
+    val isSeekable: Boolean = false,
 )
 
 data class EngineTrackInfo(
@@ -119,6 +123,9 @@ interface LionPlayerEngine {
         get() = false
 
     fun setSubtitleScale(scale: Float) {}
+
+    /** Temporarily hides subtitles (e.g. behind the paused card) without changing the track. */
+    fun setSubtitlesHidden(hidden: Boolean) {}
 
     // Details of the playing video stream, when the engine exposes them.
     fun getVideoInfo(): EngineVideoInfo? = null

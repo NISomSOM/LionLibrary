@@ -54,6 +54,19 @@ Complete the exact-source/relinking obligations for the VLC AAR and transitive c
 retain dependency notices. TMDB attribution and the repository’s existing logo are displayed in Settings.
 Review that asset against TMDB’s current official attribution kit before distribution.
 
+Online skip times (TheIntroDB/SkipDB) are a release gate of their own:
+
+- **Confirm TheIntroDB's terms of use (and any attribution or app-registration requirement)
+  for keyless reads in a distributed app before public release.** Not yet confirmed.
+- Confirm that SkipDB's ODbL 1.0 + Service Provider Reciprocity terms are met by in-memory,
+  per-session display with the attribution in Settings > About and NOTICE.md.
+- Re-check both providers' rate limits (TheIntroDB `/media` 30 per 10 s; SkipDB reads 120 per
+  minute when last checked on 2026-10-24) and that the `LionLibrary/<version> Android`
+  User-Agent is acceptable to them.
+- On a device: chapter buttons on Exo and VLC, an online match, buttons with controls hidden,
+  pause kept after a skip, terminal credits opening the next episode exactly once, and the
+  switch turning online buttons off. Ship the updated docs/PRIVACY.md.
+
 Sources: [Android backup rules](https://developer.android.com/identity/data/autobackup),
 [TMDB key validation](https://developer.themoviedb.org/reference/authentication-validate-key),
 [TMDB attribution](https://developer.themoviedb.org/docs/faq),

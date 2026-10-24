@@ -3,6 +3,7 @@ package com.singam.lionlibrary.presentation.player.engine
 import android.content.Context
 import android.net.Uri
 import android.util.TypedValue
+import android.view.View
 import android.view.ViewGroup
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -11,8 +12,10 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.extractor.metadata.Chapter
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.singam.lionlibrary.domain.model.PlaybackChapter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +31,7 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
     override val state: StateFlow<EngineState> = _state.asStateFlow()
     private var released = false
     private var attachedView: PlayerView? = null
+    private var subtitlesHidden = false
     private var aspectMode = AspectMode.FIT
     private var subtitleScale = 1f
 
@@ -52,7 +56,10 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
                 addListener(
                     object : Player.Listener {
                         override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                            _state.update { it.copy(trackRevision = it.trackRevision + 1) }
+                            val chapters = chapters(tracks)
+                            _state.update {
+                                it.copy(trackRevision = it.trackRevision + 1, chapters = chapters)
+                            }
                         }
 
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -71,7 +78,10 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
                             _state.update { it.copy(playbackState = enginePlaybackState) }
                             if (playbackState == Player.STATE_READY) {
                                 _state.update {
-                                    it.copy(durationMs = this@apply.duration.coerceAtLeast(0L))
+                                    it.copy(
+                                        durationMs = this@apply.duration.coerceAtLeast(0L),
+                                        isSeekable = isCurrentMediaItemSeekable,
+                                    )
                                 }
                             }
                         }
@@ -259,6 +269,17 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
         playerView.player = exoPlayer
         applyAspectMode()
         applySubtitleScale()
+        applySubtitlesHidden()
+    }
+
+    override fun setSubtitlesHidden(hidden: Boolean) {
+        subtitlesHidden = hidden
+        applySubtitlesHidden()
+    }
+
+    private fun applySubtitlesHidden() {
+        attachedView?.subtitleView?.visibility =
+            if (subtitlesHidden) View.INVISIBLE else View.VISIBLE
     }
 
     override fun setPlaybackSpeed(speed: Float) {
@@ -325,6 +346,30 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
 
     // Stop playback.
     override fun stop() = exoPlayer.stop()
+
+    /**
+     * Media3 attaches MKV chapters and MP4 Nero/QuickTime chapters to the track formats' metadata;
+     * every track repeats them, so duplicates are removed. A missing end becomes null.
+     */
+    private fun chapters(tracks: androidx.media3.common.Tracks): List<PlaybackChapter> =
+        tracks.groups
+            .flatMap { group ->
+                (0 until group.length).mapNotNull { group.getTrackFormat(it).metadata }
+            }
+            .flatMap { metadata -> metadata.getEntriesOfType(Chapter::class.java) }
+            .filterNot { it.isHidden }
+            .map { chapter ->
+                PlaybackChapter(
+                    startMs = chapter.startTimeMs.coerceAtLeast(0),
+                    endMs =
+                        chapter.endTimeMs.takeIf {
+                            it != C.TIME_UNSET && it > chapter.startTimeMs
+                        },
+                    title = chapter.title?.value,
+                )
+            }
+            .distinct()
+            .sortedBy { it.startMs }
 
     private fun trackLabel(format: androidx.media3.common.Format, fallback: String): String =
         listOfNotNull(

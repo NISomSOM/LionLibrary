@@ -10,6 +10,17 @@ source code is licensed separately — see [LICENSE](./LICENSE).
 This product uses the TMDB API but is not endorsed or certified by TMDB.
 API terms: https://www.themoviedb.org/documentation/api/terms-of-use
 
+**TheIntroDB** — intro and credits times (optional "Online skip times")
+Keyless reads from https://api.theintrodb.org/v4/. Data © TheIntroDB contributors.
+https://theintrodb.org/ — its terms of use must be confirmed before public release.
+
+**SkipDB** — intro and credits times (fallback, optional "Online skip times")
+Keyless reads from https://api.skipdb.tv/. SkipDB data is made available under the
+Open Database License (ODbL) 1.0 with a Service Provider Reciprocity obligation.
+https://skipdb.tv/data — https://opendatacommons.org/licenses/odbl/1-0/
+LionLibrary only displays segment times in memory during playback; it does not store,
+redistribute or publish a derived database.
+
 ## Media Playback
 
 **Media3 / ExoPlayer** — Apache License 2.0

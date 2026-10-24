@@ -139,4 +139,8 @@ private class RepairApiFake : TmdbApiService {
     override suspend fun getTvAlternativeTitles(id: Int, key: String) = error("unused")
 
     override suspend fun getMovieAlternativeTitles(id: Int, key: String) = error("unused")
+
+    override suspend fun getMovieExternalIds(id: Int, key: String) = error("unused")
+
+    override suspend fun getTvExternalIds(id: Int, key: String) = error("unused")
 }

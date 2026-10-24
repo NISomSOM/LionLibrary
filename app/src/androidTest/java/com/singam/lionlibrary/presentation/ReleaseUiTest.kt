@@ -107,7 +107,10 @@ class ReleaseUiTest {
                     if (label == "+90s") compose.onNodeWithText(label)
                     else compose.onNodeWithContentDescription(label)
                 option.assertIsDisplayed()
-                assertTrue(option.fetchSemanticsNode().boundsInRoot.height >= 48 * density - 1)
+                // Touch bounds include minimumInteractiveComponentSize; layout bounds stop at
+                // the 40dp button container.
+                val touchHeight = option.fetchSemanticsNode().touchBoundsInRoot.height
+                assertTrue("$label touch height $touchHeight px", touchHeight >= 48 * density - 1)
                 option.performClick()
                 compose.runOnIdle { assertEquals(expected, options.last()) }
             }

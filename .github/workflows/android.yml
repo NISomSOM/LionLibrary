@@ -16,9 +16,10 @@ jobs:
       # setup-android defaults to packages 'tools platform-tools'; the legacy 'tools'
       # package no longer exists in Google's SDK repository, so sdkmanager exits 1.
       # Name the packages explicitly instead of relying on that default.
+      # From API 37 platforms are minor-versioned: compileSdk 37 is 'platforms;android-37.0'.
       - uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-37 build-tools;37.0.0'
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew
       - run: ./gradlew :app:checkKotlinFormat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --console=plain

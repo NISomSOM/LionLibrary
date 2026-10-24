@@ -92,6 +92,7 @@ class ReleaseUiTest {
             val sliderBounds = slider.fetchSemanticsNode().boundsInRoot
             assertTrue(elapsed.boundsInRoot.top >= sliderBounds.bottom)
             assertTrue(duration.boundsInRoot.top >= sliderBounds.bottom)
+            val density = compose.density.density
             val actions =
                 listOf(
                     "Previous episode" to "previous",
@@ -108,7 +109,8 @@ class ReleaseUiTest {
                 option.assertIsDisplayed()
                 // Touch bounds include minimumInteractiveComponentSize; layout bounds stop at
                 // the 40dp button container.
-                option.assertTouchHeightIsAtLeast(48.dp)
+                val touchHeight = option.fetchSemanticsNode().touchBoundsInRoot.height
+                assertTrue("$label touch height $touchHeight px", touchHeight >= 48 * density - 1)
                 option.performClick()
                 compose.runOnIdle { assertEquals(expected, options.last()) }
             }

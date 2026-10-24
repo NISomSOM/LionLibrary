@@ -40,6 +40,19 @@ jobs:
           arch: x86_64
           profile: pixel_2
           script: ./gradlew :app:connectedDebugAndroidTest --console=plain
+      # The HTML report only exists inside the uploaded artifact; surface failing
+      # instrumented tests directly in the job log so they can be read without it.
+      - name: Print instrumented test failures
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          for path in glob.glob('app/build/outputs/androidTest-results/connected/**/*.xml', recursive=True):
+              for case in ET.parse(path).getroot().iter('testcase'):
+                  for problem in list(case.findall('failure')) + list(case.findall('error')):
+                      print(f"::error::{case.get('classname')}.{case.get('name')}")
+                      print((problem.text or problem.get('message') or '')[:4000])
+          PY
 
       - uses: actions/upload-artifact@v4
         if: always()

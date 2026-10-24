@@ -13,9 +13,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      # setup-android defaults to packages 'tools platform-tools'; the legacy 'tools'
+      # package no longer exists in Google's SDK repository, so sdkmanager exits 1.
+      # Name the packages explicitly instead of relying on that default.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-37 build-tools;37.0.0'
       - uses: gradle/actions/setup-gradle@v4
-      - run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0'
       - run: chmod +x gradlew
       - run: ./gradlew :app:checkKotlinFormat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --console=plain
       - run: python3 scripts/check_android_patterns.py

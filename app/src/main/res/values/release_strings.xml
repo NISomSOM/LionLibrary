@@ -114,6 +114,7 @@
     <string name="clear_history">Clear watch history</string>
     <string name="clear_history_help">Clear all watch progress? Your library and files will remain available.</string>
     <string name="last_scan">Last scan: %1$s</string>
+    <string name="scan_folder_unavailable">A library folder could not be read, so the scan stopped. Check that its storage is connected, or choose the folder again in Settings. Your library was left unchanged.</string>
     <string name="playback">Playback</string>
     <string name="force_vlc">Always use VLC</string>
     <string name="force_external">Always use an external player</string>

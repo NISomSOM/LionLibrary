@@ -20,6 +20,13 @@ class DeletionIntegrationTest {
         movie(1, "one")
         movie(2, "two")
         docs.remove("M", "one")
+        val scanner = scanner()
+        assertEquals(ScanStatus.API_KEY_MISSING, scanner().toList().last().status)
+        assertNull(db.mediaDao().getById(1))
+        assertNotNull(db.mediaDao().getById(2))
+    }
+
+    private fun Fixture.scanner(): com.singam.lionlibrary.data.scanner.AndroidMediaScanner {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val parser = com.singam.lionlibrary.data.scanner.FileNameParser()
         val api =
@@ -29,27 +36,39 @@ class DeletionIntegrationTest {
             ) { _, _, _ ->
                 error("No metadata network request is allowed in this fixture")
             } as com.singam.lionlibrary.data.remote.api.TmdbApiService
-        val scanner =
-            com.singam.lionlibrary.data.scanner.AndroidMediaScanner(
-                context,
-                com.singam.lionlibrary.data.scanner.FolderScanner(context, parser),
+        return com.singam.lionlibrary.data.scanner.AndroidMediaScanner(
+            context,
+            com.singam.lionlibrary.data.scanner.FolderScanner(
+                com.singam.lionlibrary.data.scanner.SafFolderLister(context),
                 parser,
-                api,
-                com.singam.lionlibrary.data.scanner.ImageCacheManager(
-                    context,
-                    okhttp3.OkHttpClient(),
-                ),
-                db.mediaDao(),
-                db.seasonDao(),
-                db.episodeDao(),
-                settings,
-                db,
-                reconciler,
-                gate,
-            )
-        assertEquals(ScanStatus.API_KEY_MISSING, scanner().toList().last().status)
-        assertNull(db.mediaDao().getById(1))
-        assertNotNull(db.mediaDao().getById(2))
+            ),
+            parser,
+            api,
+            com.singam.lionlibrary.data.scanner.ImageCacheManager(
+                context,
+                okhttp3.OkHttpClient(),
+            ),
+            db.mediaDao(),
+            db.seasonDao(),
+            db.episodeDao(),
+            settings,
+            db,
+            reconciler,
+            gate,
+        )
+    }
+
+    @Test
+    fun unreadableLibraryFolderEndsScanAsLostAccessAndKeepsEveryRow() = scenario {
+        movie(1, "one")
+        settings.key.value = "fixture-key"
+        // Not a document tree, so the folder listing fails before any metadata request.
+        val statuses = scanner()().toList().map { it.status }
+        assertEquals(ScanStatus.PERMISSION_REVOKED, statuses.last())
+        assertFalse(ScanStatus.COMPLETE in statuses)
+        assertEquals(0, settings.lastScanWrites)
+        assertNotNull(db.mediaDao().getById(1))
+        assertNotNull(db.watchProgressDao().getProgress(1, 0))
     }
 
     @Test
@@ -369,7 +388,9 @@ private class DeletionSettings : SettingsRepository {
     val shows = MutableStateFlow("fixture|S|S")
     override val moviesFolderUri = movies
     override val showsFolderUri = shows
-    override val tmdbApiKey = flowOf("")
+    val key = MutableStateFlow("")
+    var lastScanWrites = 0
+    override val tmdbApiKey = key
     override val lastScanTime = flowOf(0L)
     override val forceLibVlc = flowOf(false)
     override val forceExternalPlayer = flowOf(false)
@@ -388,7 +409,9 @@ private class DeletionSettings : SettingsRepository {
 
     override suspend fun setTmdbApiKey(key: String) {}
 
-    override suspend fun setLastScanTime(time: Long) {}
+    override suspend fun setLastScanTime(time: Long) {
+        lastScanWrites++
+    }
 
     override suspend fun setForceLibVlc(enabled: Boolean) {}
 

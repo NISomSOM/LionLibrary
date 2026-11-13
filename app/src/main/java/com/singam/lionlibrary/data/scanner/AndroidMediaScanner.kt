@@ -126,6 +126,11 @@ class AndroidMediaScanner(
         } catch (e: FolderPermissionException) {
             emit(ScanProgress(0, 0, "", ScanStatus.PERMISSION_REVOKED))
             return@flow
+        } catch (e: FolderUnavailableException) {
+            // A root or subfolder could not be listed completely. Report it like lost access:
+            // an unreadable folder must never finish as an empty, successful scan.
+            emit(ScanProgress(0, 0, "", ScanStatus.PERMISSION_REVOKED))
+            return@flow
         }
 
         val total = allCandidates.sumOf {

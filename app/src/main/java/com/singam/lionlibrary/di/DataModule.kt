@@ -21,6 +21,7 @@ import com.singam.lionlibrary.data.scanner.AndroidScanCoordinator
 import com.singam.lionlibrary.data.scanner.FileNameParser
 import com.singam.lionlibrary.data.scanner.FolderScanner
 import com.singam.lionlibrary.data.scanner.ImageCacheManager
+import com.singam.lionlibrary.data.scanner.SafFolderLister
 import com.singam.lionlibrary.data.storage.*
 import com.singam.lionlibrary.domain.repository.LetterboxdRepository
 import com.singam.lionlibrary.domain.repository.MediaDeletionRepository
@@ -46,7 +47,8 @@ val dataModule = module {
 
     singleOf(::FileNameParser)
 
-    single { FolderScanner(androidContext(), get()) }
+    single { SafFolderLister(androidContext()) }
+    single { FolderScanner(get(), get()) }
 
     single { ImageCacheManager(androidContext(), get()) } bind
         com.singam.lionlibrary.domain.repository.ArtworkRepository::class

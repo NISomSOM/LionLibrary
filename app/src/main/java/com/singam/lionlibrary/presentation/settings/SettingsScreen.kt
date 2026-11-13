@@ -255,6 +255,12 @@ fun SettingsScreen(
                         Text(stringResource(R.string.scan_library))
                     }
                 }
+                if (!state.isScanning && state.scanRun.summary.outcome == "PERMISSION_REVOKED")
+                    Text(
+                        stringResource(R.string.scan_folder_unavailable),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 if (state.lastScanTime > 0)
                     Text(
                         stringResource(

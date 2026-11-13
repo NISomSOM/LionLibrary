@@ -2,7 +2,9 @@ package com.singam.lionlibrary.presentation.player
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,8 +29,11 @@ import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.presentation.player.engine.AspectMode
 
-/** Title, timeline with time pills, and the bar of player actions along the bottom edge. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Compact Nuvio-style footer: title, a slim seekbar, then one row holding the action pill on the
+ * left and the elapsed / total time on the right. Three rows instead of five keep the whole block
+ * clear of the centre play button on a landscape phone.
+ */
 @Composable
 internal fun PlayerBottomControls(
     title: String,
@@ -52,124 +57,140 @@ internal fun PlayerBottomControls(
     onNextClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Column(Modifier.fillMaxWidth()) {
+    Column(modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            // Never reaches under the centre controls, however long the title is.
+            modifier = Modifier.fillMaxWidth(.6f),
+        )
+        if (subtitle.isNotBlank()) {
             Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(.6f),
             )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
         PlayerSeekBar(currentPositionMs, durationMs, onScrub, onScrubEnd)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            PlayerTimePill(formatTime(currentPositionMs))
-            PlayerTimePill(formatTime(durationMs))
-        }
-        Spacer(Modifier.height(8.dp))
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.scrim.copy(alpha = .7f),
-            contentColor = MaterialTheme.colorScheme.onBackground,
-            border = BorderStroke(.5.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = .25f)),
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            FlowRow(
-                Modifier.padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.Center,
-                itemVerticalAlignment = Alignment.CenterVertically,
+            Surface(
+                modifier = Modifier.weight(1f, fill = false),
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.scrim.copy(alpha = .7f),
+                contentColor = MaterialTheme.colorScheme.onBackground,
+                border =
+                    BorderStroke(.5.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = .25f)),
             ) {
-                if (isEpisode) {
-                    PlayerActionIcon(
-                        icon = Icons.Outlined.SkipPrevious,
-                        contentDescription = stringResource(R.string.previous_episode),
-                        onClick = onPreviousClick,
-                        enabled = hasPrevious,
-                    )
-                }
-                TextButton(
-                    onClick = onSeekForward90Click,
-                    colors =
-                        ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.onBackground
-                        ),
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        stringResource(R.string.ui_90s),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                }
-                PlayerActionIcon(
-                    icon = Icons.Outlined.ClosedCaption,
-                    contentDescription = stringResource(R.string.ui_subtitles),
-                    onClick = onSubtitleClick,
-                )
-                PlayerActionIcon(
-                    icon = Icons.Outlined.GraphicEq,
-                    contentDescription = stringResource(R.string.ui_audio_tracks),
-                    onClick = onAudioClick,
-                )
-                PlayerActionIcon(
-                    icon = Icons.Outlined.Speed,
-                    contentDescription =
-                        stringResource(
-                            R.string.ui_speed_value,
-                            PlayerFormatting.speed(playbackSpeed),
-                        ),
-                    onClick = onSpeedClick,
-                    isActive = playbackSpeed != 1f,
-                )
-                PlayerActionIcon(
-                    icon = aspectMode.icon(),
-                    contentDescription =
-                        stringResource(
-                            R.string.ui_aspect_value,
-                            stringResource(aspectMode.label()),
-                        ),
-                    onClick = onAspectClick,
-                    isActive = aspectMode != AspectMode.FIT,
-                )
-                PlayerActionIcon(
-                    icon = Icons.Outlined.Info,
-                    contentDescription = stringResource(R.string.ui_info),
-                    onClick = onInfoClick,
-                )
-                if (isEpisode) {
+                    if (isEpisode) {
+                        PlayerActionIcon(
+                            icon = Icons.Outlined.SkipPrevious,
+                            contentDescription = stringResource(R.string.previous_episode),
+                            onClick = onPreviousClick,
+                            enabled = hasPrevious,
+                        )
+                    }
+                    TextButton(
+                        onClick = onSeekForward90Click,
+                        colors =
+                            ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onBackground
+                            ),
+                    ) {
+                        Text(
+                            stringResource(R.string.ui_90s),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
                     PlayerActionIcon(
-                        icon = Icons.Outlined.SkipNext,
-                        contentDescription = stringResource(R.string.next_episode),
-                        onClick = onNextClick,
-                        enabled = hasNext,
+                        icon = Icons.Outlined.ClosedCaption,
+                        contentDescription = stringResource(R.string.ui_subtitles),
+                        onClick = onSubtitleClick,
                     )
+                    PlayerActionIcon(
+                        icon = Icons.Outlined.GraphicEq,
+                        contentDescription = stringResource(R.string.ui_audio_tracks),
+                        onClick = onAudioClick,
+                    )
+                    PlayerActionIcon(
+                        icon = Icons.Outlined.Speed,
+                        contentDescription =
+                            stringResource(
+                                R.string.ui_speed_value,
+                                PlayerFormatting.speed(playbackSpeed),
+                            ),
+                        onClick = onSpeedClick,
+                        isActive = playbackSpeed != 1f,
+                    )
+                    PlayerActionIcon(
+                        icon = aspectMode.icon(),
+                        contentDescription =
+                            stringResource(
+                                R.string.ui_aspect_value,
+                                stringResource(aspectMode.label()),
+                            ),
+                        onClick = onAspectClick,
+                        isActive = aspectMode != AspectMode.FIT,
+                    )
+                    PlayerActionIcon(
+                        icon = Icons.Outlined.Info,
+                        contentDescription = stringResource(R.string.ui_info),
+                        onClick = onInfoClick,
+                    )
+                    if (isEpisode) {
+                        PlayerActionIcon(
+                            icon = Icons.Outlined.SkipNext,
+                            contentDescription = stringResource(R.string.next_episode),
+                            onClick = onNextClick,
+                            enabled = hasNext,
+                        )
+                    }
                 }
             }
+
+            PlayerTimes(formatTime(currentPositionMs), formatTime(durationMs))
         }
     }
 }
 
+/** "12:34 / 1:30:00" with tabular digits so the line does not jitter as seconds tick. */
 @Composable
-private fun PlayerTimePill(time: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.scrim.copy(alpha = .6f),
-        contentColor = MaterialTheme.colorScheme.onBackground,
-        border = BorderStroke(.5.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = .15f)),
-    ) {
+private fun PlayerTimes(elapsed: String, total: String, modifier: Modifier = Modifier) {
+    val style =
+        MaterialTheme.typography.labelLarge.copy(
+            fontFeatureSettings = "tnum",
+            shadow =
+                androidx.compose.ui.graphics.Shadow(
+                    MaterialTheme.colorScheme.scrim.copy(alpha = .8f),
+                    blurRadius = 6f,
+                ),
+        )
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(elapsed, style = style, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
         Text(
-            time,
-            Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.labelSmall,
+            " / ",
+            style = style,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = .5f),
+            maxLines = 1,
+        )
+        Text(
+            total,
+            style = style,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = .75f),
             maxLines = 1,
         )
     }
@@ -195,7 +216,7 @@ private fun PlayerSeekBar(
             if (durationMs > 0) (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f,
         onValueChange = { onScrub((it * durationMs).toLong()) },
         onValueChangeFinished = onScrubEnd,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().height(32.dp),
         colors = colors,
         thumb = {
             Box(Modifier.size(14.dp).background(MaterialTheme.colorScheme.primary, CircleShape))

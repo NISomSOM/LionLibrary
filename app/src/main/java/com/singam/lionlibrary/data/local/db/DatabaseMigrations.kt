@@ -12,7 +12,15 @@ object DatabaseMigrations {
                     override fun migrate(db: SupportSQLiteDatabase) = upgrade(db)
                 }
             }
+            .plus(AddOriginalLanguage)
             .toTypedArray()
+
+    /** Additive only: the new nullable column is filled later by the artwork/metadata refresh. */
+    private object AddOriginalLanguage : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE media ADD COLUMN originalLanguage TEXT")
+        }
+    }
 
     private fun upgrade(db: SupportSQLiteDatabase) {
         rebuild(

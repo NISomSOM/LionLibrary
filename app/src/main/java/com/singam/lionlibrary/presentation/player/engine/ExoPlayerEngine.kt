@@ -35,10 +35,12 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
     private var aspectMode = AspectMode.FIT
     private var subtitleScale = 1f
 
+    private val renderersFactory = DelayableRenderersFactory(context)
+
     val exoPlayer: ExoPlayer =
         ExoPlayer.Builder(
                 context,
-                DefaultRenderersFactory(context).apply {
+                renderersFactory.apply {
                     setEnableDecoderFallback(true)
                     // Platform decoders are preferred; VLC supplies the alternate codec path.
                     setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
@@ -292,6 +294,13 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
     }
 
     override val supportsSubtitleScale = true
+
+    override val supportsSubtitleDelay = true
+
+    override fun setSubtitleDelay(delayMs: Long) {
+        if (released) return
+        renderersFactory.textRenderers.forEach { it.delayUs = delayMs * 1_000 }
+    }
 
     override fun setSubtitleScale(scale: Float) {
         subtitleScale = scale

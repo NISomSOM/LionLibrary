@@ -44,4 +44,6 @@ data class MediaEntity(
     val sourceEpisode: Int? = null,
     val sourceEpisodeEnd: Int? = null,
     val identificationFailure: String? = null,
+    // TMDB ISO 639-1 code; "" once checked with none, null until fetched.
+    val originalLanguage: String? = null,
 )

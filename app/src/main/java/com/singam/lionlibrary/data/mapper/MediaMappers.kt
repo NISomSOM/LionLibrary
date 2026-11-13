@@ -59,6 +59,7 @@ fun MediaEntity.toMediaItem(): MediaItem =
         sourceEpisode = sourceEpisode,
         sourceEpisodeEnd = sourceEpisodeEnd,
         identificationFailure = identificationFailure,
+        originalLanguage = originalLanguage,
     )
 
 fun MediaItem.toMediaEntity(): MediaEntity =
@@ -92,6 +93,7 @@ fun MediaItem.toMediaEntity(): MediaEntity =
         sourceEpisode = sourceEpisode,
         sourceEpisodeEnd = sourceEpisodeEnd,
         identificationFailure = identificationFailure,
+        originalLanguage = originalLanguage,
     )
 
 fun EpisodeEntity.toEpisode(): Episode =
@@ -225,6 +227,7 @@ fun MovieDetailsDto.toMediaEntity(
         lastUpdated = System.currentTimeMillis(),
         filePath = filePath,
         preferredEngine = preferredEngine,
+        originalLanguage = originalLanguage.orEmpty(),
     )
 }
 
@@ -253,4 +256,5 @@ fun TvDetailsDto.toMediaEntity(
         lastUpdated = System.currentTimeMillis(),
         logoPath = null,
         preferredEngine = preferredEngine,
+        originalLanguage = originalLanguage.orEmpty(),
     )

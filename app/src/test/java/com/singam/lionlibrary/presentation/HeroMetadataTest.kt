@@ -1,53 +1,51 @@
 package com.singam.lionlibrary.presentation
 
 import assertk.assertThat
+import assertk.assertions.containsExactly
 import assertk.assertions.isEqualTo
-import com.singam.lionlibrary.presentation.home.fitHeroMetadata
+import assertk.assertions.isNull
+import com.singam.lionlibrary.presentation.home.firstHeroGenre
+import com.singam.lionlibrary.presentation.home.heroFacts
+import com.singam.lionlibrary.presentation.home.heroRuntimeParts
 import org.junit.jupiter.api.Test
 
 /**
- * Break vectors: exact width boundary; one oversized genre; even the first genre too wide;
- * blank/missing fields; Unicode/emoji truncation. Width is a supplied pure predicate: no font,
- * Android, clock or I/O dependencies. Numeric/state/concurrency vectors do not apply.
+ * Break vectors: blank/whitespace genre lists; Unicode genres; runtime boundaries (0, negative,
+ * exactly one hour, very large); missing fields leaving gaps or separators; invalid years. Pure
+ * functions only: no font, Android, clock or I/O dependencies.
  */
 class HeroMetadataTest {
     @Test
-    fun `exact fit keeps both genres`() {
-        val full = "2023  ·  Animation · Drama  ·  ★ 8.1"
-        assertThat(
-                fitHeroMetadata("2023", "Animation, Drama", "★ 8.1") { it.length <= full.length }
-            )
-            .isEqualTo(full)
+    fun `facts follow type, first genre, runtime, year order`() {
+        assertThat(heroFacts("Movie", "Drama, History", "2h 5m", 2025))
+            .containsExactly("Movie", "Drama", "2h 5m", "2025")
     }
 
     @Test
-    fun `oversized second genre is removed first`() {
-        assertThat(fitHeroMetadata("2023", "Drama, Science Fiction", "★ 8.1") { it.length <= 25 })
-            .isEqualTo("2023  ·  Drama  ·  ★ 8.1")
+    fun `missing pieces are skipped without empty entries`() {
+        assertThat(heroFacts("Series", null, null, null)).containsExactly("Series")
+        assertThat(heroFacts(" ", " , ", " ", 0)).isEqualTo(emptyList<String>())
     }
 
     @Test
-    fun `oversized first genre yields year and rating`() {
-        assertThat(fitHeroMetadata("2023", "Very long genre, Drama", "★ 8.1") { it.length <= 18 })
-            .isEqualTo("2023  ·  ★ 8.1")
+    fun `first genre skips blank entries and keeps unicode whole`() {
+        assertThat(firstHeroGenre(",  , 冒険👨‍👩‍👧‍👦, Drama")).isEqualTo("冒険👨‍👩‍👧‍👦")
+        assertThat(firstHeroGenre(null)).isNull()
     }
 
     @Test
-    fun `blank fields do not consume genre slots or leave separators`() {
-        assertThat(fitHeroMetadata(null, ",  , Drama, Animation", " ") { true })
-            .isEqualTo("Drama · Animation")
-        assertThat(fitHeroMetadata(null, null, null) { true }).isEqualTo("")
+    fun `runtime splits into hours and minutes at boundaries`() {
+        assertThat(heroRuntimeParts(59)).isEqualTo(0 to 59)
+        assertThat(heroRuntimeParts(60)).isEqualTo(1 to 0)
+        assertThat(heroRuntimeParts(125)).isEqualTo(2 to 5)
+        assertThat(heroRuntimeParts(Int.MAX_VALUE))
+            .isEqualTo(Int.MAX_VALUE / 60 to Int.MAX_VALUE % 60)
     }
 
     @Test
-    fun `unicode genres are retained whole or omitted whole`() {
-        val genre = "冒険👨‍👩‍👧‍👦"
-        assertThat(fitHeroMetadata("2023", "$genre, ドラマ", null) { it == "2023  ·  $genre" })
-            .isEqualTo("2023  ·  $genre")
-    }
-
-    @Test
-    fun `tiny width keeps essential metadata for single line ellipsis`() {
-        assertThat(fitHeroMetadata("2023", "Drama", "★ 8.1") { false }).isEqualTo("2023  ·  ★ 8.1")
+    fun `non positive or missing runtime has no parts`() {
+        assertThat(heroRuntimeParts(0)).isNull()
+        assertThat(heroRuntimeParts(-5)).isNull()
+        assertThat(heroRuntimeParts(null)).isNull()
     }
 }

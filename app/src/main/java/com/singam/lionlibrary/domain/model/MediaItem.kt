@@ -30,6 +30,7 @@ data class MediaItem(
     val sourceEpisode: Int? = null,
     val sourceEpisodeEnd: Int? = null,
     val identificationFailure: String? = null,
+    val originalLanguage: String? = null,
 )
 
 val MediaItem.isSingleFile: Boolean

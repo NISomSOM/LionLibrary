@@ -60,7 +60,10 @@ internal fun PlayerTopActions(
     }
 }
 
-/** Rewind, play/pause and forward in the middle of the video. */
+/**
+ * Rewind, play/pause and forward in the middle of the video: large bare glyphs with no backing
+ * disc, so the picture shows through and the play button reads as the focus.
+ */
 @Composable
 internal fun PlayerCenterControls(
     isPlaying: Boolean,
@@ -72,36 +75,40 @@ internal fun PlayerCenterControls(
     Row(
         modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(40.dp),
+        horizontalArrangement = Arrangement.spacedBy(56.dp),
     ) {
-        IconButton(onClick = onRewindClick, colors = onVideoIconColors()) {
+        IconButton(
+            onClick = onRewindClick,
+            colors = onVideoIconColors(),
+            modifier = Modifier.size(64.dp),
+        ) {
             Icon(
                 Icons.Rounded.Replay10,
                 contentDescription = stringResource(R.string.ui_rewind_10s),
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(48.dp),
             )
         }
-        FilledTonalIconButton(
+        IconButton(
             onClick = onPlayPauseClick,
-            modifier = Modifier.size(64.dp),
-            colors =
-                IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.scrim.copy(alpha = .45f),
-                    contentColor = MaterialTheme.colorScheme.onBackground,
-                ),
+            colors = onVideoIconColors(),
+            modifier = Modifier.size(88.dp),
         ) {
             Icon(
                 imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                 contentDescription =
                     stringResource(if (isPlaying) R.string.ui_pause else R.string.play),
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(80.dp),
             )
         }
-        IconButton(onClick = onForwardClick, colors = onVideoIconColors()) {
+        IconButton(
+            onClick = onForwardClick,
+            colors = onVideoIconColors(),
+            modifier = Modifier.size(64.dp),
+        ) {
             Icon(
                 Icons.Rounded.Forward10,
                 contentDescription = stringResource(R.string.ui_forward_10s),
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(48.dp),
             )
         }
     }

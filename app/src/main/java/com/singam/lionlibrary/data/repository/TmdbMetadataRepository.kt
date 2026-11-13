@@ -334,8 +334,10 @@ class TmdbMetadataRepository(
                 val missingLogo = !images.isUsable(item.logoPath)
                 val missingSeasons = seasons.filter { !images.isUsable(it.posterPath) }
                 val missingEpisodes = episodes.filter { !images.isUsable(it.thumbnailPath) }
+                val missingLanguage = item.originalLanguage == null
                 if (
-                    !missingPoster &&
+                    !missingLanguage &&
+                        !missingPoster &&
                         !missingBackdrop &&
                         !missingLogo &&
                         missingSeasons.isEmpty() &&
@@ -346,11 +348,24 @@ class TmdbMetadataRepository(
                 var changed = false
                 var poster: String? = null
                 var backdrop: String? = null
+                if (missingLanguage && !missingPoster && !missingBackdrop) {
+                    val language =
+                        if (movie) api.getMovieDetails(id, key).originalLanguage
+                        else api.getTvDetails(id, key).originalLanguage
+                    database.mediaDao().updateOriginalLanguage(item.id, language.orEmpty())
+                }
                 if (missingPoster || missingBackdrop) {
-                    val paths =
+                    val (paths, language) =
                         if (movie)
-                            api.getMovieDetails(id, key).let { it.posterPath to it.backdropPath }
-                        else api.getTvDetails(id, key).let { it.posterPath to it.backdropPath }
+                            api.getMovieDetails(id, key).let {
+                                (it.posterPath to it.backdropPath) to it.originalLanguage
+                            }
+                        else
+                            api.getTvDetails(id, key).let {
+                                (it.posterPath to it.backdropPath) to it.originalLanguage
+                            }
+                    if (missingLanguage)
+                        database.mediaDao().updateOriginalLanguage(item.id, language.orEmpty())
                     if (missingPoster)
                         poster = paths.first?.let { images.cachePoster(it, "${prefix}_poster.jpg") }
                     if (missingBackdrop)

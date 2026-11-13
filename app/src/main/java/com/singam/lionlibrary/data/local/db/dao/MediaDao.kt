@@ -41,6 +41,9 @@ interface MediaDao {
     )
     suspend fun updateArtwork(id: Long, poster: String?, backdrop: String?, logo: String?)
 
+    @Query("UPDATE media SET originalLanguage = :language WHERE id = :id")
+    suspend fun updateOriginalLanguage(id: Long, language: String)
+
     @Query("UPDATE media SET isWatchlisted = NOT isWatchlisted WHERE id = :id")
     suspend fun toggleWatchlist(id: Long)
 

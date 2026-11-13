@@ -1,11 +1,12 @@
 package com.singam.lionlibrary.presentation.player
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
@@ -17,17 +18,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.presentation.player.engine.EngineTrackInfo
 
-private val PanelShape = RoundedCornerShape(20.dp)
+private val PanelShape = RoundedCornerShape(24.dp)
 private val RowShape = RoundedCornerShape(14.dp)
 private const val SUBTITLE_DELAY_STEP_MS = 250L
 private const val SUBTITLE_SCALE_STEP = 0.1f
 
-/** Languages, tracks and style for subtitles, in three columns. */
+/**
+ * Subtitles as a narrow side sheet: language chips, the track list, then delay and size. Fits a
+ * third of a landscape screen so the video stays visible beside it.
+ */
 @Composable
 internal fun SubtitlePanel(
     tracks: List<EngineTrackInfo>,
@@ -48,92 +53,91 @@ internal fun SubtitlePanel(
     val visible = PlayerFormatting.filterSubtitles(tracks, languageFilter)
     PanelSurface(modifier) {
         PanelHeader(stringResource(R.string.ui_subtitles), onDismiss)
-        Row(
-            Modifier.fillMaxWidth().weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            LazyColumn(Modifier.weight(.8f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                item { ColumnLabel(stringResource(R.string.ui_languages)) }
-                item {
-                    LanguageRow(
-                        name = stringResource(R.string.ui_all),
-                        count = tracks.size,
-                        isSelected = languageFilter == null,
-                        onClick = { onLanguageFilter(null) },
-                    )
-                }
-                items(languages, key = { it.language }) { group ->
-                    LanguageRow(
-                        name =
-                            PlayerFormatting.languageName(group.language)
-                                ?: stringResource(R.string.ui_unknown_language),
-                        count = group.count,
-                        isSelected = languageFilter == group.language,
-                        onClick = { onLanguageFilter(group.language) },
-                    )
-                }
-            }
-            LazyColumn(Modifier.weight(1.3f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                item { ColumnLabel(stringResource(R.string.ui_tracks)) }
-                item {
-                    TrackRow(
-                        title = stringResource(R.string.ui_off),
-                        detail = null,
-                        chip = null,
-                        isSelected = tracks.none { it.isSelected },
-                        onClick = { onTrackSelect(null) },
-                    )
-                }
-                items(visible, key = { it.id }) { track ->
-                    TrackRow(
-                        title = track.label,
-                        detail =
-                            listOfNotNull(
-                                    PlayerFormatting.languageName(track.language),
-                                    track.codec,
-                                )
-                                .distinct()
-                                .joinToString(" · ")
-                                .ifBlank { null },
-                        chip =
-                            stringResource(
-                                if (track.isExternal) R.string.ui_external else R.string.ui_built_in
-                            ),
-                        isSelected = track.isSelected,
-                        onClick = { onTrackSelect(track.id) },
-                    )
-                }
-            }
-            Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                ColumnLabel(stringResource(R.string.ui_style))
-                StepperRow(
-                    label = stringResource(R.string.ui_subtitle_delay),
-                    value = PlayerFormatting.subtitleDelay(delayMs),
-                    enabled = supportsDelay,
-                    onDecrease = { onDelayChange(-SUBTITLE_DELAY_STEP_MS) },
-                    onIncrease = { onDelayChange(SUBTITLE_DELAY_STEP_MS) },
-                )
-                if (supportsDelay) {
-                    TextButton(onClick = onDelayReset, enabled = delayMs != 0L) {
-                        Text(stringResource(R.string.ui_reset))
+        // One scrolling list so a short landscape screen never squeezes the tracks out.
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (languages.size > 1) {
+                item(key = "languages") {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    ) {
+                        item {
+                            LanguageChip(
+                                name = stringResource(R.string.ui_all),
+                                count = tracks.size,
+                                isSelected = languageFilter == null,
+                                onClick = { onLanguageFilter(null) },
+                            )
+                        }
+                        items(languages, key = { it.language }) { group ->
+                            LanguageChip(
+                                name =
+                                    PlayerFormatting.languageName(group.language)
+                                        ?: stringResource(R.string.ui_unknown_language),
+                                count = group.count,
+                                isSelected = languageFilter == group.language,
+                                onClick = { onLanguageFilter(group.language) },
+                            )
+                        }
                     }
                 }
-                StepperRow(
-                    label = stringResource(R.string.ui_font_size),
-                    value = PlayerFormatting.subtitleScale(scale),
-                    enabled = supportsScale,
-                    onDecrease = { onScaleChange(-SUBTITLE_SCALE_STEP) },
-                    onIncrease = { onScaleChange(SUBTITLE_SCALE_STEP) },
+            }
+            item(key = "off") {
+                TrackRow(
+                    title = stringResource(R.string.ui_off),
+                    detail = null,
+                    chip = null,
+                    isSelected = tracks.none { it.isSelected },
+                    onClick = { onTrackSelect(null) },
                 )
-                if (!supportsDelay || !supportsScale) {
-                    Text(
-                        stringResource(R.string.ui_style_engine_note),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            }
+            items(visible, key = { it.id }) { track ->
+                TrackRow(
+                    title = track.label,
+                    detail =
+                        listOfNotNull(PlayerFormatting.languageName(track.language), track.codec)
+                            .distinct()
+                            .joinToString(" · ")
+                            .ifBlank { null },
+                    chip =
+                        stringResource(
+                            if (track.isExternal) R.string.ui_external else R.string.ui_built_in
+                        ),
+                    isSelected = track.isSelected,
+                    onClick = { onTrackSelect(track.id) },
+                )
+            }
+            item(key = "style") {
+                Column(
+                    Modifier.padding(top = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .08f)
                     )
+                    ColumnLabel(stringResource(R.string.ui_style))
+                    StepperRow(
+                        label = stringResource(R.string.ui_subtitle_delay),
+                        value = PlayerFormatting.subtitleDelay(delayMs),
+                        enabled = supportsDelay,
+                        onDecrease = { onDelayChange(-SUBTITLE_DELAY_STEP_MS) },
+                        onIncrease = { onDelayChange(SUBTITLE_DELAY_STEP_MS) },
+                        onReset = onDelayReset.takeIf { supportsDelay && delayMs != 0L },
+                    )
+                    StepperRow(
+                        label = stringResource(R.string.ui_font_size),
+                        value = PlayerFormatting.subtitleScale(scale),
+                        enabled = supportsScale,
+                        onDecrease = { onScaleChange(-SUBTITLE_SCALE_STEP) },
+                        onIncrease = { onScaleChange(SUBTITLE_SCALE_STEP) },
+                    )
+                    if (!supportsDelay || !supportsScale) {
+                        Text(
+                            stringResource(R.string.ui_style_engine_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -157,7 +161,10 @@ internal fun AudioPanel(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyColumn(
+            Modifier.weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             items(tracks, key = { it.id }) { track ->
                 TrackRow(
                     title = track.label,
@@ -215,9 +222,11 @@ private fun PanelSurface(modifier: Modifier, content: @Composable ColumnScope.()
     Surface(
         modifier = modifier,
         shape = PanelShape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = .96f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = .94f),
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 2.dp,
+        shadowElevation = 12.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .08f)),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             content()
@@ -228,6 +237,13 @@ private fun PanelSurface(modifier: Modifier, content: @Composable ColumnScope.()
 @Composable
 private fun PanelHeader(title: String, onDismiss: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // Orange accent bar ties the sheet to the rest of the player chrome.
+        Box(
+            Modifier.width(4.dp)
+                .height(22.dp)
+                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50))
+        )
+        Spacer(Modifier.width(10.dp))
         Text(
             title,
             style = MaterialTheme.typography.titleLarge,
@@ -251,32 +267,24 @@ private fun ColumnLabel(text: String) {
 }
 
 @Composable
-private fun LanguageRow(name: String, count: Int, isSelected: Boolean, onClick: () -> Unit) {
-    Surface(
+private fun LanguageChip(name: String, count: Int, isSelected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = isSelected,
         onClick = onClick,
-        shape = RoundedCornerShape(50),
-        color =
-            if (isSelected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.surfaceVariant,
-        contentColor =
-            if (isSelected) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurface,
-    ) {
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        label = {
             Text(
-                name,
-                style = MaterialTheme.typography.bodyMedium,
+                "$name  $count",
                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
             )
-            Text(count.toString(), style = MaterialTheme.typography.labelMedium)
-        }
-    }
+        },
+        shape = RoundedCornerShape(50),
+        colors =
+            FilterChipDefaults.filterChipColors(
+                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+            ),
+    )
 }
 
 @Composable
@@ -343,29 +351,33 @@ private fun StepperRow(
     enabled: Boolean,
     onDecrease: () -> Unit,
     onIncrease: () -> Unit,
+    onReset: (() -> Unit)? = null,
 ) {
-    Column {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            FilledTonalIconButton(onClick = onDecrease, enabled = enabled) {
-                Icon(
-                    Icons.Rounded.Remove,
-                    contentDescription = stringResource(R.string.ui_decrease),
-                )
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            if (onReset != null) {
+                TextButton(onClick = onReset, contentPadding = PaddingValues(0.dp)) {
+                    Text(stringResource(R.string.ui_reset))
+                }
             }
-            Text(
-                value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color =
-                    if (enabled) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
-                modifier = Modifier.widthIn(min = 72.dp).padding(horizontal = 8.dp),
-                maxLines = 1,
-            )
-            FilledTonalIconButton(onClick = onIncrease, enabled = enabled) {
-                Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.ui_increase))
-            }
+        }
+        FilledTonalIconButton(onClick = onDecrease, enabled = enabled) {
+            Icon(Icons.Rounded.Remove, contentDescription = stringResource(R.string.ui_decrease))
+        }
+        Text(
+            value,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            color =
+                if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
+            modifier = Modifier.widthIn(min = 64.dp),
+            maxLines = 1,
+        )
+        FilledTonalIconButton(onClick = onIncrease, enabled = enabled) {
+            Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.ui_increase))
         }
     }
 }
@@ -384,7 +396,7 @@ private val previewAudio =
         EngineTrackInfo("b", "English", false, language = "en", codec = "AAC", channels = 2),
     )
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Subtitles, VLC", widthDp = 800, heightDp = 360)
+@androidx.compose.ui.tooling.preview.Preview(name = "Subtitles, VLC", widthDp = 360, heightDp = 480)
 @Composable
 private fun SubtitlePanelVlcPreview() {
     com.singam.lionlibrary.ui.theme.LionLibraryTheme {
@@ -394,8 +406,8 @@ private fun SubtitlePanelVlcPreview() {
 
 @androidx.compose.ui.tooling.preview.Preview(
     name = "Subtitles, ExoPlayer filtered",
-    widthDp = 800,
-    heightDp = 360,
+    widthDp = 360,
+    heightDp = 480,
 )
 @Composable
 private fun SubtitlePanelExoPreview() {
@@ -406,8 +418,8 @@ private fun SubtitlePanelExoPreview() {
 
 @androidx.compose.ui.tooling.preview.Preview(
     name = "Subtitles, none",
-    widthDp = 800,
-    heightDp = 360,
+    widthDp = 360,
+    heightDp = 480,
 )
 @Composable
 private fun SubtitlePanelEmptyPreview() {

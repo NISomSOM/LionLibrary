@@ -20,14 +20,16 @@ class DatabaseMigrationTest {
 
     @Test
     fun populatedUpgradesPreserveEverySupportedSchema() {
-        for (version in 6..12) {
+        for (version in 6..13) {
             val name = "migration-$version"
             helper.createDatabase(name, version).apply {
                 execSQL(
                     "INSERT INTO media (id,title,mediaType,matchConfidence,isUnidentified,lastUpdated" +
                         (if (version >= 10) ",preferredEngine" else "") +
+                        (if (version >= 13) ",addedAt" else "") +
                         ") VALUES (42,'Preserved show','TV_SHOW',1,0,123" +
                         (if (version >= 10) ",'LIBVLC'" else "") +
+                        (if (version >= 13) ",123" else "") +
                         ")"
                 )
                 execSQL(
@@ -49,12 +51,14 @@ class DatabaseMigrationTest {
                 )
                 close()
             }
-            helper.runMigrationsAndValidate(name, 13, true, *DatabaseMigrations.all).apply {
-                query("SELECT id,addedAt,isWatchlisted FROM media").use {
+            helper.runMigrationsAndValidate(name, 14, true, *DatabaseMigrations.all).apply {
+                query("SELECT id,addedAt,isWatchlisted,originalLanguage FROM media").use {
                     assertTrue(it.moveToFirst())
                     assertEquals(42L, it.getLong(0))
                     assertEquals(123L, it.getLong(1))
                     assertEquals(0, it.getInt(2))
+                    // Unknown until the next metadata refresh fetches it.
+                    assertTrue(it.isNull(3))
                 }
                 query("SELECT id,showId,preferredEngine FROM episodes").use {
                     assertTrue(it.moveToFirst())

@@ -100,10 +100,14 @@ class PolishUiTest {
                     LocalDensity provides Density(LocalDensity.current.density, scale)
                 ) {
                     Box(Modifier.width(328.dp)) {
-                        com.singam.lionlibrary.presentation.home.HeroMetadataLine(
-                            "2023",
+                        com.singam.lionlibrary.presentation.home.HeroMetadata(
+                            com.singam.lionlibrary.domain.model.MediaType.MOVIE,
                             "Animation, Science Fiction and Fantasy Adventure",
-                            "★ 8.1",
+                            125,
+                            2023,
+                            8.1f,
+                            null,
+                            "en",
                         )
                     }
                 }
@@ -111,7 +115,7 @@ class PolishUiTest {
         }
         for (fontScale in listOf(1.15f, 2f)) {
             compose.runOnIdle { scale = fontScale }
-            val node = compose.onNode(hasText("2023", substring = true))
+            val node = compose.onNode(hasText("Movie", substring = true))
             val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
             node.performSemanticsAction(
                 androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult
@@ -119,8 +123,8 @@ class PolishUiTest {
                 it(layouts)
             }
             val layout = layouts.single()
+            // Only the first genre is shown; the line stays single and ellipsizes if needed.
             assertEquals(1, layout.lineCount)
-            assertFalse(layout.hasVisualOverflow)
             assertFalse(layout.layoutInput.text.text.contains("Science Fiction"))
             node.assertIsDisplayed()
         }

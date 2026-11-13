@@ -121,6 +121,8 @@ sealed interface PlayerAction {
 
     data object OnAspectCycle : PlayerAction
 
+    data class OnHostVisibilityChanged(val isVisible: Boolean) : PlayerAction
+
     data class OnSubtitleDelayChange(val deltaMs: Long) : PlayerAction
 
     data object OnSubtitleDelayReset : PlayerAction
@@ -495,6 +497,7 @@ class PlayerViewModel(
                 }
             }
             PlayerAction.Pause -> pause()
+            is PlayerAction.OnHostVisibilityChanged -> engine?.setHostVisible(action.isVisible)
             is PlayerAction.OnSeek -> seek(action.positionMs)
             PlayerAction.OnSeekForward -> seek(state.value.currentPositionMs + 10_000)
             PlayerAction.OnSeekBackward -> seek(state.value.currentPositionMs - 10_000)

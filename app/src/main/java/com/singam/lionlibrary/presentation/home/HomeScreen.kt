@@ -663,17 +663,14 @@ internal fun HeroBannerCarousel(
                             media.logoPath,
                             Modifier.fillMaxWidth(.72f).height(logoHeight),
                         )
-                        HeroMetadataLine(
-                            media.year?.toString(),
-                            media.genres,
-                            media.rating
-                                ?.takeIf { it > 0f }
-                                ?.let {
-                                    androidx.compose.ui.res.stringResource(
-                                        com.singam.lionlibrary.R.string.star_rating_value,
-                                        it,
-                                    )
-                                },
+                        HeroMetadata(
+                            mediaType = media.mediaType,
+                            genres = media.genres,
+                            durationMinutes = media.duration,
+                            year = media.year,
+                            tmdbRating = media.rating,
+                            letterboxdRating = media.letterboxdRating,
+                            language = media.originalLanguage,
                         )
                     }
                 }

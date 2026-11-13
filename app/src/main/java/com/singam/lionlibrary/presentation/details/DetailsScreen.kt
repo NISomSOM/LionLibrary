@@ -6,11 +6,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -76,6 +75,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -582,10 +583,11 @@ private fun HeroHeaderSection(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            // One line, Nuvio-style: year and runtime, rating box, then the rating marks.
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 val yearText = media.year?.toString() ?: ""
                 val durationText =
@@ -597,7 +599,7 @@ private fun HeroHeaderSection(
 
                 val combinedText =
                     if (yearText.isNotEmpty() && durationText.isNotEmpty())
-                        "$yearText - $durationText"
+                        "$yearText • $durationText"
                     else if (yearText.isNotEmpty()) yearText else durationText
 
                 if (combinedText.isNotEmpty()) {
@@ -606,6 +608,7 @@ private fun HeroHeaderSection(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
                     )
                 }
 
@@ -619,25 +622,26 @@ private fun HeroHeaderSection(
                             text = media.certification,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
                         )
                     }
                 }
 
                 if (media.rating != null && media.rating > 0.0) {
-                    Row(
-                        modifier = Modifier.width(IntrinsicSize.Max),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text =
-                                androidx.compose.ui.res.stringResource(
-                                    com.singam.lionlibrary.R.string.tmdb_rating
-                                ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    val ratingDescription =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.hero_score_description,
+                            media.rating,
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                    Row(
+                        modifier =
+                            Modifier.semantics(mergeDescendants = true) {
+                                contentDescription = ratingDescription
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        com.singam.lionlibrary.presentation.components.ImdbBadge()
                         Text(
                             text =
                                 androidx.compose.ui.res.stringResource(
@@ -645,39 +649,37 @@ private fun HeroHeaderSection(
                                     media.rating,
                                 ),
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.Yellow,
+                            fontWeight = FontWeight.Bold,
+                            color = com.singam.lionlibrary.presentation.components.ImdbYellow,
+                            maxLines = 1,
                         )
                     }
                 }
 
                 if (media.isSingleFile && media.tmdbId != null) {
+                    val letterboxdLabel =
+                        androidx.compose.ui.res.stringResource(
+                            com.singam.lionlibrary.R.string.ui_letterboxd
+                        )
                     androidx.compose.material3.TextButton(
                         onClick = { onAction(DetailsAction.OnOpenLetterboxd) },
-                        modifier = Modifier.width(IntrinsicSize.Max),
+                        modifier = Modifier.semantics { contentDescription = letterboxdLabel },
                         contentPadding = PaddingValues(horizontal = 4.dp),
                     ) {
-                        Text(
-                            text =
-                                androidx.compose.ui.res.stringResource(
-                                    com.singam.lionlibrary.R.string.ui_letterboxd
-                                ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
+                        com.singam.lionlibrary.presentation.components.LetterboxdMark()
                         media.letterboxdRating?.let { lb ->
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text =
                                     androidx.compose.ui.res.stringResource(
-                                        com.singam.lionlibrary.R.string.star_rating_value,
+                                        com.singam.lionlibrary.R.string.rating_value,
                                         lb,
                                     ),
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF00E054),
+                                fontWeight = FontWeight.Bold,
+                                color =
+                                    com.singam.lionlibrary.presentation.components.LetterboxdGreen,
+                                maxLines = 1,
                             )
                         }
                     }

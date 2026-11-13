@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hero_type_movie">Movie</string>
+    <string name="hero_type_series">Series</string>
+    <string name="hero_runtime_minutes">%1$dm</string>
+    <string name="hero_runtime_hours">%1$dh</string>
+    <string name="hero_runtime_hours_minutes">%1$dh %2$dm</string>
+    <string name="hero_imdb_label">IMDb</string>
+    <string name="hero_score_description">Rating %1$.1f out of 10</string>
+    <string name="hero_language_description">Original language %1$s</string>
+    <string name="hero_letterboxd_description">Letterboxd rating %1$.1f out of 5</string>
+</resources>

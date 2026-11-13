@@ -84,7 +84,7 @@
     <string name="ui_reset">Reset</string>
     <string name="ui_decrease">Decrease</string>
     <string name="ui_increase">Increase</string>
-    <string name="ui_style_engine_note">VLC can shift subtitle timing and ExoPlayer can resize subtitles. Greyed-out options are not available with this player.</string>
+    <string name="ui_style_engine_note">VLC can\'t resize subtitles during playback. Play this file with ExoPlayer to change the size.</string>
     <string name="ui_no_tracks">No tracks found in this file.</string>
     <string name="ui_info_unknown">Not reported</string>
     <string name="ui_info_file">File</string>

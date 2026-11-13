@@ -33,6 +33,11 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
     private var hiddenSpuTrack = -1
     private var released = false
     private var currentLayout: VLCVideoLayout? = null
+    // While the host is stopped the views are detached; this is the layout to reattach on start.
+    private var hostStopped = false
+    private var stoppedLayout: VLCVideoLayout? = null
+    // Video track switched off on stop, re-enabled once the new surface exists (-2: none).
+    private var videoTrackToRestore = NO_VIDEO_RESTORE
     private var pendingMedia: PreparedMedia? = null
     private var activeMedia: PreparedMedia? = null
     private var mediaGeneration = 0L
@@ -46,6 +51,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                 mainHandler.post {
                     if (!released) {
                         surfaceReady = true
+                        restoreVideoTrack()
                         loadPreparedMedia()
                     }
                 }
@@ -366,6 +372,10 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         val layout =
             container as? VLCVideoLayout
                 ?: throw IllegalArgumentException("LibVlcPlayerEngine requires a VLCVideoLayout")
+        if (hostStopped) {
+            stoppedLayout = layout
+            return
+        }
         if (layout === currentLayout) return
         if (currentLayout != null) mediaPlayer.detachViews()
         surfaceReady = false
@@ -373,6 +383,43 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         // SurfaceView supports direct hardware output. Reattaching never resets position/autoplays.
         mediaPlayer.attachViews(layout, null, true, false)
         mediaPlayer.videoScale = aspectMode.toScaleType()
+    }
+
+    /**
+     * libVLC's video output dies with the SurfaceView's surface when the app is backgrounded and is
+     * not rebuilt on the new surface, leaving a frozen picture with no playback. Switch the video
+     * track off and detach while stopped; on start reattach, and re-enable the track once the new
+     * surface is created, which builds a fresh video output.
+     */
+    override fun setHostVisible(visible: Boolean) {
+        if (released || visible == !hostStopped) return
+        if (!visible) {
+            hostStopped = true
+            val layout = currentLayout ?: return
+            if (mediaLoaded && videoTrackToRestore == NO_VIDEO_RESTORE) {
+                videoTrackToRestore = mediaPlayer.videoTrack
+                if (videoTrackToRestore != -1) mediaPlayer.setVideoTrackEnabled(false)
+            }
+            mediaPlayer.detachViews()
+            currentLayout = null
+            stoppedLayout = layout
+            surfaceReady = false
+        } else {
+            hostStopped = false
+            val layout = stoppedLayout ?: return
+            stoppedLayout = null
+            attachToView(layout)
+        }
+    }
+
+    private fun restoreVideoTrack() {
+        val track = videoTrackToRestore
+        if (track == NO_VIDEO_RESTORE) return
+        videoTrackToRestore = NO_VIDEO_RESTORE
+        if (!mediaLoaded || track == -1) return
+        if (!mediaPlayer.setVideoTrack(track)) mediaPlayer.setVideoTrackEnabled(true)
+        // A paused player draws nothing until it decodes again; seeking in place shows the frame.
+        if (!mediaPlayer.isPlaying && mediaPlayer.isSeekable) mediaPlayer.time = mediaPlayer.time
     }
 
     override fun release() {
@@ -389,6 +436,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         mediaLoaded = false
         surfaceReady = false
         currentLayout = null
+        stoppedLayout = null
         closeOwnedMedia()
         // Application-wide LibVLC remains alive.
     }
@@ -404,6 +452,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         mediaGeneration++
         commands.reset()
         mediaLoaded = false
+        videoTrackToRestore = NO_VIDEO_RESTORE
         mediaPlayer.setEventListener(null)
         mediaPlayer.stop()
         mediaPlayer.media = null
@@ -500,6 +549,10 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         } finally {
             media.release()
         }
+    }
+
+    private companion object {
+        const val NO_VIDEO_RESTORE = -2
     }
 
     private class PreparedMedia : AutoCloseable {

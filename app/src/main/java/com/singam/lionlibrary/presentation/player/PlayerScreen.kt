@@ -123,8 +123,13 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) {
-                viewModel.onAction(PlayerAction.Pause)
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> viewModel.onAction(PlayerAction.Pause)
+                Lifecycle.Event.ON_STOP ->
+                    viewModel.onAction(PlayerAction.OnHostVisibilityChanged(false))
+                Lifecycle.Event.ON_START ->
+                    viewModel.onAction(PlayerAction.OnHostVisibilityChanged(true))
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -267,39 +272,41 @@ fun PlayerScreen(
                         .fillMaxHeight()
                         .pointerInput(state.isLocked) {
                             if (state.isLocked) return@pointerInput
-                            var initialBrightness = 0f
+                            val maxVolume =
+                                audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                            // Fractional so slow drags still accumulate between volume steps.
+                            var dragVolume = 0f
                             detectVerticalDragGestures(
                                 onDragStart = {
-                                    val window = activity?.window
-                                    initialBrightness = window?.attributes?.screenBrightness ?: 0.5f
-                                    if (initialBrightness < 0f) {
-                                        try {
-                                            val sysBrightness =
-                                                Settings.System.getInt(
-                                                    context.contentResolver,
-                                                    Settings.System.SCREEN_BRIGHTNESS,
-                                                )
-                                            initialBrightness = sysBrightness / 255f
-                                        } catch (e: Exception) {
-                                            initialBrightness = 0.5f
-                                        }
-                                    }
-                                    brightnessDragging = true
-                                    brightnessLevel = initialBrightness
+                                    dragVolume =
+                                        audioManager
+                                            .getStreamVolume(AudioManager.STREAM_MUSIC)
+                                            .toFloat()
+                                    volumeDragging = true
+                                    volumeLevel = if (maxVolume > 0) dragVolume / maxVolume else 0f
                                 },
-                                onDragEnd = { brightnessDragging = false },
-                                onDragCancel = { brightnessDragging = false },
+                                onDragEnd = { volumeDragging = false },
+                                onDragCancel = { volumeDragging = false },
                                 onVerticalDrag = { change, dragAmount ->
                                     change.consume()
                                     val dragDelta = -dragAmount / size.height
-                                    val newBrightness =
-                                        (initialBrightness + dragDelta * 2).coerceIn(0f, 1f)
-                                    activity?.window?.attributes =
-                                        activity?.window?.attributes?.apply {
-                                            screenBrightness = newBrightness
-                                        }
-                                    initialBrightness = newBrightness
-                                    brightnessLevel = newBrightness
+                                    dragVolume =
+                                        (dragVolume + dragDelta * maxVolume * 2).coerceIn(
+                                            0f,
+                                            maxVolume.toFloat(),
+                                        )
+                                    val newVolume = dragVolume.roundToInt()
+                                    if (
+                                        newVolume !=
+                                            audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                    ) {
+                                        audioManager.setStreamVolume(
+                                            AudioManager.STREAM_MUSIC,
+                                            newVolume,
+                                            0,
+                                        )
+                                    }
+                                    volumeLevel = if (maxVolume > 0) dragVolume / maxVolume else 0f
                                 },
                             )
                         }
@@ -398,41 +405,39 @@ fun PlayerScreen(
                         .fillMaxHeight()
                         .pointerInput(state.isLocked) {
                             if (state.isLocked) return@pointerInput
-                            val maxVolume =
-                                audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                            // Fractional so slow drags still accumulate between volume steps.
-                            var dragVolume = 0f
+                            var initialBrightness = 0f
                             detectVerticalDragGestures(
                                 onDragStart = {
-                                    dragVolume =
-                                        audioManager
-                                            .getStreamVolume(AudioManager.STREAM_MUSIC)
-                                            .toFloat()
-                                    volumeDragging = true
-                                    volumeLevel = if (maxVolume > 0) dragVolume / maxVolume else 0f
+                                    val window = activity?.window
+                                    initialBrightness = window?.attributes?.screenBrightness ?: 0.5f
+                                    if (initialBrightness < 0f) {
+                                        try {
+                                            val sysBrightness =
+                                                Settings.System.getInt(
+                                                    context.contentResolver,
+                                                    Settings.System.SCREEN_BRIGHTNESS,
+                                                )
+                                            initialBrightness = sysBrightness / 255f
+                                        } catch (e: Exception) {
+                                            initialBrightness = 0.5f
+                                        }
+                                    }
+                                    brightnessDragging = true
+                                    brightnessLevel = initialBrightness
                                 },
-                                onDragEnd = { volumeDragging = false },
-                                onDragCancel = { volumeDragging = false },
+                                onDragEnd = { brightnessDragging = false },
+                                onDragCancel = { brightnessDragging = false },
                                 onVerticalDrag = { change, dragAmount ->
                                     change.consume()
                                     val dragDelta = -dragAmount / size.height
-                                    dragVolume =
-                                        (dragVolume + dragDelta * maxVolume * 2).coerceIn(
-                                            0f,
-                                            maxVolume.toFloat(),
-                                        )
-                                    val newVolume = dragVolume.roundToInt()
-                                    if (
-                                        newVolume !=
-                                            audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                    ) {
-                                        audioManager.setStreamVolume(
-                                            AudioManager.STREAM_MUSIC,
-                                            newVolume,
-                                            0,
-                                        )
-                                    }
-                                    volumeLevel = if (maxVolume > 0) dragVolume / maxVolume else 0f
+                                    val newBrightness =
+                                        (initialBrightness + dragDelta * 2).coerceIn(0f, 1f)
+                                    activity?.window?.attributes =
+                                        activity?.window?.attributes?.apply {
+                                            screenBrightness = newBrightness
+                                        }
+                                    initialBrightness = newBrightness
+                                    brightnessLevel = newBrightness
                                 },
                             )
                         }
@@ -501,7 +506,12 @@ fun PlayerScreen(
         }
 
         AnimatedVisibility(
-            visible = showControls && unlocked && state.panel != PlayerPanel.INFO,
+            visible =
+                showControls &&
+                    unlocked &&
+                    state.panel != PlayerPanel.INFO &&
+                    state.panel != PlayerPanel.SUBTITLES &&
+                    state.panel != PlayerPanel.AUDIO,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize(),
@@ -586,7 +596,7 @@ fun PlayerScreen(
                     modifier =
                         Modifier.align(Alignment.BottomCenter)
                             .safeDrawingPadding()
-                            .padding(start = 24.dp, end = 24.dp, bottom = 20.dp),
+                            .padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
                 )
             }
         }
@@ -605,7 +615,7 @@ fun PlayerScreen(
             modifier =
                 Modifier.align(Alignment.BottomEnd)
                     .safeDrawingPadding()
-                    .padding(end = 24.dp, bottom = if (showControls) 140.dp else 32.dp),
+                    .padding(end = 24.dp, bottom = if (showControls) 128.dp else 32.dp),
         ) {
             // Keep the last label while fading out after the segment ends.
             var shown by remember { mutableStateOf(skipButton) }
@@ -685,12 +695,24 @@ fun PlayerScreen(
 @Composable
 private fun PlayerPanelHost(state: PlayerState, onAction: (PlayerAction) -> Unit) {
     val dismiss = { onAction(PlayerAction.OnPanelChange(PlayerPanel.NONE)) }
+    val scrim = MaterialTheme.colorScheme.scrim
+    val isSideSheet = state.panel == PlayerPanel.SUBTITLES || state.panel == PlayerPanel.AUDIO
     Box(
         Modifier.fillMaxSize()
-            .background(
-                MaterialTheme.colorScheme.scrim.copy(
-                    alpha = if (state.panel == PlayerPanel.INFO) .8f else .4f
-                )
+            .then(
+                // Side sheets darken toward their edge only, leaving the video clear on the left.
+                if (isSideSheet)
+                    Modifier.background(
+                        Brush.horizontalGradient(
+                            0f to Color.Transparent,
+                            .45f to scrim.copy(alpha = .35f),
+                            1f to scrim.copy(alpha = .8f),
+                        )
+                    )
+                else
+                    Modifier.background(
+                        scrim.copy(alpha = if (state.panel == PlayerPanel.INFO) .8f else .4f)
+                    )
             )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -722,24 +744,14 @@ private fun PlayerPanelHost(state: PlayerState, onAction: (PlayerAction) -> Unit
                     onDelayReset = { onAction(PlayerAction.OnSubtitleDelayReset) },
                     onScaleChange = { onAction(PlayerAction.OnSubtitleScaleChange(it)) },
                     onDismiss = dismiss,
-                    modifier =
-                        panelModifier
-                            .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .fillMaxWidth(.82f)
-                            .widthIn(max = 880.dp),
+                    modifier = panelModifier.align(Alignment.CenterEnd).sideSheet(),
                 )
             PlayerPanel.AUDIO ->
                 AudioPanel(
                     tracks = state.audioTracks,
                     onTrackSelect = { onAction(PlayerAction.SelectAudio(it)) },
                     onDismiss = dismiss,
-                    modifier =
-                        panelModifier
-                            .align(Alignment.BottomStart)
-                            .widthIn(max = 380.dp)
-                            .fillMaxWidth(.5f)
-                            .fillMaxHeight(.85f),
+                    modifier = panelModifier.align(Alignment.CenterEnd).sideSheet(),
                 )
             PlayerPanel.SPEED ->
                 SpeedPanel(
@@ -760,6 +772,12 @@ private fun PlayerPanelHost(state: PlayerState, onAction: (PlayerAction) -> Unit
         }
     }
 }
+
+/**
+ * MX-style side sheet for audio and subtitles: full height on the right edge and at most 400dp
+ * wide, so on a landscape phone the video stays visible beside it.
+ */
+private fun Modifier.sideSheet(): Modifier = fillMaxHeight().widthIn(max = 400.dp).fillMaxWidth()
 
 /** Names the new aspect mode briefly after it changes; silent on first composition. */
 @Composable

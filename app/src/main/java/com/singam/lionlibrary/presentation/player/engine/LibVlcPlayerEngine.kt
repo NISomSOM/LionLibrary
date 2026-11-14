@@ -402,8 +402,16 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
             hostStopped = true
             val layout = currentLayout ?: return
             if (mediaLoaded && videoTrackToRestore == NO_VIDEO_RESTORE) {
-                videoTrackToRestore = mediaPlayer.videoTrack
-                if (videoTrackToRestore != -1) mediaPlayer.setVideoTrackEnabled(false)
+                // By ON_STOP libVLC may already have dropped the track with the dying surface
+                // (it reports -1), so fall back to the file's first video track.
+                videoTrackToRestore =
+                    mediaPlayer.videoTrack.takeIf { it >= 0 }
+                        ?: mediaPlayer.videoTracks?.firstOrNull { it.id >= 0 }?.id
+                        ?: -1
+                if (videoTrackToRestore != -1) {
+                    refreshAfterVideoRestore = true
+                    mediaPlayer.setVideoTrackEnabled(false)
+                }
             }
             mediaPlayer.detachViews()
             currentLayout = null
@@ -422,21 +430,22 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         if (track == NO_VIDEO_RESTORE) return
         videoTrackToRestore = NO_VIDEO_RESTORE
         if (!mediaLoaded || track == -1) return
-        refreshAfterVideoRestore = true
-        if (!mediaPlayer.setVideoTrack(track)) mediaPlayer.setVideoTrackEnabled(true)
+        if (mediaPlayer.videoTrack < 0 && !mediaPlayer.setVideoTrack(track))
+            mediaPlayer.setVideoTrackEnabled(true)
     }
 
     /**
      * A re-enabled video decoder starts at the next keyframe, which in long-GOP files is many
-     * seconds away (a black screen meanwhile). Once the video stream is selected again, a precise
-     * seek to the current time makes the decoder start from the previous keyframe instead, so the
-     * picture returns at once, paused or playing. Seeking earlier, before the stream exists, does
-     * not reach the new decoder.
+     * seconds away (a black screen meanwhile). Once the video stream is selected again, a fast
+     * (keyframe) seek to the current time restarts audio and video together from the previous
+     * keyframe: a picture at once, at the cost of replaying up to a few seconds. A precise seek
+     * instead held a still frame for seconds while it decoded up to the exact time.
      */
     private fun seekForRestoredVideo() {
-        if (!refreshAfterVideoRestore) return
+        // The track also changes while stopping; only its return after start counts.
+        if (!refreshAfterVideoRestore || hostStopped || mediaPlayer.videoTrack < 0) return
         refreshAfterVideoRestore = false
-        if (mediaPlayer.isSeekable) mediaPlayer.setTime(mediaPlayer.time.coerceAtLeast(0), false)
+        if (mediaPlayer.isSeekable) mediaPlayer.setTime(mediaPlayer.time.coerceAtLeast(0), true)
     }
 
     override fun release() {

@@ -38,6 +38,8 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
     private var stoppedLayout: VLCVideoLayout? = null
     // Video track switched off on stop, re-enabled once the new surface exists (-2: none).
     private var videoTrackToRestore = NO_VIDEO_RESTORE
+    // Set when the video track comes back after the app returns; see seekForRestoredVideo.
+    private var refreshAfterVideoRestore = false
     private var pendingMedia: PreparedMedia? = null
     private var activeMedia: PreparedMedia? = null
     private var mediaGeneration = 0L
@@ -143,7 +145,10 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                             it.copy(trackRevision = it.trackRevision + 1)
                         }
                     }
-                    MediaPlayer.Event.ESSelected -> keepSubtitlesHidden()
+                    MediaPlayer.Event.ESSelected -> {
+                        keepSubtitlesHidden()
+                        if (event.esChangedType == IMedia.Track.Type.Video) seekForRestoredVideo()
+                    }
                 }
             }
         }
@@ -417,9 +422,21 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         if (track == NO_VIDEO_RESTORE) return
         videoTrackToRestore = NO_VIDEO_RESTORE
         if (!mediaLoaded || track == -1) return
+        refreshAfterVideoRestore = true
         if (!mediaPlayer.setVideoTrack(track)) mediaPlayer.setVideoTrackEnabled(true)
-        // A paused player draws nothing until it decodes again; seeking in place shows the frame.
-        if (!mediaPlayer.isPlaying && mediaPlayer.isSeekable) mediaPlayer.time = mediaPlayer.time
+    }
+
+    /**
+     * A re-enabled video decoder starts at the next keyframe, which in long-GOP files is many
+     * seconds away (a black screen meanwhile). Once the video stream is selected again, a precise
+     * seek to the current time makes the decoder start from the previous keyframe instead, so the
+     * picture returns at once, paused or playing. Seeking earlier, before the stream exists, does
+     * not reach the new decoder.
+     */
+    private fun seekForRestoredVideo() {
+        if (!refreshAfterVideoRestore) return
+        refreshAfterVideoRestore = false
+        if (mediaPlayer.isSeekable) mediaPlayer.setTime(mediaPlayer.time.coerceAtLeast(0), false)
     }
 
     override fun release() {
@@ -453,6 +470,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         commands.reset()
         mediaLoaded = false
         videoTrackToRestore = NO_VIDEO_RESTORE
+        refreshAfterVideoRestore = false
         mediaPlayer.setEventListener(null)
         mediaPlayer.stop()
         mediaPlayer.media = null

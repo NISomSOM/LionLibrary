@@ -11,6 +11,10 @@ for path in root.rglob('*.kt'):
     if relative.parts[0] == 'domain' and path.name != 'LaunchPlayerUseCase.kt':
         if re.search(r'^import (?:android\.|androidx\.|com\.singam\.lionlibrary\.(?:data|presentation)\.)', source, re.M):
             failures.append(f'{relative}: domain must remain independent of platform/data/presentation')
+    if relative.parts[0] == 'data':
+        # Fully qualified references count too, not only import lines.
+        if re.search(r'com\.singam\.lionlibrary\.presentation\.', source):
+            failures.append(f'{relative}: data must not depend on presentation')
     if path.name.endswith('ViewModel.kt') and re.search(r'^import com\.singam\.lionlibrary\.data\.', source, re.M):
         failures.append(f'{relative}: ViewModels must use domain contracts')
     if 'fallbackToDestructiveMigration' in source:
@@ -24,4 +28,4 @@ for path in root.rglob('*.kt'):
 if failures:
     print('\n'.join(failures))
     sys.exit(1)
-print('PASS domain boundaries, ViewModel dependencies, Screen parameters and safe migration guardrails')
+print('PASS domain and data boundaries, ViewModel dependencies, Screen parameters and safe migration guardrails')

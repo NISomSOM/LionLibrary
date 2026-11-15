@@ -38,12 +38,13 @@ class SettingsViewModelTest {
     private val history = FakeWatchProgressRepository()
     private val metadata = FakeMetadataRepository()
     private val scans = FakeScanCoordinator()
+    private val folders = FakeFolderAccessRepository()
 
     @BeforeEach fun setUp() = Dispatchers.setMain(dispatcher)
 
     @AfterEach fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel() = SettingsViewModel(settings, history, metadata, scans)
+    private fun viewModel() = SettingsViewModel(settings, history, metadata, scans, folders)
 
     @Test
     fun `stored settings are loaded into state`() =
@@ -171,10 +172,22 @@ class SettingsViewModelTest {
             val vm = viewModel()
 
             scans.state.value =
-                ScanRunState(summary = ScanSummary(finishedAt = 500, outcome = "CANCELLED"))
+                ScanRunState(
+                    summary =
+                        ScanSummary(
+                            finishedAt = 500,
+                            outcome = com.singam.lionlibrary.domain.model.ScanOutcome.CANCELLED,
+                        )
+                )
             assertThat(vm.state.value.lastScanTime).isEqualTo(100L)
             scans.state.value =
-                ScanRunState(summary = ScanSummary(finishedAt = 900, outcome = "COMPLETE"))
+                ScanRunState(
+                    summary =
+                        ScanSummary(
+                            finishedAt = 900,
+                            outcome = com.singam.lionlibrary.domain.model.ScanOutcome.COMPLETE,
+                        )
+                )
 
             assertThat(vm.state.value.lastScanTime).isEqualTo(900L)
             vm.viewModelScope.cancel()
@@ -210,6 +223,49 @@ class SettingsViewModelTest {
             }
             assertThat(history.calls).containsExactly("clear")
             assertThat(vm.state.value.showClearHistoryDialog).isFalse()
+            vm.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `replacing a root saves it first, then offers the old grant for release`() =
+        runTest(dispatcher) {
+            settings.moviesFolderUri.value = "content://tree/old"
+            settings.showsFolderUri.value = "content://tree/shows"
+            val vm = viewModel()
+
+            vm.onAction(SettingsAction.OnMoviesFolderSelected("content://tree/new"))
+
+            assertThat(settings.moviesFolderUri.value).isEqualTo("content://tree/new")
+            assertThat(folders.releases)
+                .containsExactly(
+                    "content://tree/old" to listOf("content://tree/new", "content://tree/shows")
+                )
+            vm.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `first pick or picking the same folder again releases nothing`() =
+        runTest(dispatcher) {
+            settings.showsFolderUri.value = "content://tree/shows"
+            val vm = viewModel()
+
+            vm.onAction(SettingsAction.OnMoviesFolderSelected("content://tree/movies"))
+            vm.onAction(SettingsAction.OnShowsFolderSelected("content://tree/shows"))
+
+            assertThat(folders.releases).isEmpty()
+            vm.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `failed save keeps the old grant`() =
+        runTest(dispatcher) {
+            settings.moviesFolderUri.value = "content://tree/old"
+            val vm = viewModel()
+            settings.writeFailure = IOException("disk full")
+
+            vm.onAction(SettingsAction.OnMoviesFolderSelected("content://tree/new"))
+
+            assertThat(folders.releases).isEmpty()
             vm.viewModelScope.cancel()
         }
 }

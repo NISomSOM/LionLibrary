@@ -255,7 +255,11 @@ fun SettingsScreen(
                         Text(stringResource(R.string.scan_library))
                     }
                 }
-                if (!state.isScanning && state.scanRun.summary.outcome == "PERMISSION_REVOKED")
+                if (
+                    !state.isScanning &&
+                        state.scanRun.summary.outcome ==
+                            com.singam.lionlibrary.domain.model.ScanOutcome.PERMISSION_REVOKED
+                )
                     Text(
                         stringResource(R.string.scan_folder_unavailable),
                         style = MaterialTheme.typography.bodySmall,

@@ -41,6 +41,8 @@ import org.koin.dsl.module
 val dataModule = module {
     singleOf(::LibraryMutationGate)
     single { SafLibraryDocuments(androidContext()) } bind LibraryDocuments::class
+    single { com.singam.lionlibrary.data.storage.SafFolderAccessRepository(androidContext()) } bind
+        com.singam.lionlibrary.domain.repository.FolderAccessRepository::class
     singleOf(::LibraryReconciler)
     singleOf(::SafMediaDeletionRepository) bind MediaDeletionRepository::class
     single { PreferencesManager(androidContext()) }

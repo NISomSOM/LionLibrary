@@ -160,6 +160,7 @@ class TmdbMetadataRepository(
         referenced += database.episodeDao().getAll().mapNotNull { it.thumbnailPath }
         referenced += database.seasonDao().getAll().mapNotNull { it.posterPath }
         images.pruneOrphans(referenced)
+        images.persistValidation()
         if (failure != null) OperationResult.Failure(failure)
         else OperationResult.Success(refreshed)
     }

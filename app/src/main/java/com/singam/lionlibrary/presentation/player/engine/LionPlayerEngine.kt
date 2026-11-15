@@ -2,6 +2,7 @@ package com.singam.lionlibrary.presentation.player.engine
 
 import android.net.Uri
 import android.view.ViewGroup
+import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.domain.model.PlaybackChapter
 import kotlinx.coroutines.flow.StateFlow
 
@@ -56,11 +57,6 @@ enum class AspectMode {
     FIT,
     FILL,
     ZOOM,
-}
-
-enum class EngineType {
-    EXOPLAYER,
-    LIBVLC,
 }
 
 // Video engine interface.

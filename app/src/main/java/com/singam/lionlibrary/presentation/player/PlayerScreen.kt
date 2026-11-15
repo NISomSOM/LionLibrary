@@ -49,9 +49,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.PlayerView
 import com.singam.lionlibrary.R
+import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.presentation.player.engine.AspectMode
 import com.singam.lionlibrary.presentation.player.engine.EnginePlaybackState
-import com.singam.lionlibrary.presentation.player.engine.EngineType
 import com.singam.lionlibrary.presentation.player.engine.LionPlayerEngine
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay

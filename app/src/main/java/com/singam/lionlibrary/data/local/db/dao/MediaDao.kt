@@ -36,6 +36,10 @@ interface MediaDao {
 
     @Query("DELETE FROM media WHERE id = :id") suspend fun deleteById(id: Long)
 
+    /** Raw "local file" rows for these files (one query per scanner write batch). */
+    @Query("SELECT * FROM media WHERE isUnidentified = 1 AND filePath IN (:paths)")
+    suspend fun getUnidentifiedByFilePaths(paths: List<String>): List<MediaEntity>
+
     /** Unidentified rows whose file is also an episode row: duplicates from older scans. */
     @Query(
         "SELECT * FROM media WHERE isUnidentified = 1 AND filePath IN (SELECT filePath FROM episodes)"

@@ -14,8 +14,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
+import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.presentation.player.engine.EngineTrackInfo
-import com.singam.lionlibrary.presentation.player.engine.EngineType
 import com.singam.lionlibrary.presentation.player.engine.EngineVideoInfo
 
 /** File, engine and stream details, as small labels over large values. */

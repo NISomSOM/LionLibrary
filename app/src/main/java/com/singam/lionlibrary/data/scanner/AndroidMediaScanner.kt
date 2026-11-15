@@ -11,20 +11,22 @@ import com.singam.lionlibrary.data.local.db.entity.MediaEntity
 import com.singam.lionlibrary.data.local.db.entity.SeasonEntity
 import com.singam.lionlibrary.data.mapper.inferMediaType
 import com.singam.lionlibrary.data.mapper.toMediaEntity
+import com.singam.lionlibrary.data.remote.TmdbRetryPolicy
 import com.singam.lionlibrary.data.remote.api.TmdbApiService
 import com.singam.lionlibrary.data.remote.dto.SeasonDetailsDto
+import com.singam.lionlibrary.data.remote.retryTmdb
+import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.ScanProgress
 import com.singam.lionlibrary.domain.model.ScanStatus
 import com.singam.lionlibrary.domain.repository.SettingsRepository
 import com.singam.lionlibrary.domain.usecase.ScanLibraryUseCase
-import com.singam.lionlibrary.presentation.player.engine.EngineType
 import com.singam.lionlibrary.util.Constants
 import com.singam.lionlibrary.util.KeyedMutex
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
@@ -56,25 +58,12 @@ class AndroidMediaScanner(
     private val movieLocks = KeyedMutex<Int>()
     private val seasonLocks = KeyedMutex<Pair<Long, Int>>()
 
-    private suspend fun <T> withRetry(times: Int = 5, block: suspend () -> T): T {
-        var currentDelay = 2000L
-        repeat(times - 1) {
-            try {
-                return block()
-            } catch (e: retrofit2.HttpException) {
-                if (e.code() == 429) {
-                    delay(currentDelay)
-                    currentDelay = (currentDelay * 1.5).toLong()
-                } else if (e.code() >= 500) {
-                    delay(currentDelay)
-                    currentDelay *= 2
-                } else throw e
-            } catch (e: java.io.IOException) {
-                delay(currentDelay)
-                currentDelay *= 2
-            }
-        }
-        return block()
+    private suspend fun <T> withRetry(block: suspend () -> T): T =
+        retryTmdb(TmdbRetryPolicy.Details, block = block)
+
+    private companion object {
+        /** Completed media/episode rows written together. */
+        const val BATCH_SIZE = 20
     }
 
     private sealed interface FileResult {
@@ -99,7 +88,7 @@ class AndroidMediaScanner(
     }
         .flowOn(Dispatchers.IO)
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    /** Phases, in order: settings check, folder discovery, library index, candidates, finish. */
     private fun scan(): Flow<ScanProgress> = flow {
         val apiKey = settingsRepository.tmdbApiKey.first()
         if (apiKey.isBlank()) {
@@ -107,264 +96,120 @@ class AndroidMediaScanner(
             return@flow
         }
 
+        val candidates =
+            when (val discovery = discoverCandidates()) {
+                is Discovery.Failed -> {
+                    emit(ScanProgress(0, 0, "", discovery.status))
+                    return@flow
+                }
+                is Discovery.Found -> discovery.candidates
+            }
+
+        val total = countFiles(candidates)
+        if (total == 0) {
+            emit(ScanProgress(0, 0, "", ScanStatus.COMPLETE))
+            return@flow
+        }
+        emit(ScanProgress(total, 0, "", ScanStatus.SCANNING))
+
+        val index = loadIndex()
+        val aborted = processCandidates(candidates, apiKey, index, total)
+        if (aborted) return@flow
+
+        settingsRepository.setLastScanTime(System.currentTimeMillis())
+        emit(ScanProgress(total, total, "", ScanStatus.COMPLETE))
+    }
+        .flowOn(Dispatchers.IO)
+
+    private sealed interface Discovery {
+        data class Found(val candidates: List<MediaCandidate>) : Discovery
+
+        data class Failed(val status: ScanStatus) : Discovery
+    }
+
+    /** Lists both roots. Any unreadable folder fails the whole scan before a single write. */
+    private suspend fun discoverCandidates(): Discovery {
         val moviesFolderUri = settingsRepository.moviesFolderUri.first()
         val showsFolderUri = settingsRepository.showsFolderUri.first()
-
-        val allCandidates = mutableListOf<MediaCandidate>()
-
+        val candidates = mutableListOf<MediaCandidate>()
         try {
             if (moviesFolderUri.isNotBlank()) {
-                allCandidates +=
+                candidates +=
                     folderScanner.scanMoviesFolder(
                         Uri.parse(moviesFolderUri),
                         showsFolderUri.takeIf { it.isNotBlank() }?.let { Uri.parse(it) },
                     )
             }
             if (showsFolderUri.isNotBlank()) {
-                allCandidates += folderScanner.scanShowsFolder(Uri.parse(showsFolderUri))
+                candidates += folderScanner.scanShowsFolder(Uri.parse(showsFolderUri))
             }
         } catch (e: FolderPermissionException) {
-            emit(ScanProgress(0, 0, "", ScanStatus.PERMISSION_REVOKED))
-            return@flow
+            return Discovery.Failed(ScanStatus.PERMISSION_REVOKED)
         } catch (e: FolderUnavailableException) {
             // A root or subfolder could not be listed completely. Report it like lost access:
             // an unreadable folder must never finish as an empty, successful scan.
-            emit(ScanProgress(0, 0, "", ScanStatus.PERMISSION_REVOKED))
-            return@flow
+            return Discovery.Failed(ScanStatus.PERMISSION_REVOKED)
         }
+        return Discovery.Found(candidates)
+    }
 
-        val total = allCandidates.sumOf {
-            when (it) {
-                is MediaCandidate.Movie -> 1
-                is MediaCandidate.Show -> it.seasons.values.sumOf { eps -> eps.size }
-                is MediaCandidate.Unknown -> 1
-            }
+    private fun countFiles(candidates: List<MediaCandidate>): Int = candidates.sumOf {
+        when (it) {
+            is MediaCandidate.Movie -> 1
+            is MediaCandidate.Show -> it.seasons.values.sumOf { eps -> eps.size }
+            is MediaCandidate.Unknown -> 1
         }
+    }
 
-        if (total == 0) {
-            emit(ScanProgress(0, 0, "", ScanStatus.COMPLETE))
-            return@flow
-        }
+    /** One read of each table instead of several queries per file. */
+    private suspend fun loadIndex(): ScanIndex =
+        ScanIndex(mediaDao.getAll().first(), episodeDao.getAll())
 
-        emit(ScanProgress(total, 0, "", ScanStatus.SCANNING))
-
+    /**
+     * Runs candidates with bounded concurrency and writes results in batches. Returns true when a
+     * fatal status (invalid key, no connection) stopped the scan; completed writes are flushed in
+     * every case, including cancellation.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private suspend fun FlowCollector<ScanProgress>.processCandidates(
+        candidates: List<MediaCandidate>,
+        apiKey: String,
+        index: ScanIndex,
+        total: Int,
+    ): Boolean {
         val processedCount = AtomicInteger(0)
-        val mediaBatch = mutableListOf<MediaEntity>()
-        val episodeBatch = mutableListOf<EpisodeEntity>()
-
-        suspend fun flushMedia() {
-            if (mediaBatch.isNotEmpty()) {
-                mediaDao.insertAll(mediaBatch.toList())
-                mediaBatch.clear()
-            }
-        }
-        suspend fun flushEpisodes() {
-            if (episodeBatch.isNotEmpty()) {
-                database.withTransaction {
-                    for (episode in episodeBatch) {
-                        val id = episodeDao.insert(episode)
-                        val pending = mediaDao.getByFilePath(episode.filePath)
-                        if (pending?.isUnidentified == true) {
-                            database.watchProgressDao().getProgress(pending.id, 0L)?.let { progress
-                                ->
-                                database
-                                    .watchProgressDao()
-                                    .upsert(
-                                        progress.copy(
-                                            mediaId = episode.showId,
-                                            episodeId = id,
-                                        )
-                                    )
-                            }
-                            database.watchProgressDao().deleteProgressForMedia(pending.id)
-                            mediaDao.deleteById(pending.id)
-                        }
-                    }
-                }
-                episodeBatch.clear()
-            }
-        }
-
+        val writer = BatchWriter()
         var abortStatus: ScanStatus? = null
-
         try {
-
-            allCandidates
+            candidates
                 .asFlow()
                 .flatMapMerge(concurrency = Constants.SCAN_CONCURRENCY) { candidate ->
-                    flow {
-                        try {
-                            when (candidate) {
-                                is MediaCandidate.Movie -> {
-                                    val fileUriString = candidate.sourceUri.toString()
-                                    val existingMedia = mediaDao.getByFilePath(fileUriString)
-                                    if (existingMedia != null && !existingMedia.isUnidentified) {
-                                        candidate.subtitleUri?.let {
-                                            mediaDao.fillMissingSubtitle(
-                                                fileUriString,
-                                                it.toString(),
-                                            )
-                                        }
-                                        emit(FileResult.Skipped(candidate.title))
-                                    } else {
-                                        val entity =
-                                            processMovie(candidate, fileUriString, apiKey)?.let {
-                                                matched ->
-                                                if (existingMedia == null) matched
-                                                else
-                                                    matched.copy(
-                                                        id = existingMedia.id,
-                                                        addedAt = existingMedia.addedAt,
-                                                        isWatchlisted = existingMedia.isWatchlisted,
-                                                        preferredEngine =
-                                                            existingMedia.preferredEngine,
-                                                        externalSubtitlePath =
-                                                            matched.externalSubtitlePath
-                                                                ?: existingMedia
-                                                                    .externalSubtitlePath,
-                                                    )
-                                            }
-                                        if (entity != null) emit(FileResult.Media(entity))
-                                        else
-                                            emit(
-                                                FileResult.Error(
-                                                    candidate.title,
-                                                    ScanStatus.UNIDENTIFIED,
-                                                )
-                                            )
-                                    }
-                                }
-                                is MediaCandidate.Show -> {
-                                    // Every episode already in the library: processShow
-                                    // would only skip them,
-                                    // so avoid its TMDB lookups (matters for auto-scan on
-                                    // every launch).
-                                    val episodeFiles = candidate.seasons.values.flatten()
-                                    episodeFiles.forEach { file ->
-                                        file.episodeEndNumber?.let {
-                                            episodeDao.updateRange(file.uri.toString(), it)
-                                        }
-                                        file.subtitleUri?.let {
-                                            episodeDao.fillMissingSubtitle(
-                                                file.uri.toString(),
-                                                it.toString(),
-                                            )
-                                        }
-                                    }
-                                    val allKnown =
-                                        episodeFiles.isNotEmpty() &&
-                                            episodeFiles.all {
-                                                episodeDao.getByFilePath(it.uri.toString()) != null
-                                            }
-                                    if (allKnown) {
-                                        repeat(episodeFiles.size) {
-                                            emit(FileResult.Skipped(candidate.title))
-                                        }
-                                    } else {
-                                        processShow(candidate, apiKey).collect { res ->
-                                            emit(res)
-                                        }
-                                    }
-                                }
-                                is MediaCandidate.Unknown -> {
-                                    val fileUriString = candidate.sourceUri.toString()
-                                    handleUnidentified(
-                                        candidate.rawName,
-                                        fileUriString,
-                                        candidate.expectedType,
-                                    )
-                                    emit(
-                                        FileResult.Error(
-                                            candidate.rawName,
-                                            ScanStatus.UNIDENTIFIED,
-                                        )
-                                    )
-                                }
-                            }
-                        } catch (e: retrofit2.HttpException) {
-                            if (e.code() == 401) {
-                                emit(
-                                    FileResult.FatalAbort(
-                                        ScanStatus.INVALID_API_KEY,
-                                        getCandidateName(candidate),
-                                    )
-                                )
-                            } else {
-                                handleCandidateError(candidate)
-                                emit(
-                                    FileResult.Error(
-                                        getCandidateName(candidate),
-                                        ScanStatus.ERROR,
-                                    )
-                                )
-                            }
-                        } catch (e: java.io.IOException) {
-                            handleCandidateError(candidate)
-                            emit(
-                                FileResult.FatalAbort(
-                                    ScanStatus.NO_INTERNET,
-                                    getCandidateName(candidate),
-                                )
-                            )
-                        } catch (e: kotlinx.coroutines.CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            handleCandidateError(candidate)
-                            emit(
-                                FileResult.Error(
-                                    getCandidateName(candidate),
-                                    ScanStatus.ERROR,
-                                )
-                            )
-                        }
-                    }
+                    candidateResults(candidate, apiKey, index)
                 }
                 .collect { result ->
                     when (result) {
                         is FileResult.Skipped -> {
                             val count = processedCount.incrementAndGet()
-                            emit(
-                                ScanProgress(
-                                    total,
-                                    count,
-                                    result.displayName,
-                                    ScanStatus.SKIPPED,
-                                )
-                            )
+                            emit(ScanProgress(total, count, result.displayName, ScanStatus.SKIPPED))
                         }
                         is FileResult.Media -> {
-                            mediaBatch.add(result.entity)
                             val count = processedCount.incrementAndGet()
                             emit(
-                                ScanProgress(
-                                    total,
-                                    count,
-                                    result.entity.title,
-                                    ScanStatus.MATCHED,
-                                )
+                                ScanProgress(total, count, result.entity.title, ScanStatus.MATCHED)
                             )
-                            if (mediaBatch.size >= 20) flushMedia()
+                            writer.add(result.entity)
                         }
                         is FileResult.Episode -> {
-                            episodeBatch.add(result.entity)
                             val count = processedCount.incrementAndGet()
                             emit(ScanProgress(total, count, "", ScanStatus.MATCHED))
-                            if (episodeBatch.size >= 20) flushEpisodes()
+                            writer.add(result.entity)
                         }
                         is FileResult.Error -> {
                             val count = processedCount.incrementAndGet()
-                            emit(
-                                ScanProgress(
-                                    total,
-                                    count,
-                                    result.displayName,
-                                    result.status,
-                                )
-                            )
+                            emit(ScanProgress(total, count, result.displayName, result.status))
                         }
                         is FileResult.FatalAbort -> {
-                            flushMedia()
-                            flushEpisodes()
+                            writer.flush()
                             abortStatus = result.status
                             emit(
                                 ScanProgress(
@@ -381,18 +226,160 @@ class AndroidMediaScanner(
         } catch (_: ScanAbortedException) {
             // A fatal status has already been emitted; cancel remaining candidate work.
         } finally {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
-                flushMedia()
-                flushEpisodes()
-            }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { writer.flush() }
+        }
+        return abortStatus != null
+    }
+
+    /** Completed rows, written every [BATCH_SIZE] results and when the scan stops. */
+    private inner class BatchWriter {
+        private val mediaBatch = mutableListOf<MediaEntity>()
+        private val episodeBatch = mutableListOf<EpisodeEntity>()
+
+        suspend fun add(entity: MediaEntity) {
+            mediaBatch.add(entity)
+            if (mediaBatch.size >= BATCH_SIZE) flushMedia()
         }
 
-        if (abortStatus != null) return@flow
+        suspend fun add(entity: EpisodeEntity) {
+            episodeBatch.add(entity)
+            if (episodeBatch.size >= BATCH_SIZE) flushEpisodes()
+        }
 
-        settingsRepository.setLastScanTime(System.currentTimeMillis())
-        emit(ScanProgress(total, total, "", ScanStatus.COMPLETE))
+        suspend fun flush() {
+            flushMedia()
+            flushEpisodes()
+        }
+
+        private suspend fun flushMedia() {
+            if (mediaBatch.isEmpty()) return
+            mediaDao.insertAll(mediaBatch.toList())
+            mediaBatch.clear()
+        }
+
+        /**
+         * Inserts the episodes and folds any raw "local file" row for the same file into them,
+         * moving its history. The raw rows are read inside the transaction (one query per batch):
+         * they may have been written earlier in this scan, so the start-of-scan index is not used.
+         */
+        private suspend fun flushEpisodes() {
+            if (episodeBatch.isEmpty()) return
+            database.withTransaction {
+                val pendingByPath =
+                    mediaDao
+                        .getUnidentifiedByFilePaths(episodeBatch.map { it.filePath })
+                        .associateBy {
+                            it.filePath
+                        }
+                for (episode in episodeBatch) {
+                    val id = episodeDao.insert(episode)
+                    val pending = pendingByPath[episode.filePath] ?: continue
+                    database.watchProgressDao().getProgress(pending.id, 0L)?.let { progress ->
+                        database
+                            .watchProgressDao()
+                            .upsert(progress.copy(mediaId = episode.showId, episodeId = id))
+                    }
+                    database.watchProgressDao().deleteProgressForMedia(pending.id)
+                    mediaDao.deleteById(pending.id)
+                }
+            }
+            episodeBatch.clear()
+        }
     }
-        .flowOn(Dispatchers.IO)
+
+    /** One candidate's results, with the documented failure mapping for each error type. */
+    private fun candidateResults(
+        candidate: MediaCandidate,
+        apiKey: String,
+        index: ScanIndex,
+    ): Flow<FileResult> = flow {
+        try {
+            when (candidate) {
+                is MediaCandidate.Movie -> emit(movieResult(candidate, apiKey, index))
+                is MediaCandidate.Show -> emitAll(showResults(candidate, apiKey, index))
+                is MediaCandidate.Unknown -> {
+                    handleUnidentified(
+                        candidate.rawName,
+                        candidate.sourceUri.toString(),
+                        candidate.expectedType,
+                    )
+                    emit(FileResult.Error(candidate.rawName, ScanStatus.UNIDENTIFIED))
+                }
+            }
+        } catch (e: retrofit2.HttpException) {
+            if (e.code() == 401) {
+                emit(FileResult.FatalAbort(ScanStatus.INVALID_API_KEY, getCandidateName(candidate)))
+            } else {
+                handleCandidateError(candidate)
+                emit(FileResult.Error(getCandidateName(candidate), ScanStatus.ERROR))
+            }
+        } catch (e: java.io.IOException) {
+            handleCandidateError(candidate)
+            emit(FileResult.FatalAbort(ScanStatus.NO_INTERNET, getCandidateName(candidate)))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleCandidateError(candidate)
+            emit(FileResult.Error(getCandidateName(candidate), ScanStatus.ERROR))
+        }
+    }
+
+    /** Identified movies are skipped (only a missing sidecar is filled in); others are matched. */
+    private suspend fun movieResult(
+        candidate: MediaCandidate.Movie,
+        apiKey: String,
+        index: ScanIndex,
+    ): FileResult {
+        val fileUriString = candidate.sourceUri.toString()
+        val existingMedia = index.media(fileUriString)
+        if (existingMedia != null && !existingMedia.isUnidentified) {
+            index.mediaSubtitleBackfill(fileUriString, candidate.subtitleUri?.toString())?.let {
+                mediaDao.fillMissingSubtitle(fileUriString, it)
+            }
+            return FileResult.Skipped(candidate.title)
+        }
+        val entity =
+            processMovie(candidate, fileUriString, apiKey)?.let { matched ->
+                if (existingMedia == null) matched
+                else
+                    matched.copy(
+                        id = existingMedia.id,
+                        addedAt = existingMedia.addedAt,
+                        isWatchlisted = existingMedia.isWatchlisted,
+                        preferredEngine = existingMedia.preferredEngine,
+                        externalSubtitlePath =
+                            matched.externalSubtitlePath ?: existingMedia.externalSubtitlePath,
+                    )
+            }
+        return if (entity != null) FileResult.Media(entity)
+        else FileResult.Error(candidate.title, ScanStatus.UNIDENTIFIED)
+    }
+
+    /**
+     * Back-fills ranges/sidecars of known episode files, then skips a fully known show without any
+     * TMDB lookup (this matters for the auto-scan on every launch).
+     */
+    private suspend fun showResults(
+        candidate: MediaCandidate.Show,
+        apiKey: String,
+        index: ScanIndex,
+    ): Flow<FileResult> {
+        val episodeFiles = candidate.seasons.values.flatten()
+        episodeFiles.forEach { file ->
+            val path = file.uri.toString()
+            val backfill =
+                index.episodeBackfill(path, file.episodeEndNumber, file.subtitleUri?.toString())
+                    ?: return@forEach
+            backfill.rangeEnd?.let { episodeDao.updateRange(path, it) }
+            backfill.subtitle?.let { episodeDao.fillMissingSubtitle(path, it) }
+        }
+        val allKnown =
+            episodeFiles.isNotEmpty() &&
+                episodeFiles.all { index.isKnownEpisode(it.uri.toString()) }
+        return if (allKnown)
+            flow { repeat(episodeFiles.size) { emit(FileResult.Skipped(candidate.title)) } }
+        else processShow(candidate, apiKey, index)
+    }
 
     private fun getCandidateName(candidate: MediaCandidate): String {
         return when (candidate) {
@@ -504,83 +491,85 @@ class AndroidMediaScanner(
         }
     }
 
-    private suspend fun processShow(parsed: MediaCandidate.Show, apiKey: String): Flow<FileResult> =
-        flow {
-            val matched = matcher.show(parsed.title, apiKey)
-            val firstResult = matched?.candidate
-            val confidence = matched?.confidence ?: 0f
+    private fun processShow(
+        parsed: MediaCandidate.Show,
+        apiKey: String,
+        index: ScanIndex,
+    ): Flow<FileResult> = flow {
+        val matched = matcher.show(parsed.title, apiKey)
+        val firstResult = matched?.candidate
+        val confidence = matched?.confidence ?: 0f
 
-            if (firstResult == null || confidence < Constants.MATCH_CONFIDENCE_THRESHOLD) {
-                // Unidentified show, skipping episodes
-                for ((season, eps) in parsed.seasons) {
-                    for (ep in eps) {
-                        handleUnidentified(
-                            ep.extraTitle ?: "${parsed.title} S${season}E${ep.episodeNumber}",
-                            ep.uri.toString(),
-                            MediaType.TV_SHOW,
-                            ep.subtitleUri?.toString(),
-                            parsed.title,
-                            season,
-                            ep.episodeNumber,
-                            ep.episodeEndNumber,
+        if (firstResult == null || confidence < Constants.MATCH_CONFIDENCE_THRESHOLD) {
+            // Unidentified show, skipping episodes
+            for ((season, eps) in parsed.seasons) {
+                for (ep in eps) {
+                    handleUnidentified(
+                        ep.extraTitle ?: "${parsed.title} S${season}E${ep.episodeNumber}",
+                        ep.uri.toString(),
+                        MediaType.TV_SHOW,
+                        ep.subtitleUri?.toString(),
+                        parsed.title,
+                        season,
+                        ep.episodeNumber,
+                        ep.episodeEndNumber,
+                    )
+                    emit(
+                        FileResult.Error(
+                            "${parsed.title} S?E${ep.episodeNumber}",
+                            ScanStatus.UNIDENTIFIED,
                         )
-                        emit(
-                            FileResult.Error(
-                                "${parsed.title} S?E${ep.episodeNumber}",
-                                ScanStatus.UNIDENTIFIED,
-                            )
-                        )
-                    }
+                    )
                 }
-                return@flow
             }
+            return@flow
+        }
 
-            val showId = getOrCreateShow(firstResult.id, apiKey, confidence, parsed.title)
+        val showId = getOrCreateShow(firstResult.id, apiKey, confidence, parsed.title)
 
-            for ((seasonNum, episodes) in parsed.seasons) {
-                val (seasonId, seasonDetails) =
-                    getOrCreateSeason(showId, firstResult.id, seasonNum, apiKey)
+        for ((seasonNum, episodes) in parsed.seasons) {
+            val (seasonId, seasonDetails) =
+                getOrCreateSeason(showId, firstResult.id, seasonNum, apiKey)
 
-                for (ep in episodes) {
-                    val fileUriString = ep.uri.toString()
-                    val existingEpisode = episodeDao.getByFilePath(fileUriString)
-                    if (existingEpisode != null) {
-                        emit(FileResult.Skipped(parsed.title))
-                        continue
+            for (ep in episodes) {
+                val fileUriString = ep.uri.toString()
+                if (index.isKnownEpisode(fileUriString)) {
+                    emit(FileResult.Skipped(parsed.title))
+                    continue
+                }
+
+                // Extras have synthetic numbers; don't attach a real special's metadata.
+                val episodeInfo =
+                    if (ep.extraTitle != null) null
+                    else seasonDetails?.episodes?.find { it.episodeNumber == ep.episodeNumber }
+
+                val thumbnailPath =
+                    episodeInfo?.stillPath?.let { path ->
+                        imageCacheManager.cacheEpisodeStill(
+                            path,
+                            "tv_${firstResult.id}_s${seasonNum}e${ep.episodeNumber}_still.jpg",
+                        )
                     }
 
-                    // Extras have synthetic numbers; don't attach a real special's metadata.
-                    val episodeInfo =
-                        if (ep.extraTitle != null) null
-                        else seasonDetails?.episodes?.find { it.episodeNumber == ep.episodeNumber }
-
-                    val thumbnailPath =
-                        episodeInfo?.stillPath?.let { path ->
-                            imageCacheManager.cacheEpisodeStill(
-                                path,
-                                "tv_${firstResult.id}_s${seasonNum}e${ep.episodeNumber}_still.jpg",
-                            )
-                        }
-
-                    val entity =
-                        EpisodeEntity(
-                            showId = showId,
-                            seasonNumber = seasonNum,
-                            episodeNumber = ep.episodeNumber,
-                            title = ep.extraTitle ?: episodeInfo?.name,
-                            overview = episodeInfo?.overview,
-                            runtime = episodeInfo?.runtime,
-                            airDate = episodeInfo?.airDate,
-                            thumbnailPath = thumbnailPath,
-                            filePath = fileUriString,
-                            externalSubtitlePath = ep.subtitleUri?.toString(),
-                            preferredEngine = determineEngine(ep.uri),
-                            episodeEndNumber = ep.episodeEndNumber,
-                        )
-                    emit(FileResult.Episode(entity))
-                }
+                val entity =
+                    EpisodeEntity(
+                        showId = showId,
+                        seasonNumber = seasonNum,
+                        episodeNumber = ep.episodeNumber,
+                        title = ep.extraTitle ?: episodeInfo?.name,
+                        overview = episodeInfo?.overview,
+                        runtime = episodeInfo?.runtime,
+                        airDate = episodeInfo?.airDate,
+                        thumbnailPath = thumbnailPath,
+                        filePath = fileUriString,
+                        externalSubtitlePath = ep.subtitleUri?.toString(),
+                        preferredEngine = determineEngine(ep.uri),
+                        episodeEndNumber = ep.episodeEndNumber,
+                    )
+                emit(FileResult.Episode(entity))
             }
         }
+    }
 
     private suspend fun getOrCreateShow(
         tmdbId: Int,

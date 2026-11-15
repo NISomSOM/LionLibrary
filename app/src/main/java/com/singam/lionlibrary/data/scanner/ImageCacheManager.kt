@@ -19,10 +19,34 @@ class ImageCacheManager(private val context: Context, private val client: OkHttp
     private val mutableRevision = MutableStateFlow(0L)
     override val revision = mutableRevision.asStateFlow()
 
+    private val signatures by lazy {
+        ArtworkSignatures(File(context.filesDir, Constants.ARTWORK_SIGNATURES_FILE))
+    }
+
+    /**
+     * Whether [path] is a decodable image. A file that already decoded with the same size and
+     * modification time is trusted without decoding again; anything else gets the full check and,
+     * when it passes, is recorded.
+     */
     fun isUsable(path: String?): Boolean {
         if (path == null) return false
         val file = File(path)
-        if (!file.isFile || file.length() == 0L) return false
+        if (!file.isFile) return false
+        val signature = ArtworkSignature(file.length(), file.lastModified())
+        if (signature.length == 0L) return false
+        if (signatures.matches(file.absolutePath, signature)) return true
+        if (!decodes(path)) {
+            signatures.forget(file.absolutePath)
+            return false
+        }
+        signatures.record(file.absolutePath, signature)
+        return true
+    }
+
+    /** Writes recorded signatures; called once after an artwork pass, not per file. */
+    fun persistValidation() = signatures.persist()
+
+    private fun decodes(path: String): Boolean {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
@@ -77,8 +101,13 @@ class ImageCacheManager(private val context: Context, private val client: OkHttp
                             }
                         }
                         currentCoroutineContext().ensureActive()
-                        if (!isUsable(staging.absolutePath)) return@withLock null
+                        if (!decodes(staging.absolutePath)) return@withLock null
                         if (staging.renameTo(destination)) {
+                            // Just decoded as the staging file; same bytes after the rename.
+                            signatures.record(
+                                destination.absolutePath,
+                                ArtworkSignature(destination.length(), destination.lastModified()),
+                            )
                             mutableRevision.update { it + 1 }
                             destination.absolutePath
                         } else null
@@ -104,8 +133,9 @@ class ImageCacheManager(private val context: Context, private val client: OkHttp
                     file.isFile &&
                         file.absolutePath !in referenced &&
                         now - file.lastModified() > 48 * 60 * 60 * 1000L
-                )
-                    file.delete()
+                ) {
+                    if (file.delete()) signatures.forget(file.absolutePath)
+                }
             }
         }
 }

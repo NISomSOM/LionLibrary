@@ -17,6 +17,7 @@ import com.singam.lionlibrary.domain.repository.DeletionError
 import com.singam.lionlibrary.domain.repository.DeletionOutcome
 import com.singam.lionlibrary.domain.repository.DeletionPreview
 import com.singam.lionlibrary.domain.repository.DeletionTarget
+import com.singam.lionlibrary.domain.repository.FolderAccessRepository
 import com.singam.lionlibrary.domain.repository.LetterboxdRepository
 import com.singam.lionlibrary.domain.repository.MediaDeletionRepository
 import com.singam.lionlibrary.domain.repository.MediaRepository
@@ -349,4 +350,12 @@ class FakeDeletionRepository : MediaDeletionRepository {
 /** External intents need the Android framework; JVM tests never reach this path. */
 class UnusedLaunchPlayer : LaunchPlayerUseCase {
     override fun invoke(fileUri: Uri, positionMs: Long): Intent = error("not used in JVM tests")
+}
+
+class FakeFolderAccessRepository : FolderAccessRepository {
+    val releases = mutableListOf<Pair<String, List<String>>>()
+
+    override suspend fun releaseIfUnused(previousUri: String, inUse: List<String>) {
+        releases += previousUri to inUse
+    }
 }

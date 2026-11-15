@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.domain.model.ScanProgress
+import com.singam.lionlibrary.domain.repository.FolderAccessRepository
 import com.singam.lionlibrary.domain.repository.MetadataRepository
 import com.singam.lionlibrary.domain.repository.SettingsRepository
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
@@ -78,6 +79,7 @@ class SettingsViewModel(
     private val watchProgressRepository: WatchProgressRepository,
     private val metadataRepository: MetadataRepository,
     private val scanCoordinator: ScanCoordinator,
+    private val folderAccess: FolderAccessRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -102,12 +104,20 @@ class SettingsViewModel(
             }
             is SettingsAction.OnSaveApiKey -> saveApiKey()
             is SettingsAction.OnMoviesFolderSelected ->
-                setFolder(action.uri) { uri ->
+                setFolder(
+                    uri = action.uri,
+                    previous = _state.value.moviesFolderUri,
+                    otherRoot = { _state.value.showsFolderUri },
+                ) { uri ->
                     settingsRepository.setMoviesFolderUri(uri)
                     _state.update { it.copy(moviesFolderUri = uri) }
                 }
             is SettingsAction.OnShowsFolderSelected ->
-                setFolder(action.uri) { uri ->
+                setFolder(
+                    uri = action.uri,
+                    previous = _state.value.showsFolderUri,
+                    otherRoot = { _state.value.moviesFolderUri },
+                ) { uri ->
                     settingsRepository.setShowsFolderUri(uri)
                     _state.update { it.copy(showsFolderUri = uri) }
                 }
@@ -220,8 +230,21 @@ class SettingsViewModel(
         }
     }
 
-    private fun setFolder(uri: String, save: suspend (String) -> Unit) {
-        launchSetting { save(uri) }
+    /**
+     * Saves the new root, then gives back the replaced root's grant unless the new or the other
+     * root still relies on that tree. The grant is released only after the new choice is stored.
+     */
+    private fun setFolder(
+        uri: String,
+        previous: String,
+        otherRoot: () -> String,
+        save: suspend (String) -> Unit,
+    ) {
+        launchSetting {
+            save(uri)
+            if (previous.isNotBlank() && previous != uri)
+                folderAccess.releaseIfUnused(previous, listOf(uri, otherRoot()))
+        }
     }
 
     private fun triggerScan() {
@@ -239,7 +262,7 @@ class SettingsViewModel(
                         scanProgress = run.progress,
                         scanRun = run,
                         lastScanTime =
-                            if (run.summary.outcome == "COMPLETE") run.summary.finishedAt
+                            if (run.summary.outcome == ScanOutcome.COMPLETE) run.summary.finishedAt
                             else it.lastScanTime,
                     )
                 }

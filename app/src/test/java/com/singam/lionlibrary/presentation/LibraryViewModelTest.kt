@@ -83,8 +83,6 @@ internal class FakeMediaRepository : MediaRepository {
             }
         }
 
-    override fun getUnidentified() = flowOf(emptyList<MediaItem>())
-
     override suspend fun toggleWatchlist(id: Long) {}
 
     override fun getByType(type: MediaType) = flowOf(byType[type].orEmpty())
@@ -96,10 +94,6 @@ internal class FakeMediaRepository : MediaRepository {
 
     override suspend fun getById(id: Long): MediaItem? = null
 
-    override suspend fun insert(media: MediaItem) = 1L
-
-    override suspend fun getByTmdbId(tmdbId: Int): MediaItem? = null
-
     override fun getSeasonsForShow(showId: Long) = flowOf(emptyList<Season>())
 
     override fun getEpisodesForSeason(showId: Long, seasonNumber: Int) =
@@ -108,12 +102,4 @@ internal class FakeMediaRepository : MediaRepository {
     override fun getAllEpisodesForShow(showId: Long) = flowOf(emptyList<Episode>())
 
     override suspend fun getEpisodeById(episodeId: Long): Episode? = null
-
-    override suspend fun insertSeason(season: Season) = 1L
-
-    override suspend fun insertEpisode(episode: Episode) = 1L
-
-    override suspend fun getEpisodeByFilePath(filePath: String): Episode? = null
-
-    override suspend fun getByFilePath(filePath: String): MediaItem? = null
 }

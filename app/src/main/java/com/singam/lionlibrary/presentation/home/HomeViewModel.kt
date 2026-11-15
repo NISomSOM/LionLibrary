@@ -8,10 +8,11 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.JumpBackInItem
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
+import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.GetHomeContentUseCase
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
-import com.singam.lionlibrary.domain.usecase.UpdateWatchProgressUseCase
 import com.singam.lionlibrary.presentation.common.UiText
+import kotlin.random.Random
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,7 +72,7 @@ sealed interface HomeEvent {
 class HomeViewModel(
     private val getHomeContentUseCase: GetHomeContentUseCase,
     private val launchPlayerUseCase: LaunchPlayerUseCase,
-    private val updateWatchProgressUseCase: UpdateWatchProgressUseCase,
+    private val watchProgressRepository: WatchProgressRepository,
     private val externalPlaybackRouter:
         com.singam.lionlibrary.presentation.player.ExternalPlaybackRouter,
     deletionRepository: com.singam.lionlibrary.domain.repository.MediaDeletionRepository,
@@ -168,7 +169,7 @@ class HomeViewModel(
                     else (action.item.episodeId ?: 0L)
                 if (targetId > 0L) {
                     viewModelScope.launch {
-                        updateWatchProgressUseCase.markAsUnwatched(
+                        watchProgressRepository.markAsUnwatched(
                             action.item.mediaId,
                             if (action.item.mediaType == MediaType.MOVIE) 0L else targetId,
                         )
@@ -181,7 +182,8 @@ class HomeViewModel(
                     val targetId =
                         if (action.item.mediaType == MediaType.MOVIE) 0L
                         else (action.item.episodeId ?: 0L)
-                    updateWatchProgressUseCase.removeWatchProgress(action.item.mediaId, targetId)
+                    watchProgressRepository.deleteProgress(action.item.mediaId, targetId)
+                    watchProgressRepository.hideMediaFromJumpBackIn(action.item.mediaId)
                 }
             }
         }
@@ -201,15 +203,8 @@ class HomeViewModel(
                     // Only this collector writes carouselItems, so reading it here is stable.
                     val allMedia =
                         (content.movies + content.tvShows + content.anime).distinctBy { it.id }
-                    val previousCarousel = _state.value.carouselItems
-                    // 10 random items for hero.
                     val randomCarousel =
-                        if (previousCarousel.isNotEmpty()) {
-                            val byId = allMedia.associateBy { it.id }
-                            previousCarousel.mapNotNull { previous -> byId[previous.id] }
-                        } else {
-                            allMedia.shuffled().take(10)
-                        }
+                        selectHeroCarousel(_state.value.carouselItems, allMedia, Random.Default)
 
                     val genreMap = mutableMapOf<String, MutableList<MediaItem>>()
                     allMedia.forEach { item ->

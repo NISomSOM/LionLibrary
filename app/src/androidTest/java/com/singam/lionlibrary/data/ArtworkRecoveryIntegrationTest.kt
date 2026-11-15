@@ -96,7 +96,7 @@ class ArtworkRecoveryIntegrationTest {
             val corrupt = File(folder, "corrupt.png").apply { writeText("not an image") }
             db.mediaDao().update(db.mediaDao().getById(2)!!.copy(logoPath = corrupt.path))
             db.watchProgressDao().upsert(WatchProgressEntity(2, 0, .5f, 500, 1000, 1, false))
-            val repo = TmdbMetadataRepository(context, ArtworkApiFake(), db, settings, cache)
+            val repo = TmdbMetadataRepository(ArtworkApiFake(), db, settings, cache)
             val result = repo.refreshArtwork()
             assertTrue(
                 result is OperationResult.Failure

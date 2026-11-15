@@ -2,6 +2,7 @@ package com.singam.lionlibrary.data.repository
 
 import com.singam.lionlibrary.data.local.db.dao.MediaDao
 import com.singam.lionlibrary.data.mapper.toMediaItem
+import com.singam.lionlibrary.data.remote.await
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.repository.LetterboxdRepository
@@ -34,7 +35,7 @@ class WebLetterboxdRepository(okHttpClient: OkHttpClient, private val mediaDao: 
                     Request.Builder().url(filmUrl(tmdbId)).header("User-Agent", USER_AGENT).build()
 
                 val rating: Float? =
-                    client.newCall(request).execute().use { response ->
+                    client.newCall(request).await().use { response ->
                         when {
                             response.isSuccessful -> parseLetterboxdRating(response.body.string())
                             // Film not on Letterboxd: cache the miss.

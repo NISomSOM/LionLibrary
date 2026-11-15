@@ -24,6 +24,7 @@ interface WatchProgressDao {
             e.title AS episodeTitle, 
             e.seasonNumber, 
             e.episodeNumber, 
+            e.episodeEndNumber,
             e.thumbnailPath,
             w.progress,
             w.completed,

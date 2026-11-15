@@ -535,12 +535,16 @@ internal fun HeroBannerCarousel(
     LaunchedEffect(dragging) { if (dragging) interacted = true }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val lifecycleState by lifecycle.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+    // Read once per lifecycle change rather than every recomposition; returning from system
+    // settings resumes the screen, so a changed animation scale is still picked up.
     val motionEnabled =
-        android.provider.Settings.Global.getFloat(
-            context.contentResolver,
-            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f,
-        ) > 0f
+        remember(context, lifecycleState) {
+            android.provider.Settings.Global.getFloat(
+                context.contentResolver,
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f,
+            ) > 0f
+        }
     LaunchedEffect(
         pagerState.settledPage,
         mediaItems.size,

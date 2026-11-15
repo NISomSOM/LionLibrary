@@ -20,7 +20,7 @@ import com.singam.lionlibrary.domain.repository.SettingsRepository
 import com.singam.lionlibrary.domain.usecase.ScanLibraryUseCase
 import com.singam.lionlibrary.presentation.player.engine.EngineType
 import com.singam.lionlibrary.util.Constants
-import java.util.concurrent.ConcurrentHashMap
+import com.singam.lionlibrary.util.KeyedMutex
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -31,7 +31,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 private class ScanAbortedException : RuntimeException()
@@ -52,9 +51,10 @@ class AndroidMediaScanner(
 ) : ScanLibraryUseCase {
 
     private val matcher = TmdbMatcher(tmdbApiService)
-    private val showLocks = ConcurrentHashMap<Int, Mutex>()
-    private val movieLocks = ConcurrentHashMap<Int, Mutex>()
-    private val seasonLocks = ConcurrentHashMap<Pair<Long, Int>, Mutex>()
+    // Entries disappear when released, so nothing accumulates across scans.
+    private val showLocks = KeyedMutex<Int>()
+    private val movieLocks = KeyedMutex<Int>()
+    private val seasonLocks = KeyedMutex<Pair<Long, Int>>()
 
     private suspend fun <T> withRetry(times: Int = 5, block: suspend () -> T): T {
         var currentDelay = 2000L
@@ -456,8 +456,7 @@ class AndroidMediaScanner(
         val firstResult = matched.candidate
         val confidence = matched.confidence
 
-        val lock = movieLocks.computeIfAbsent(firstResult.id) { Mutex() }
-        return lock.withLock {
+        return movieLocks.withLock(firstResult.id) {
             val details = withRetry { tmdbApiService.getMovieDetails(firstResult.id, apiKey) }
 
             val posterPath =
@@ -489,7 +488,7 @@ class AndroidMediaScanner(
                     imageCacheManager.cacheLogo(path, "movie_${details.id}_logo.png")
                 }
 
-            return details
+            details
                 .toMediaEntity(
                     mediaType = MediaType.MOVIE,
                     confidence = confidence,
@@ -589,8 +588,7 @@ class AndroidMediaScanner(
         confidence: Float,
         parsedTitle: String,
     ): Long {
-        val lock = showLocks.computeIfAbsent(tmdbId) { Mutex() }
-        return lock.withLock {
+        return showLocks.withLock(tmdbId) {
             val existingByTmdb = mediaDao.getTvByTmdbId(tmdbId)
             if (existingByTmdb != null) return@withLock existingByTmdb.id
 
@@ -645,8 +643,7 @@ class AndroidMediaScanner(
         seasonNumber: Int,
         apiKey: String,
     ): Pair<Long, SeasonDetailsDto?> {
-        val lock = seasonLocks.computeIfAbsent(Pair(showId, seasonNumber)) { Mutex() }
-        return lock.withLock {
+        return seasonLocks.withLock(Pair(showId, seasonNumber)) {
             val existing = seasonDao.getByShowAndSeason(showId, seasonNumber)
 
             val seasonDetails =

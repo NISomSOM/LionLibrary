@@ -10,6 +10,7 @@ data class JumpBackInEntity(
     val episodeTitle: String?,
     val seasonNumber: Int?,
     val episodeNumber: Int?,
+    val episodeEndNumber: Int? = null,
     val thumbnailPath: String?,
     val progress: Float?,
     val completed: Boolean,

@@ -55,7 +55,6 @@ val dataModule = module {
 
     single {
         com.singam.lionlibrary.data.repository.TmdbMetadataRepository(
-            androidContext(),
             get(),
             get(),
             get(),

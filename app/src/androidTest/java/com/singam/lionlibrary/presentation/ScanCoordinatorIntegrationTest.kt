@@ -133,23 +133,4 @@ internal class MetadataFake : com.singam.lionlibrary.domain.repository.MetadataR
 
     override suspend fun validateKey(key: String): OperationResult<Unit, DataError> =
         error("unused")
-
-    override suspend fun search(
-        title: String,
-        type: MediaType,
-    ): OperationResult<
-        List<com.singam.lionlibrary.domain.repository.MetadataCandidate>,
-        DataError,
-    > = error("unused")
-
-    override suspend fun identify(
-        mediaId: Long,
-        candidate: com.singam.lionlibrary.domain.repository.MetadataCandidate,
-        assignment: com.singam.lionlibrary.domain.repository.EpisodeAssignment?,
-    ): OperationResult<Unit, DataError> = error("unused")
-
-    override suspend fun retry(mediaId: Long): OperationResult<Unit, DataError> = error("unused")
-
-    override suspend fun checkAvailability(): OperationResult<Set<Long>, DataError> =
-        error("unused")
 }

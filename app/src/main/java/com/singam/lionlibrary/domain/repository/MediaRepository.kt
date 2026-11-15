@@ -10,8 +10,6 @@ import kotlinx.coroutines.flow.Flow
 interface MediaRepository {
     fun browse(query: com.singam.lionlibrary.domain.model.LibraryQuery): Flow<List<MediaItem>>
 
-    fun getUnidentified(): Flow<List<MediaItem>>
-
     suspend fun toggleWatchlist(id: Long)
 
     fun getByType(type: MediaType): Flow<List<MediaItem>>
@@ -22,10 +20,6 @@ interface MediaRepository {
 
     suspend fun getById(id: Long): MediaItem?
 
-    suspend fun insert(media: MediaItem): Long
-
-    suspend fun getByTmdbId(tmdbId: Int): MediaItem?
-
     fun getSeasonsForShow(showId: Long): Flow<List<Season>>
 
     fun getEpisodesForSeason(showId: Long, seasonNumber: Int): Flow<List<Episode>>
@@ -33,12 +27,4 @@ interface MediaRepository {
     fun getAllEpisodesForShow(showId: Long): Flow<List<Episode>>
 
     suspend fun getEpisodeById(episodeId: Long): Episode?
-
-    suspend fun insertSeason(season: Season): Long
-
-    suspend fun insertEpisode(episode: Episode): Long
-
-    suspend fun getEpisodeByFilePath(filePath: String): Episode?
-
-    suspend fun getByFilePath(filePath: String): MediaItem?
 }

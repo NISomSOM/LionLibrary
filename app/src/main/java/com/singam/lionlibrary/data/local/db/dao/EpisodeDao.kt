@@ -50,6 +50,10 @@ interface EpisodeDao {
     @Query("SELECT * FROM episodes WHERE showId = :showId ORDER BY seasonNumber, episodeNumber")
     fun getAllForShow(showId: Long): Flow<List<EpisodeEntity>>
 
+    /** Every episode of the given shows, for in-memory next-up selection (one query). */
+    @Query("SELECT * FROM episodes WHERE showId IN (:showIds)")
+    suspend fun getForShows(showIds: List<Long>): List<EpisodeEntity>
+
     @Query(
         """
         SELECT * FROM episodes WHERE showId = :showId AND

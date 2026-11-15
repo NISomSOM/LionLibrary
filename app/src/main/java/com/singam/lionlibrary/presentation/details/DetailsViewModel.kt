@@ -14,9 +14,9 @@ import com.singam.lionlibrary.domain.model.Season
 import com.singam.lionlibrary.domain.model.WatchProgressPolicy
 import com.singam.lionlibrary.domain.model.isSingleFile
 import com.singam.lionlibrary.domain.repository.LetterboxdRepository
-import com.singam.lionlibrary.domain.usecase.GetMediaDetailsUseCase
+import com.singam.lionlibrary.domain.repository.MediaRepository
+import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
-import com.singam.lionlibrary.domain.usecase.UpdateWatchProgressUseCase
 import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.player.ExternalPlaybackRouter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -98,9 +98,8 @@ sealed interface DetailsEvent {
 @OptIn(ExperimentalCoroutinesApi::class)
 class DetailsViewModel(
     private val savedStateHandle: SavedStateHandle,
-    private val mediaRepository: com.singam.lionlibrary.domain.repository.MediaRepository,
-    private val getMediaDetailsUseCase: GetMediaDetailsUseCase,
-    private val updateWatchProgressUseCase: UpdateWatchProgressUseCase,
+    private val mediaRepository: MediaRepository,
+    private val watchProgressRepository: WatchProgressRepository,
     private val launchPlayerUseCase: LaunchPlayerUseCase,
     private val letterboxdRepository: LetterboxdRepository,
     private val externalPlaybackRouter: ExternalPlaybackRouter,
@@ -141,8 +140,8 @@ class DetailsViewModel(
 
         viewModelScope.launch {
             try {
-                val details = getMediaDetailsUseCase(mediaId)
-                if (details == null) {
+                val media = mediaRepository.getById(mediaId)
+                if (media == null) {
                     _state.update {
                         it.copy(
                             isLoading = false,
@@ -152,9 +151,9 @@ class DetailsViewModel(
                     return@launch
                 }
 
-                _state.update { it.copy(media = details.media, isLoading = false) }
+                _state.update { it.copy(media = media, isLoading = false) }
 
-                if (details.media.mediaType == MediaType.MOVIE && details.media.tmdbId != null) {
+                if (media.mediaType == MediaType.MOVIE && media.tmdbId != null) {
                     launch {
                         letterboxdRepository.refreshRating(mediaId)?.let { refreshed ->
                             _state.update {
@@ -169,9 +168,9 @@ class DetailsViewModel(
                     }
                 }
 
-                if (!details.media.isSingleFile) {
+                if (!media.isSingleFile) {
                     launch {
-                        getMediaDetailsUseCase.getSeasons(mediaId).collect { seasons ->
+                        mediaRepository.getSeasonsForShow(mediaId).collect { seasons ->
                             _state.update { it.copy(seasons = seasons) }
                             if (
                                 seasons.isNotEmpty() &&
@@ -183,8 +182,8 @@ class DetailsViewModel(
                     }
                     launch {
                         combine(
-                                getMediaDetailsUseCase.getAllEpisodesForShow(mediaId),
-                                getMediaDetailsUseCase.getProgress(mediaId),
+                                mediaRepository.getAllEpisodesForShow(mediaId),
+                                watchProgressRepository.getProgressForMedia(mediaId),
                             ) { allEpisodes, progressList ->
                                 WatchProgressPolicy.resumeEpisode(allEpisodes, progressList)
                             }
@@ -204,7 +203,7 @@ class DetailsViewModel(
 
         // Reactively monitor progress.
         viewModelScope.launch {
-            getMediaDetailsUseCase.getProgress(mediaId).collect { progressList ->
+            watchProgressRepository.getProgressForMedia(mediaId).collect { progressList ->
                 val movieProgress = progressList.find { it.episodeId == 0L }
                 val completedEpisodeIds =
                     progressList.filter { it.completed }.map { it.episodeId }.toSet()
@@ -232,7 +231,7 @@ class DetailsViewModel(
             selectedSeasonFlow
                 .flatMapLatest { seasonNumber ->
                     if (mediaId > 0L) {
-                        getMediaDetailsUseCase.getEpisodesForSeason(mediaId, seasonNumber)
+                        mediaRepository.getEpisodesForSeason(mediaId, seasonNumber)
                     } else {
                         flowOf(emptyList())
                     }
@@ -296,7 +295,7 @@ class DetailsViewModel(
                 val media = _state.value.media
                 if (media != null && media.filePath != null) {
                     viewModelScope.launch {
-                        updateWatchProgressUseCase.markAsStarted(mediaId, 0L)
+                        watchProgressRepository.markAsStarted(mediaId, 0L)
                         navigateToPlayer(MediaType.MOVIE, mediaId)
                     }
                 } else {
@@ -311,7 +310,7 @@ class DetailsViewModel(
                 val nextEp = _state.value.nextEpisodeToWatch
                 if (nextEp != null) {
                     viewModelScope.launch {
-                        updateWatchProgressUseCase.markAsStarted(mediaId, nextEp.id)
+                        watchProgressRepository.markAsStarted(mediaId, nextEp.id)
                         navigateToPlayer(
                             _state.value.media?.mediaType ?: MediaType.TV_SHOW,
                             nextEp.id,
@@ -327,7 +326,7 @@ class DetailsViewModel(
             }
             is DetailsAction.OnPlayEpisode -> {
                 viewModelScope.launch {
-                    updateWatchProgressUseCase.markAsStarted(mediaId, action.episodeId)
+                    watchProgressRepository.markAsStarted(mediaId, action.episodeId)
                     navigateToPlayer(
                         _state.value.media?.mediaType ?: MediaType.TV_SHOW,
                         action.episodeId,
@@ -337,27 +336,27 @@ class DetailsViewModel(
             is DetailsAction.OnMarkMovieWatchedToggle -> {
                 viewModelScope.launch {
                     if (_state.value.isMovieWatched) {
-                        updateWatchProgressUseCase.markAsUnwatched(mediaId, 0L)
+                        watchProgressRepository.markAsUnwatched(mediaId, 0L)
                     } else {
-                        updateWatchProgressUseCase.markAsWatched(mediaId, 0L)
+                        watchProgressRepository.markAsWatched(mediaId, 0L)
                     }
                 }
             }
             is DetailsAction.OnMarkEpisodeWatchedToggle -> {
                 viewModelScope.launch {
                     if (_state.value.watchedEpisodeIds.contains(action.episodeId)) {
-                        updateWatchProgressUseCase.markAsUnwatched(mediaId, action.episodeId)
+                        watchProgressRepository.markAsUnwatched(mediaId, action.episodeId)
                     } else {
-                        updateWatchProgressUseCase.markAsWatched(mediaId, action.episodeId)
+                        watchProgressRepository.markAsWatched(mediaId, action.episodeId)
                     }
                 }
             }
             is DetailsAction.OnMarkWatchedUpTo -> {
                 viewModelScope.launch {
-                    val allEpisodesFlow = getMediaDetailsUseCase.getAllEpisodesForShow(mediaId)
+                    val allEpisodesFlow = mediaRepository.getAllEpisodesForShow(mediaId)
                     val allEpisodes = allEpisodesFlow.firstOrNull() ?: return@launch
 
-                    updateWatchProgressUseCase.markAllAsWatched(
+                    watchProgressRepository.markAllAsWatched(
                         mediaId,
                         allEpisodes.idsWatchedUpTo(action.episode),
                     )

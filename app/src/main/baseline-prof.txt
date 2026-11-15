@@ -1,0 +1,25 @@
+# Hand-written baseline profile (human-readable rules, installed by androidx.profileinstaller).
+# Compose, Room, Media3 and the other AndroidX libraries ship their own profiles; these rules add
+# the app's own startup, browsing and playback code. Replace with a Macrobenchmark-generated
+# profile when a device or emulator is available (see References/IMPROVEMENT_PROGRESS.md, R2).
+HSPLcom/singam/lionlibrary/LionLibraryApp;->**(**)**
+HSPLcom/singam/lionlibrary/MainActivity;->**(**)**
+Lcom/singam/lionlibrary/LionLibraryApp;
+Lcom/singam/lionlibrary/MainActivity;
+HSPLcom/singam/lionlibrary/di/**;->**(**)**
+HSPLcom/singam/lionlibrary/ui/theme/**;->**(**)**
+HSPLcom/singam/lionlibrary/presentation/navigation/**;->**(**)**
+HSPLcom/singam/lionlibrary/presentation/home/**;->**(**)**
+HSPLcom/singam/lionlibrary/presentation/components/**;->**(**)**
+HSPLcom/singam/lionlibrary/presentation/library/**;->**(**)**
+HSPLcom/singam/lionlibrary/presentation/details/**;->**(**)**
+HSPLcom/singam/lionlibrary/presentation/player/**;->**(**)**
+HSPLcom/singam/lionlibrary/presentation/common/**;->**(**)**
+HSPLcom/singam/lionlibrary/domain/**;->**(**)**
+HSPLcom/singam/lionlibrary/data/mapper/**;->**(**)**
+HSPLcom/singam/lionlibrary/data/repository/**;->**(**)**
+HSPLcom/singam/lionlibrary/data/local/**;->**(**)**
+Lcom/singam/lionlibrary/presentation/**;
+Lcom/singam/lionlibrary/domain/**;
+Lcom/singam/lionlibrary/data/**;
+Lcom/singam/lionlibrary/ui/**;

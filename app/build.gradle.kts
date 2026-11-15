@@ -41,8 +41,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Ships only the owner's phone ABI (vivo X300, Android 16). Debug keeps every ABI,
+            // including x86_64 for emulators.
             ndk {
-                abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+                abiFilters += listOf("arm64-v8a")
             }
         }
     }
@@ -83,6 +85,8 @@ dependencies {
 
     // Core
     implementation(libs.androidx.core.ktx)
+    // Installs src/main/baseline-prof.txt at install/first run for faster startup and scrolling.
+    implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

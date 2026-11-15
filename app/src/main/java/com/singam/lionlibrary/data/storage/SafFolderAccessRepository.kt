@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.core.net.toUri
 import com.singam.lionlibrary.domain.model.FolderGrantPolicy
 import com.singam.lionlibrary.domain.model.FolderTree
 import com.singam.lionlibrary.domain.repository.FolderAccessRepository
@@ -14,10 +15,10 @@ class SafFolderAccessRepository(private val context: Context) : FolderAccessRepo
     override suspend fun releaseIfUnused(previousUri: String, inUse: List<String>) =
         withContext(Dispatchers.IO) {
             if (previousUri.isBlank()) return@withContext
-            val previous = Uri.parse(previousUri)
+            val previous = previousUri.toUri()
             // Unparseable identity: keep the grant rather than guess.
             val previousTree = previous.tree() ?: return@withContext
-            val inUseTrees = inUse.filter { it.isNotBlank() }.map { Uri.parse(it).tree() }
+            val inUseTrees = inUse.filter { it.isNotBlank() }.map { it.toUri().tree() }
             if (inUse.any { it.isNotBlank() } && inUseTrees.any { it == null }) return@withContext
             if (!FolderGrantPolicy.canRelease(previousTree, inUseTrees)) return@withContext
             val resolver = context.contentResolver

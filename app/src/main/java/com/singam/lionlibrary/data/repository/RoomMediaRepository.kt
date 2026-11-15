@@ -14,6 +14,7 @@ import com.singam.lionlibrary.domain.model.Season
 import com.singam.lionlibrary.domain.repository.MediaRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
@@ -58,6 +59,9 @@ class RoomMediaRepository(
     override suspend fun getById(id: Long): MediaItem? {
         return mediaDao.getById(id)?.toMediaItem()
     }
+
+    override fun observeById(id: Long): Flow<MediaItem?> =
+        mediaDao.observeById(id).map { it?.toMediaItem() }.distinctUntilChanged()
 
     override fun getSeasonsForShow(showId: Long): Flow<List<Season>> {
         return seasonDao.getSeasonsForShow(showId).map { entities ->

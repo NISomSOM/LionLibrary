@@ -70,6 +70,8 @@ fun Context.findActivity(): Activity? =
 @Composable
 fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // Read only inside the lambda below, so ticks recompose just the seek bar and time labels.
+    val position by viewModel.positionMs.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = context.findActivity()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -168,6 +170,7 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
 
     PlayerScreen(
         state = state,
+        positionMs = { position },
         videoSurface = {
             androidx.compose.runtime.key(state.session) {
                 PlayerVideoSurface(viewModel.engine, state.engineType)
@@ -183,6 +186,7 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
 @Composable
 fun PlayerScreen(
     state: PlayerState,
+    positionMs: () -> Long,
     videoSurface: @Composable () -> Unit,
     onAction: (PlayerAction) -> Unit,
     onBack: () -> Unit,
@@ -246,7 +250,7 @@ fun PlayerScreen(
         state.playbackState,
         state.panel,
         state.isLocked,
-        state.currentPositionMs,
+        state.seekRevision,
     ) {
         if (
             showControls &&
@@ -315,7 +319,7 @@ fun PlayerScreen(
                             var initialPosition = 0L
                             detectHorizontalDragGestures(
                                 onDragStart = {
-                                    initialPosition = currentState.currentPositionMs
+                                    initialPosition = positionMs()
                                     onAction(PlayerAction.OnControlsVisibilityChanged(true))
                                 },
                                 onHorizontalDrag = { change, dragAmount ->
@@ -366,7 +370,7 @@ fun PlayerScreen(
                             var initialPosition = 0L
                             detectHorizontalDragGestures(
                                 onDragStart = {
-                                    initialPosition = currentState.currentPositionMs
+                                    initialPosition = positionMs()
                                     onAction(PlayerAction.OnControlsVisibilityChanged(true))
                                 },
                                 onHorizontalDrag = { change, dragAmount ->
@@ -446,7 +450,7 @@ fun PlayerScreen(
                             var initialPosition = 0L
                             detectHorizontalDragGestures(
                                 onDragStart = {
-                                    initialPosition = currentState.currentPositionMs
+                                    initialPosition = positionMs()
                                     onAction(PlayerAction.OnControlsVisibilityChanged(true))
                                 },
                                 onHorizontalDrag = { change, dragAmount ->
@@ -570,7 +574,7 @@ fun PlayerScreen(
                 PlayerBottomControls(
                     title = state.title,
                     subtitle = state.subtitle,
-                    currentPositionMs = state.currentPositionMs,
+                    currentPositionMs = positionMs,
                     durationMs = state.durationMs,
                     isEpisode = state.isEpisode,
                     hasPrevious = state.hasPrevious,
@@ -581,8 +585,7 @@ fun PlayerScreen(
                     onScrubEnd = { onAction(PlayerAction.OnScrubEnd) },
                     onPreviousClick = { onAction(PlayerAction.OnPlayPrevious) },
                     onSeekForward90Click = {
-                        val target =
-                            (state.currentPositionMs + 90_000).coerceAtMost(state.durationMs)
+                        val target = (positionMs() + 90_000).coerceAtMost(state.durationMs)
                         onAction(PlayerAction.OnSeek(target))
                     },
                     onSubtitleClick = {
@@ -1009,6 +1012,7 @@ private fun PlayerErrorPreview() {
                         com.singam.lionlibrary.R.string.file_access_error
                     )
             ),
+            { 0L },
             {},
             {},
             {},

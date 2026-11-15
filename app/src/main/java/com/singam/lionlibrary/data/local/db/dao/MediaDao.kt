@@ -16,6 +16,8 @@ interface MediaDao {
 
     @Query("SELECT * FROM media WHERE id = :id") suspend fun getById(id: Long): MediaEntity?
 
+    @Query("SELECT * FROM media WHERE id = :id") fun observeById(id: Long): Flow<MediaEntity?>
+
     @Query("SELECT * FROM media WHERE tmdbId = :tmdbId AND mediaType != 'MOVIE' LIMIT 1")
     suspend fun getTvByTmdbId(tmdbId: Int): MediaEntity?
 

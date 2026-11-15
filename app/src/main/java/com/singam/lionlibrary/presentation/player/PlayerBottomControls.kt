@@ -38,7 +38,7 @@ import com.singam.lionlibrary.presentation.player.engine.AspectMode
 internal fun PlayerBottomControls(
     title: String,
     subtitle: String,
-    currentPositionMs: Long,
+    currentPositionMs: () -> Long,
     durationMs: Long,
     isEpisode: Boolean,
     hasPrevious: Boolean,
@@ -162,14 +162,16 @@ internal fun PlayerBottomControls(
                 }
             }
 
-            PlayerTimes(formatTime(currentPositionMs), formatTime(durationMs))
+            PlayerTimes(currentPositionMs, durationMs)
         }
     }
 }
 
 /** "12:34 / 1:30:00" with tabular digits so the line does not jitter as seconds tick. */
 @Composable
-private fun PlayerTimes(elapsed: String, total: String, modifier: Modifier = Modifier) {
+private fun PlayerTimes(positionMs: () -> Long, durationMs: Long, modifier: Modifier = Modifier) {
+    val elapsed = formatTime(positionMs())
+    val total = formatTime(durationMs)
     val style =
         MaterialTheme.typography.labelLarge.copy(
             fontFeatureSettings = "tnum",
@@ -199,7 +201,7 @@ private fun PlayerTimes(elapsed: String, total: String, modifier: Modifier = Mod
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlayerSeekBar(
-    currentPositionMs: Long,
+    currentPositionMs: () -> Long,
     durationMs: Long,
     onScrub: (Long) -> Unit,
     onScrubEnd: () -> Unit,
@@ -213,7 +215,8 @@ private fun PlayerSeekBar(
         )
     Slider(
         value =
-            if (durationMs > 0) (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f,
+            if (durationMs > 0) (currentPositionMs().toFloat() / durationMs).coerceIn(0f, 1f)
+            else 0f,
         onValueChange = { onScrub((it * durationMs).toLong()) },
         onValueChangeFinished = onScrubEnd,
         modifier = modifier.fillMaxWidth().height(32.dp),
@@ -301,7 +304,7 @@ private fun BottomControlsPreview(
         PlayerBottomControls(
             title = title,
             subtitle = subtitle,
-            currentPositionMs = positionMs,
+            currentPositionMs = { positionMs },
             durationMs = durationMs,
             isEpisode = isEpisode,
             hasPrevious = hasPrevious,

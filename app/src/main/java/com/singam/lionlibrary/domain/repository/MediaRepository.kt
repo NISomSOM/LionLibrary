@@ -20,6 +20,9 @@ interface MediaRepository {
 
     suspend fun getById(id: Long): MediaItem?
 
+    /** The row and its later changes (watchlist, ratings, artwork); null once it is removed. */
+    fun observeById(id: Long): Flow<MediaItem?>
+
     fun getSeasonsForShow(showId: Long): Flow<List<Season>>
 
     fun getEpisodesForSeason(showId: Long, seasonNumber: Int): Flow<List<Episode>>

@@ -23,7 +23,8 @@ data class PlayerState(
     val subtitle: String = "",
     val isPlaying: Boolean = false,
     val playbackState: EnginePlaybackState = EnginePlaybackState.IDLE,
-    val currentPositionMs: Long = 0,
+    /** Bumped by every user seek/scrub, so position-dependent UI timers restart on a seek. */
+    val seekRevision: Int = 0,
     val durationMs: Long = 0,
     val showControls: Boolean = true,
     val isExternalFallbackLoading: Boolean = false,
@@ -157,6 +158,10 @@ class PlayerViewModel(
     private val mediaId = checkNotNull(savedStateHandle.get<Long>("mediaId"))
     private val mutableState = MutableStateFlow(PlayerState())
     val state = mutableState.asStateFlow()
+
+    // Kept out of [state]: it ticks twice a second, and only the seek bar and time labels read it.
+    private val mutablePosition = MutableStateFlow(0L)
+    val positionMs: StateFlow<Long> = mutablePosition.asStateFlow()
     private val mutableEvents = Channel<PlayerEvent>(Channel.BUFFERED)
     val events = mutableEvents.receiveAsFlow()
     var engine: LionPlayerEngine? = null
@@ -263,6 +268,7 @@ class PlayerViewModel(
                     supportsSubtitleDelay = selected.supportsSubtitleDelay,
                     supportsSubtitleScale = selected.supportsSubtitleScale,
                 )
+            mutablePosition.value = 0L
             if (next.episodeId != 0L) {
                 val hasNext = repository.adjacent(next, true) != null
                 val hasPrevious = repository.adjacent(next, false) != null
@@ -279,7 +285,7 @@ class PlayerViewModel(
             selected.setMedia(Uri.parse(path), next.subtitlePath?.let(Uri::parse))
             if (progress != null && !progress.completed && progress.lastPositionMs > 0) {
                 selected.seekTo(progress.lastPositionMs)
-                mutableState.update { it.copy(currentPositionMs = progress.lastPositionMs) }
+                mutablePosition.value = progress.lastPositionMs
             }
             observe(selected)
             ticker = viewModelScope.launch {
@@ -287,9 +293,7 @@ class PlayerViewModel(
                 while (isActive) {
                     delay(500)
                     if (!scrubbing) {
-                        mutableState.update {
-                            it.copy(currentPositionMs = selected.currentPositionMs.coerceAtLeast(0))
-                        }
+                        mutablePosition.value = selected.currentPositionMs.coerceAtLeast(0)
                         refreshSkipButton()
                     }
                     if (state.value.isPlaying && ++ticks % 16 == 0)
@@ -393,7 +397,7 @@ class PlayerViewModel(
             else
                 SkipSegmentPolicy.active(
                         skipSession.segments.value,
-                        current.currentPositionMs,
+                        mutablePosition.value,
                         current.durationMs,
                     )
                     ?.type
@@ -406,7 +410,7 @@ class PlayerViewModel(
         val segment =
             SkipSegmentPolicy.active(
                 skipSession.segments.value,
-                current.currentPositionMs,
+                mutablePosition.value,
                 current.durationMs,
             ) ?: return
         val end = segment.endMs
@@ -499,17 +503,16 @@ class PlayerViewModel(
             PlayerAction.Pause -> pause()
             is PlayerAction.OnHostVisibilityChanged -> engine?.setHostVisible(action.isVisible)
             is PlayerAction.OnSeek -> seek(action.positionMs)
-            PlayerAction.OnSeekForward -> seek(state.value.currentPositionMs + 10_000)
-            PlayerAction.OnSeekBackward -> seek(state.value.currentPositionMs - 10_000)
+            PlayerAction.OnSeekForward -> seek(mutablePosition.value + 10_000)
+            PlayerAction.OnSeekBackward -> seek(mutablePosition.value - 10_000)
             is PlayerAction.OnScrub -> {
                 scrubbing = true
-                mutableState.update {
-                    it.copy(currentPositionMs = action.positionMs.coerceAtLeast(0))
-                }
+                mutablePosition.value = action.positionMs.coerceAtLeast(0)
+                mutableState.update { it.copy(seekRevision = it.seekRevision + 1) }
             }
             PlayerAction.OnScrubEnd -> {
                 scrubbing = false
-                seek(state.value.currentPositionMs)
+                seek(mutablePosition.value)
             }
             is PlayerAction.OnControlsVisibilityChanged ->
                 mutableState.update { it.copy(showControls = action.isVisible) }
@@ -641,7 +644,8 @@ class PlayerViewModel(
         val bounded =
             if (duration > 0) position.coerceIn(0, duration) else position.coerceAtLeast(0)
         engine?.seekTo(bounded)
-        mutableState.update { it.copy(currentPositionMs = bounded) }
+        mutablePosition.value = bounded
+        mutableState.update { it.copy(seekRevision = it.seekRevision + 1) }
         refreshSkipButton()
     }
 
@@ -693,7 +697,7 @@ class PlayerViewModel(
             try {
                 mutableEvents.send(
                     PlayerEvent.LaunchExternalPlayer(
-                        launchPlayerUseCase(Uri.parse(path), state.value.currentPositionMs)
+                        launchPlayerUseCase(Uri.parse(path), mutablePosition.value)
                     )
                 )
             } catch (cancelled: CancellationException) {
@@ -710,7 +714,7 @@ class PlayerViewModel(
 
     private fun save(completed: Boolean = ended): Deferred<OperationResult<Unit, DataError>>? {
         val current = target ?: return null
-        val position = (engine?.currentPositionMs ?: state.value.currentPositionMs).coerceAtLeast(0)
+        val position = (engine?.currentPositionMs ?: mutablePosition.value).coerceAtLeast(0)
         if (position == 0L && !completed) return null
         return repository.save(
             PlaybackSnapshot(

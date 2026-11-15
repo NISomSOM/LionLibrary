@@ -26,6 +26,7 @@ internal fun PlayerInfoOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val formatLabels = rememberPlayerFormatLabels()
     val unknown = stringResource(R.string.ui_info_unknown)
     Column(
         modifier.verticalScroll(rememberScrollState()),
@@ -61,11 +62,11 @@ internal fun PlayerInfoOverlay(
             )
             InfoValue(
                 stringResource(R.string.ui_info_frame_rate),
-                PlayerFormatting.frameRate(video?.frameRate) ?: unknown,
+                PlayerFormatting.frameRate(video?.frameRate, formatLabels) ?: unknown,
             )
             InfoValue(
                 stringResource(R.string.ui_info_bitrate),
-                PlayerFormatting.bitrate(video?.bitrate) ?: unknown,
+                PlayerFormatting.bitrate(video?.bitrate, formatLabels) ?: unknown,
             )
         }
         InfoSection(stringResource(R.string.ui_info_audio)) {
@@ -76,11 +77,11 @@ internal fun PlayerInfoOverlay(
                 InfoValue(stringResource(R.string.ui_info_codec), audio.codec ?: unknown)
                 InfoValue(
                     stringResource(R.string.ui_info_channels),
-                    PlayerFormatting.channels(audio.channels) ?: unknown,
+                    PlayerFormatting.channels(audio.channels, formatLabels) ?: unknown,
                 )
                 InfoValue(
                     stringResource(R.string.ui_info_sample_rate),
-                    PlayerFormatting.sampleRate(audio.sampleRateHz) ?: unknown,
+                    PlayerFormatting.sampleRate(audio.sampleRateHz, formatLabels) ?: unknown,
                 )
                 InfoValue(
                     stringResource(R.string.ui_info_language),

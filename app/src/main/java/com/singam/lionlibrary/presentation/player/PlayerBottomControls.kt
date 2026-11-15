@@ -1,11 +1,9 @@
 package com.singam.lionlibrary.presentation.player
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AspectRatio
@@ -27,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
+import com.singam.lionlibrary.domain.model.PlaybackChapter
 import com.singam.lionlibrary.presentation.player.engine.AspectMode
 
 /**
@@ -56,7 +55,9 @@ internal fun PlayerBottomControls(
     onInfoClick: () -> Unit,
     onNextClick: () -> Unit,
     modifier: Modifier = Modifier,
+    chapters: List<PlaybackChapter> = emptyList(),
 ) {
+    val formatLabels = rememberPlayerFormatLabels()
     Column(modifier.fillMaxWidth()) {
         Text(
             text = title,
@@ -78,7 +79,7 @@ internal fun PlayerBottomControls(
                 modifier = Modifier.fillMaxWidth(.6f),
             )
         }
-        PlayerSeekBar(currentPositionMs, durationMs, onScrub, onScrubEnd)
+        PlayerSeekBar(currentPositionMs, durationMs, chapters, onScrub, onScrubEnd)
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -131,7 +132,7 @@ internal fun PlayerBottomControls(
                         contentDescription =
                             stringResource(
                                 R.string.ui_speed_value,
-                                PlayerFormatting.speed(playbackSpeed),
+                                PlayerFormatting.speed(playbackSpeed, formatLabels),
                             ),
                         onClick = onSpeedClick,
                         isActive = playbackSpeed != 1f,
@@ -196,44 +197,6 @@ private fun PlayerTimes(positionMs: () -> Long, durationMs: Long, modifier: Modi
             maxLines = 1,
         )
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PlayerSeekBar(
-    currentPositionMs: () -> Long,
-    durationMs: Long,
-    onScrub: (Long) -> Unit,
-    onScrubEnd: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors =
-        SliderDefaults.colors(
-            thumbColor = MaterialTheme.colorScheme.primary,
-            activeTrackColor = MaterialTheme.colorScheme.primary,
-            inactiveTrackColor = MaterialTheme.colorScheme.onBackground.copy(alpha = .25f),
-        )
-    Slider(
-        value =
-            if (durationMs > 0) (currentPositionMs().toFloat() / durationMs).coerceIn(0f, 1f)
-            else 0f,
-        onValueChange = { onScrub((it * durationMs).toLong()) },
-        onValueChangeFinished = onScrubEnd,
-        modifier = modifier.fillMaxWidth().height(32.dp),
-        colors = colors,
-        thumb = {
-            Box(Modifier.size(14.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
-        },
-        track = { sliderState ->
-            SliderDefaults.Track(
-                sliderState = sliderState,
-                modifier = Modifier.height(3.dp),
-                colors = colors,
-                drawStopIndicator = null,
-                thumbTrackGapSize = 0.dp,
-            )
-        },
-    )
 }
 
 @Composable

@@ -7,15 +7,11 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
-import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,21 +19,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BrightnessMedium
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -52,8 +43,6 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.presentation.player.engine.AspectMode
 import com.singam.lionlibrary.presentation.player.engine.EnginePlaybackState
-import com.singam.lionlibrary.presentation.player.engine.LionPlayerEngine
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -168,17 +157,26 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
         }
     }
 
+    // Platform brightness/volume work lives here, not in the Screen.
+    val levels =
+        remember(activity) {
+            AndroidPlayerLevelController(
+                activity,
+                context.getSystemService(Context.AUDIO_SERVICE) as AudioManager,
+            )
+        }
     PlayerScreen(
         state = state,
         positionMs = { position },
         videoSurface = {
             androidx.compose.runtime.key(state.session) {
-                PlayerVideoSurface(viewModel.engine, state.engineType)
+                PlayerVideoSurface(state.engineType, onAttach = viewModel::attachVideoSurface)
             }
         },
         onAction = viewModel::onAction,
         onBack = onBack,
         snackbarHostState = snackbarHostState,
+        levels = levels,
     )
 }
 
@@ -191,18 +189,22 @@ fun PlayerScreen(
     onAction: (PlayerAction) -> Unit,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    levels: PlayerLevelController = remember { InMemoryPlayerLevelController() },
 ) {
     val context = LocalContext.current
-    val activity = context.findActivity()
-    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     val showControls = state.showControls
     val currentState by rememberUpdatedState(state)
-    var showLeftSeekFeedback by remember { mutableStateOf(false) }
+    val currentOnAction by rememberUpdatedState(onAction)
+    val currentPosition by rememberUpdatedState(positionMs)
+    // Compose-internal gesture feedback; the values they show come from the engine/controller.
     var brightnessLevel by remember { mutableStateOf<Float?>(null) }
     var brightnessDragging by remember { mutableStateOf(false) }
     var volumeLevel by remember { mutableStateOf<Float?>(null) }
     var volumeDragging by remember { mutableStateOf(false) }
+    var seekDrag by remember { mutableStateOf<SeekDragFeedback?>(null) }
+    var doubleTapZone by remember { mutableStateOf<GestureZone?>(null) }
+    var doubleTapCount by remember { mutableIntStateOf(0) }
 
     // Keep each level pill up briefly after the finger lifts.
     LaunchedEffect(brightnessDragging) {
@@ -217,19 +219,92 @@ fun PlayerScreen(
             volumeLevel = null
         }
     }
-    var showRightSeekFeedback by remember { mutableStateOf(false) }
-
-    LaunchedEffect(showLeftSeekFeedback) {
-        if (showLeftSeekFeedback) {
-            delay(500)
-            showLeftSeekFeedback = false
+    // Each double tap restarts the short "-10 s / +10 s" label.
+    LaunchedEffect(doubleTapCount) {
+        if (doubleTapCount > 0) {
+            delay(600)
+            doubleTapZone = null
         }
     }
-    LaunchedEffect(showRightSeekFeedback) {
-        if (showRightSeekFeedback) {
-            delay(500)
-            showRightSeekFeedback = false
+
+    val gestureHandler =
+        remember(levels) {
+            object : PlayerGestureHandler {
+                private var seekStartMs = 0L
+                private var dragVolume = 0f
+                private var dragBrightness = 0f
+
+                override fun onTap() =
+                    currentOnAction(
+                        PlayerAction.OnControlsVisibilityChanged(!currentState.showControls)
+                    )
+
+                override fun onDoubleTap(zone: GestureZone) {
+                    currentOnAction(
+                        if (zone == GestureZone.LEFT) PlayerAction.OnSeekBackward
+                        else PlayerAction.OnSeekForward
+                    )
+                    doubleTapZone = zone
+                    doubleTapCount++
+                }
+
+                override fun onHoldStart() = currentOnAction(PlayerAction.OnHoldSpeedChange(true))
+
+                override fun onHoldEnd() = currentOnAction(PlayerAction.OnHoldSpeedChange(false))
+
+                override fun onSeekDragStart() {
+                    seekStartMs = currentPosition()
+                    currentOnAction(PlayerAction.OnControlsVisibilityChanged(true))
+                }
+
+                override fun onSeekDrag(totalDxPx: Float, widthPx: Float) {
+                    val duration = currentState.durationMs
+                    val offset = PlayerGestureMath.seekOffsetMs(totalDxPx, widthPx, duration)
+                    val target = PlayerGestureMath.seekTarget(seekStartMs, offset, duration)
+                    currentOnAction(PlayerAction.OnScrub(target))
+                    seekDrag = SeekDragFeedback(target - seekStartMs, target)
+                }
+
+                override fun onSeekDragEnd() {
+                    currentOnAction(PlayerAction.OnScrubEnd)
+                    seekDrag = null
+                }
+
+                override fun onLevelDrag(zone: GestureZone, deltaLevel: Float) {
+                    if (zone == GestureZone.LEFT) {
+                        if (!volumeDragging) dragVolume = levels.volume()
+                        volumeDragging = true
+                        // Fractional target so slow drags still accumulate between volume steps.
+                        dragVolume = (dragVolume + deltaLevel).coerceIn(0f, 1f)
+                        levels.setVolume(dragVolume)
+                        volumeLevel = dragVolume
+                    } else {
+                        if (!brightnessDragging) dragBrightness = levels.brightness()
+                        brightnessDragging = true
+                        dragBrightness = (dragBrightness + deltaLevel).coerceIn(0f, 1f)
+                        levels.setBrightness(dragBrightness)
+                        brightnessLevel = dragBrightness
+                    }
+                }
+
+                override fun onLevelDragEnd(zone: GestureZone) {
+                    if (zone == GestureZone.LEFT) volumeDragging = false
+                    else brightnessDragging = false
+                }
+            }
         }
+    val density = LocalDensity.current
+    val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
+    val systemGestures = WindowInsets.systemGestures
+    val exclusion = {
+        // At least 24 dp at each edge: back gestures and transient system bars live there.
+        val minimum = with(density) { 24.dp.toPx() }
+        GestureExclusion(
+            leftPx = maxOf(systemGestures.getLeft(density, layoutDirection).toFloat(), minimum),
+            rightPx = maxOf(systemGestures.getRight(density, layoutDirection).toFloat(), minimum),
+            topPx = maxOf(systemGestures.getTop(density).toFloat(), minimum),
+            bottomPx = maxOf(systemGestures.getBottom(density).toFloat(), minimum),
+        )
     }
 
     // Auto-hide controls; an open panel keeps them up. Locked, the unlock button always fades.
@@ -269,229 +344,20 @@ fun PlayerScreen(
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         videoSurface()
 
-        Row(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier =
-                    Modifier.weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(state.isLocked) {
-                            if (state.isLocked) return@pointerInput
-                            val maxVolume =
-                                audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                            // Fractional so slow drags still accumulate between volume steps.
-                            var dragVolume = 0f
-                            detectVerticalDragGestures(
-                                onDragStart = {
-                                    dragVolume =
-                                        audioManager
-                                            .getStreamVolume(AudioManager.STREAM_MUSIC)
-                                            .toFloat()
-                                    volumeDragging = true
-                                    volumeLevel = if (maxVolume > 0) dragVolume / maxVolume else 0f
-                                },
-                                onDragEnd = { volumeDragging = false },
-                                onDragCancel = { volumeDragging = false },
-                                onVerticalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val dragDelta = -dragAmount / size.height
-                                    dragVolume =
-                                        (dragVolume + dragDelta * maxVolume * 2).coerceIn(
-                                            0f,
-                                            maxVolume.toFloat(),
-                                        )
-                                    val newVolume = dragVolume.roundToInt()
-                                    if (
-                                        newVolume !=
-                                            audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                    ) {
-                                        audioManager.setStreamVolume(
-                                            AudioManager.STREAM_MUSIC,
-                                            newVolume,
-                                            0,
-                                        )
-                                    }
-                                    volumeLevel = if (maxVolume > 0) dragVolume / maxVolume else 0f
-                                },
-                            )
-                        }
-                        .pointerInput(state.isLocked) {
-                            if (state.isLocked) return@pointerInput
-                            var initialPosition = 0L
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    initialPosition = positionMs()
-                                    onAction(PlayerAction.OnControlsVisibilityChanged(true))
-                                },
-                                onHorizontalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val fullWidth = size.width * 3f
-                                    val dragDeltaMs =
-                                        (dragAmount / fullWidth) * currentState.durationMs * 0.5f
-                                    val newPosition =
-                                        (initialPosition + dragDeltaMs.toLong()).coerceIn(
-                                            0L,
-                                            currentState.durationMs.coerceAtLeast(0),
-                                        )
-                                    onAction(PlayerAction.OnScrub(newPosition))
-                                    initialPosition = newPosition
-                                },
-                                onDragEnd = { onAction(PlayerAction.OnScrubEnd) },
-                                onDragCancel = { onAction(PlayerAction.OnScrubEnd) },
-                            )
-                        }
-                        .pointerInput(state.isLocked) {
-                            val locked = state.isLocked
-                            detectTapGestures(
-                                onDoubleTap = { _: Offset ->
-                                        showLeftSeekFeedback = true
-                                        onAction(PlayerAction.OnSeekBackward)
-                                    }
-                                        .takeUnless { locked },
-                                onTap = {
-                                    onAction(
-                                        PlayerAction.OnControlsVisibilityChanged(
-                                            !currentState.showControls
-                                        )
-                                    )
-                                },
-                            )
-                        },
-                contentAlignment = Alignment.Center,
-            ) {
-                SeekFeedback(visible = showLeftSeekFeedback, isForward = false)
-            }
+        Box(
+            Modifier.fillMaxSize()
+                .testTag("player-gestures")
+                .playerGestures(state.isLocked, exclusion, gestureHandler)
+        )
 
-            Box(
-                modifier =
-                    Modifier.weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(state.isLocked) {
-                            if (state.isLocked) return@pointerInput
-                            var initialPosition = 0L
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    initialPosition = positionMs()
-                                    onAction(PlayerAction.OnControlsVisibilityChanged(true))
-                                },
-                                onHorizontalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val fullWidth = size.width * 3f
-                                    val dragDeltaMs =
-                                        (dragAmount / fullWidth) * currentState.durationMs * 0.5f
-                                    val newPosition =
-                                        (initialPosition + dragDeltaMs.toLong()).coerceIn(
-                                            0L,
-                                            currentState.durationMs.coerceAtLeast(0),
-                                        )
-                                    onAction(PlayerAction.OnScrub(newPosition))
-                                    initialPosition = newPosition
-                                },
-                                onDragEnd = { onAction(PlayerAction.OnScrubEnd) },
-                                onDragCancel = { onAction(PlayerAction.OnScrubEnd) },
-                            )
-                        }
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = {
-                                    onAction(
-                                        PlayerAction.OnControlsVisibilityChanged(
-                                            !currentState.showControls
-                                        )
-                                    )
-                                }
-                            )
-                        }
-            )
-
-            Box(
-                modifier =
-                    Modifier.weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(state.isLocked) {
-                            if (state.isLocked) return@pointerInput
-                            var initialBrightness = 0f
-                            detectVerticalDragGestures(
-                                onDragStart = {
-                                    val window = activity?.window
-                                    initialBrightness = window?.attributes?.screenBrightness ?: 0.5f
-                                    if (initialBrightness < 0f) {
-                                        try {
-                                            val sysBrightness =
-                                                Settings.System.getInt(
-                                                    context.contentResolver,
-                                                    Settings.System.SCREEN_BRIGHTNESS,
-                                                )
-                                            initialBrightness = sysBrightness / 255f
-                                        } catch (e: Exception) {
-                                            initialBrightness = 0.5f
-                                        }
-                                    }
-                                    brightnessDragging = true
-                                    brightnessLevel = initialBrightness
-                                },
-                                onDragEnd = { brightnessDragging = false },
-                                onDragCancel = { brightnessDragging = false },
-                                onVerticalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val dragDelta = -dragAmount / size.height
-                                    val newBrightness =
-                                        (initialBrightness + dragDelta * 2).coerceIn(0f, 1f)
-                                    activity?.window?.attributes =
-                                        activity?.window?.attributes?.apply {
-                                            screenBrightness = newBrightness
-                                        }
-                                    initialBrightness = newBrightness
-                                    brightnessLevel = newBrightness
-                                },
-                            )
-                        }
-                        .pointerInput(state.isLocked) {
-                            if (state.isLocked) return@pointerInput
-                            var initialPosition = 0L
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    initialPosition = positionMs()
-                                    onAction(PlayerAction.OnControlsVisibilityChanged(true))
-                                },
-                                onHorizontalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val fullWidth = size.width * 3f
-                                    val dragDeltaMs =
-                                        (dragAmount / fullWidth) * currentState.durationMs * 0.5f
-                                    val newPosition =
-                                        (initialPosition + dragDeltaMs.toLong()).coerceIn(
-                                            0L,
-                                            currentState.durationMs.coerceAtLeast(0),
-                                        )
-                                    onAction(PlayerAction.OnScrub(newPosition))
-                                    initialPosition = newPosition
-                                },
-                                onDragEnd = { onAction(PlayerAction.OnScrubEnd) },
-                                onDragCancel = { onAction(PlayerAction.OnScrubEnd) },
-                            )
-                        }
-                        .pointerInput(state.isLocked) {
-                            val locked = state.isLocked
-                            detectTapGestures(
-                                onDoubleTap = { _: Offset ->
-                                        showRightSeekFeedback = true
-                                        onAction(PlayerAction.OnSeekForward)
-                                    }
-                                        .takeUnless { locked },
-                                onTap = {
-                                    onAction(
-                                        PlayerAction.OnControlsVisibilityChanged(
-                                            !currentState.showControls
-                                        )
-                                    )
-                                },
-                            )
-                        },
-                contentAlignment = Alignment.Center,
-            ) {
-                SeekFeedback(visible = showRightSeekFeedback, isForward = true)
-            }
-        }
+        // Seek and speed feedback: shadowed text near the top, clear of the picture's centre.
+        PlayerGestureFeedback(
+            seekDrag = seekDrag,
+            doubleTapZone = doubleTapZone,
+            isHoldSpeedActive = state.isHoldSpeedActive,
+            modifier =
+                Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 56.dp),
+        )
 
         val unlocked = !state.isLocked
         AnimatedVisibility(
@@ -596,6 +462,7 @@ fun PlayerScreen(
                     onAspectClick = { onAction(PlayerAction.OnAspectCycle) },
                     onInfoClick = { onAction(PlayerAction.OnPanelChange(PlayerPanel.INFO)) },
                     onNextClick = { onAction(PlayerAction.OnPlayNext) },
+                    chapters = state.chapters,
                     modifier =
                         Modifier.align(Alignment.BottomCenter)
                             .safeDrawingPadding()
@@ -647,21 +514,22 @@ fun PlayerScreen(
             PlayerPanelHost(state = state, onAction = onAction)
         }
 
-        GestureLevelPill(
+        // Slim bars at the edge opposite the finger, so the hand never covers the value.
+        PlayerLevelBar(
             level = brightnessLevel,
             icon = Icons.Default.BrightnessMedium,
             contentDescription = stringResource(R.string.ui_brightness),
             modifier =
-                Modifier.align(Alignment.CenterStart).safeDrawingPadding().padding(start = 32.dp),
+                Modifier.align(Alignment.CenterStart).safeDrawingPadding().padding(start = 20.dp),
         )
-        GestureLevelPill(
+        PlayerLevelBar(
             level = volumeLevel,
             icon =
                 if ((volumeLevel ?: 1f) <= 0f) Icons.AutoMirrored.Filled.VolumeOff
                 else Icons.AutoMirrored.Filled.VolumeUp,
             contentDescription = stringResource(R.string.ui_volume),
             modifier =
-                Modifier.align(Alignment.CenterEnd).safeDrawingPadding().padding(end = 32.dp),
+                Modifier.align(Alignment.CenterEnd).safeDrawingPadding().padding(end = 20.dp),
         )
 
         state.failure?.let { failure ->
@@ -816,134 +684,9 @@ private fun AspectFeedback(mode: AspectMode, modifier: Modifier = Modifier) {
     }
 }
 
-/** Vertical level indicator shown while a brightness or volume swipe is in progress. */
-@Composable
-private fun GestureLevelPill(
-    level: Float?,
-    icon: ImageVector,
-    contentDescription: String,
-    modifier: Modifier = Modifier,
-) {
-    // Compose-internal: keeps the last fill while the pill fades out.
-    var lastLevel by remember { mutableFloatStateOf(0f) }
-    if (level != null) lastLevel = level.coerceIn(0f, 1f)
-    androidx.compose.animation.AnimatedVisibility(
-        visible = level != null,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = modifier,
-    ) {
-        GestureLevelIndicator(lastLevel, icon, contentDescription)
-    }
-}
-
-@Composable
-private fun GestureLevelIndicator(
-    level: Float,
-    icon: ImageVector,
-    contentDescription: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.width(44.dp),
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.scrim.copy(alpha = .6f),
-        contentColor = MaterialTheme.colorScheme.onBackground,
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = stringResource(R.string.ui_level_percent, (level * 100).roundToInt()),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
-            Spacer(Modifier.height(8.dp))
-            Box(
-                modifier =
-                    Modifier.width(6.dp)
-                        .height(120.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(MaterialTheme.colorScheme.onBackground.copy(alpha = .25f)),
-                contentAlignment = Alignment.BottomCenter,
-            ) {
-                Box(
-                    Modifier.fillMaxWidth()
-                        .fillMaxHeight(level.coerceIn(0f, 1f))
-                        .background(MaterialTheme.colorScheme.primary)
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(20.dp),
-            )
-        }
-    }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(name = "Brightness level")
-@Composable
-private fun BrightnessLevelPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
-        GestureLevelIndicator(.6f, Icons.Default.BrightnessMedium, "Brightness")
-    }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(name = "Volume full")
-@Composable
-private fun VolumeFullPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
-        GestureLevelIndicator(1f, Icons.AutoMirrored.Filled.VolumeUp, "Volume")
-    }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(name = "Volume muted")
-@Composable
-private fun VolumeMutedPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
-        GestureLevelIndicator(0f, Icons.AutoMirrored.Filled.VolumeOff, "Volume")
-    }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(name = "Level, large font", fontScale = 2f)
-@Composable
-private fun LevelLargeFontPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
-        GestureLevelIndicator(1f, Icons.Default.BrightnessMedium, "Brightness")
-    }
-}
-
-@Composable
-private fun SeekFeedback(visible: Boolean, isForward: Boolean) {
-    androidx.compose.animation.AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector =
-                    if (isForward) Icons.Default.FastForward else Icons.Default.FastRewind,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(48.dp),
-            )
-            Text(
-                text = if (isForward) "+10s" else "-10s",
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-            )
-        }
-    }
-}
-
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-private fun PlayerVideoSurface(engine: LionPlayerEngine?, engineType: EngineType) {
+private fun PlayerVideoSurface(engineType: EngineType, onAttach: (android.view.ViewGroup) -> Unit) {
     // Pick video surface by engine.
     when (engineType) {
         EngineType.EXOPLAYER -> {
@@ -974,7 +717,7 @@ private fun PlayerVideoSurface(engine: LionPlayerEngine?, engineType: EngineType
                             )
                     }
                 },
-                update = { view -> engine?.attachToView(view as android.view.ViewGroup) },
+                update = { view -> onAttach(view as android.view.ViewGroup) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -989,7 +732,7 @@ private fun PlayerVideoSurface(engine: LionPlayerEngine?, engineType: EngineType
                             )
                     }
                 },
-                update = { view -> engine?.attachToView(view as android.view.ViewGroup) },
+                update = { view -> onAttach(view as android.view.ViewGroup) },
                 modifier = Modifier.fillMaxSize(),
             )
         }

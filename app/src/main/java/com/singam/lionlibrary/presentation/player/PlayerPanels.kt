@@ -49,6 +49,7 @@ internal fun SubtitlePanel(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val formatLabels = rememberPlayerFormatLabels()
     val languages = PlayerFormatting.subtitleLanguages(tracks)
     val visible = PlayerFormatting.filterSubtitles(tracks, languageFilter)
     PanelSurface(modifier) {
@@ -118,7 +119,7 @@ internal fun SubtitlePanel(
                     ColumnLabel(stringResource(R.string.ui_style))
                     StepperRow(
                         label = stringResource(R.string.ui_subtitle_delay),
-                        value = PlayerFormatting.subtitleDelay(delayMs),
+                        value = PlayerFormatting.subtitleDelay(delayMs, formatLabels),
                         enabled = supportsDelay,
                         onDecrease = { onDelayChange(-SUBTITLE_DELAY_STEP_MS) },
                         onIncrease = { onDelayChange(SUBTITLE_DELAY_STEP_MS) },
@@ -152,6 +153,7 @@ internal fun AudioPanel(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val formatLabels = rememberPlayerFormatLabels()
     PanelSurface(modifier) {
         PanelHeader(stringResource(R.string.ui_audio_tracks), onDismiss)
         if (tracks.isEmpty()) {
@@ -171,7 +173,7 @@ internal fun AudioPanel(
                     detail =
                         listOfNotNull(
                                 track.codec,
-                                PlayerFormatting.channels(track.channels),
+                                PlayerFormatting.channels(track.channels, formatLabels),
                                 PlayerFormatting.languageName(track.language),
                             )
                             .distinct()
@@ -195,6 +197,7 @@ internal fun SpeedPanel(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val formatLabels = rememberPlayerFormatLabels()
     PanelSurface(modifier) {
         PanelHeader(stringResource(R.string.ui_playback_speed), onDismiss)
         FlowRow(
@@ -205,7 +208,7 @@ internal fun SpeedPanel(
                 FilterChip(
                     selected = option == speed,
                     onClick = { onSpeedSelect(option) },
-                    label = { Text(PlayerFormatting.speed(option)) },
+                    label = { Text(PlayerFormatting.speed(option, formatLabels)) },
                     colors =
                         FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MaterialTheme.colorScheme.primary,

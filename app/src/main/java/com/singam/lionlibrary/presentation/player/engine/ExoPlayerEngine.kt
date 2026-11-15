@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.update
 // ExoPlayer implementation.
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class ExoPlayerEngine(context: Context) : LionPlayerEngine {
+    private val appContext: Context = context.applicationContext
 
     override val engineType: EngineType = EngineType.EXOPLAYER
 
@@ -166,7 +167,14 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
                     result.add(
                         EngineTrackInfo(
                             id = "${group.mediaTrackGroup.id}_$i",
-                            label = trackLabel(format, "Audio Track ${result.size + 1}"),
+                            label =
+                                trackLabel(
+                                    format,
+                                    appContext.getString(
+                                        com.singam.lionlibrary.R.string.player_audio_track_fallback,
+                                        result.size + 1,
+                                    ),
+                                ),
                             isSelected = isSelected,
                             language = format.language?.takeIf { it.isNotBlank() && it != "und" },
                             codec = PlayerCodecNames.fromMime(format.sampleMimeType),
@@ -214,7 +222,15 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
                     result.add(
                         EngineTrackInfo(
                             id = "${group.mediaTrackGroup.id}_$i",
-                            label = trackLabel(format, "Subtitle Track ${result.size + 1}"),
+                            label =
+                                trackLabel(
+                                    format,
+                                    appContext.getString(
+                                        com.singam.lionlibrary.R.string
+                                            .player_subtitle_track_fallback,
+                                        result.size + 1,
+                                    ),
+                                ),
                             isSelected = isSelected,
                             language = format.language?.takeIf { it.isNotBlank() && it != "und" },
                             codec = PlayerCodecNames.fromMime(format.sampleMimeType),

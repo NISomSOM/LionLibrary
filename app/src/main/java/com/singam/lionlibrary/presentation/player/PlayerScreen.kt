@@ -1,12 +1,16 @@
 package com.singam.lionlibrary.presentation.player
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Typeface
 import android.media.AudioManager
+import android.util.TypedValue
+import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -14,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
@@ -21,14 +26,20 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -38,14 +49,20 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.EngineType
+import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.player.engine.AspectMode
 import com.singam.lionlibrary.presentation.player.engine.EnginePlaybackState
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
+import com.singam.lionlibrary.ui.theme.LionTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import org.videolan.libvlc.util.VLCVideoLayout
 
 private const val PAUSE_CARD_DELAY_MS = 5_000L
 
@@ -66,7 +83,7 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val view = androidx.compose.ui.platform.LocalView.current
+    val view = LocalView.current
 
     DisposableEffect(view, state.isPlaying) {
         val previous = view.keepScreenOn
@@ -139,7 +156,7 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
                     try {
                         context.startActivity(event.intent)
                         viewModel.onAction(PlayerAction.ExternalLaunchResult(true))
-                    } catch (_: android.content.ActivityNotFoundException) {
+                    } catch (_: ActivityNotFoundException) {
                         viewModel.onAction(PlayerAction.ExternalLaunchResult(false))
                     } catch (_: SecurityException) {
                         viewModel.onAction(PlayerAction.ExternalLaunchResult(false))
@@ -169,7 +186,7 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
         state = state,
         positionMs = { position },
         videoSurface = {
-            androidx.compose.runtime.key(state.session) {
+            key(state.session) {
                 PlayerVideoSurface(state.engineType, onAttach = viewModel::attachVideoSurface)
             }
         },
@@ -227,8 +244,9 @@ fun PlayerScreen(
         }
     }
 
+    val haptics = LocalHapticFeedback.current
     val gestureHandler =
-        remember(levels) {
+        remember(levels, haptics) {
             object : PlayerGestureHandler {
                 private var seekStartMs = 0L
                 private var dragVolume = 0f
@@ -244,11 +262,17 @@ fun PlayerScreen(
                         if (zone == GestureZone.LEFT) PlayerAction.OnSeekBackward
                         else PlayerAction.OnSeekForward
                     )
+                    haptics.performHapticFeedback(HapticFeedbackType.VirtualKey)
                     doubleTapZone = zone
                     doubleTapCount++
                 }
 
-                override fun onHoldStart() = currentOnAction(PlayerAction.OnHoldSpeedChange(true))
+                override fun onHoldStart() {
+                    // Only a playing, unlocked player speeds up; feedback follows that state.
+                    if (currentState.isPlaying && !currentState.isLocked)
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    currentOnAction(PlayerAction.OnHoldSpeedChange(true))
+                }
 
                 override fun onHoldEnd() = currentOnAction(PlayerAction.OnHoldSpeedChange(false))
 
@@ -294,7 +318,7 @@ fun PlayerScreen(
             }
         }
     val density = LocalDensity.current
-    val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
+    val layoutDirection = LocalLayoutDirection.current
     val systemGestures = WindowInsets.systemGestures
     val exclusion = {
         // At least 24 dp at each edge: back gestures and transient system bars live there.
@@ -341,7 +365,7 @@ fun PlayerScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(modifier = Modifier.fillMaxSize().background(LionTheme.colors.playerBackground)) {
         videoSurface()
 
         Box(
@@ -536,7 +560,7 @@ fun PlayerScreen(
             Card(Modifier.align(Alignment.Center).safeDrawingPadding().padding(24.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text(failure.resolve(context), style = MaterialTheme.typography.bodyLarge)
-                    androidx.compose.foundation.layout.FlowRow {
+                    FlowRow {
                         TextButton(onClick = { onAction(PlayerAction.Retry) }) {
                             Text(stringResource(R.string.retry))
                         }
@@ -554,9 +578,9 @@ fun PlayerScreen(
         ) { snackbarData ->
             Snackbar(
                 snackbarData = snackbarHostState.currentSnackbarData ?: snackbarData,
-                containerColor = Color(0xFF2D2D2D),
-                contentColor = Color.White,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                containerColor = LionTheme.colors.snackbar,
+                contentColor = LionTheme.colors.onMedia,
+                shape = RoundedCornerShape(12.dp),
             )
         }
     }
@@ -685,8 +709,8 @@ private fun AspectFeedback(mode: AspectMode, modifier: Modifier = Modifier) {
 }
 
 @Composable
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-private fun PlayerVideoSurface(engineType: EngineType, onAttach: (android.view.ViewGroup) -> Unit) {
+@androidx.annotation.OptIn(UnstableApi::class)
+private fun PlayerVideoSurface(engineType: EngineType, onAttach: (ViewGroup) -> Unit) {
     // Pick video surface by engine.
     when (engineType) {
         EngineType.EXOPLAYER -> {
@@ -697,49 +721,49 @@ private fun PlayerVideoSurface(engineType: EngineType, onAttach: (android.view.V
                         // VLC-style subtitles.
                         subtitleView?.apply {
                             setStyle(
-                                androidx.media3.ui.CaptionStyleCompat(
+                                CaptionStyleCompat(
                                     android.graphics.Color.WHITE,
                                     android.graphics.Color.TRANSPARENT,
                                     android.graphics.Color.TRANSPARENT,
-                                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                                    CaptionStyleCompat.EDGE_TYPE_OUTLINE,
                                     android.graphics.Color.BLACK,
-                                    android.graphics.Typeface.DEFAULT,
+                                    Typeface.DEFAULT,
                                 )
                             )
                             setBottomPaddingFraction(0.04f)
                             setApplyEmbeddedFontSizes(false)
-                            setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
+                            setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                         }
                         layoutParams =
-                            android.view.ViewGroup.LayoutParams(
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
                             )
                     }
                 },
-                update = { view -> onAttach(view as android.view.ViewGroup) },
+                update = { view -> onAttach(view as ViewGroup) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
         EngineType.LIBVLC -> {
             AndroidView(
                 factory = { ctx ->
-                    org.videolan.libvlc.util.VLCVideoLayout(ctx).apply {
+                    VLCVideoLayout(ctx).apply {
                         layoutParams =
-                            android.view.ViewGroup.LayoutParams(
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
                             )
                     }
                 },
-                update = { view -> onAttach(view as android.view.ViewGroup) },
+                update = { view -> onAttach(view as ViewGroup) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Player unavailable",
     widthDp = 760,
     heightDp = 360,
@@ -747,14 +771,9 @@ private fun PlayerVideoSurface(engineType: EngineType, onAttach: (android.view.V
 )
 @Composable
 private fun PlayerErrorPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         PlayerScreen(
-            PlayerState(
-                failure =
-                    com.singam.lionlibrary.presentation.common.UiText.Resource(
-                        com.singam.lionlibrary.R.string.file_access_error
-                    )
-            ),
+            PlayerState(failure = UiText.Resource(R.string.file_access_error)),
             { 0L },
             {},
             {},

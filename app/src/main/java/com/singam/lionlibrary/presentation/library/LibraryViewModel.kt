@@ -7,6 +7,7 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.domain.repository.MediaRepository
 import com.singam.lionlibrary.presentation.common.UiText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
@@ -151,7 +152,7 @@ class LibraryViewModel(private val media: MediaRepository, private val saved: Sa
                 viewModelScope.launch {
                     try {
                         media.toggleWatchlist(action.id)
-                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
                         local.update { it.copy(error = UiText.Resource(R.string.error_storage)) }

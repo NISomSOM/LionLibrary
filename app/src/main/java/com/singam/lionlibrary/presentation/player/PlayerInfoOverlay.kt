@@ -12,11 +12,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.presentation.player.engine.EngineTrackInfo
 import com.singam.lionlibrary.presentation.player.engine.EngineVideoInfo
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 
 /** File, engine and stream details, as small labels over large values. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -147,10 +149,10 @@ private fun InfoValue(label: String, value: String, wide: Boolean = false) {
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Info, full", widthDp = 800, heightDp = 420)
+@Preview(name = "Info, full", widthDp = 800, heightDp = 420)
 @Composable
 private fun InfoFullPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         PlayerInfoOverlay(
             PlayerInfoUi(
                 fileName = "Frieren - S01E12 - A Real Hero [1080p].mkv",
@@ -175,10 +177,10 @@ private fun InfoFullPreview() {
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Info, sparse", widthDp = 800, heightDp = 420)
+@Preview(name = "Info, sparse", widthDp = 800, heightDp = 420)
 @Composable
 private fun InfoSparsePreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         PlayerInfoOverlay(
             PlayerInfoUi("movie.mp4", EngineType.EXOPLAYER, null, null, null),
             {},

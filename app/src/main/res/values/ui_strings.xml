@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- %1$d = season number -->
+    <string name="season_number">Season %1$d</string>
+    <!-- Jump Back In options: %1$d season, %2$d episode, %3$s episode title (may be empty) -->
+    <string name="jump_back_in_episode">S%1$dE%2$d • %3$s</string>
+</resources>

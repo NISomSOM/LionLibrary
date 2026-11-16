@@ -1,11 +1,16 @@
 package com.singam.lionlibrary.presentation.details
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.content.res.Configuration
+import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,12 +50,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedIconButton
-import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -59,8 +64,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,28 +76,47 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.Episode
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.isSingleFile
 import com.singam.lionlibrary.presentation.components.ArtworkTitle
+import com.singam.lionlibrary.presentation.components.DeletionDialog
 import com.singam.lionlibrary.presentation.components.EpisodeCard
+import com.singam.lionlibrary.presentation.components.ImdbBadge
+import com.singam.lionlibrary.presentation.components.ImdbYellow
+import com.singam.lionlibrary.presentation.components.LetterboxdGreen
+import com.singam.lionlibrary.presentation.components.LetterboxdMark
 import com.singam.lionlibrary.presentation.components.LocalArtwork
+import com.singam.lionlibrary.presentation.components.MediaOptionItem
+import com.singam.lionlibrary.presentation.components.PreviewFilm
+import com.singam.lionlibrary.ui.theme.LionAlpha
 import com.singam.lionlibrary.ui.theme.LionLayout
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import com.singam.lionlibrary.ui.theme.LionMotion
+import com.singam.lionlibrary.ui.theme.LionTheme
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -97,14 +124,14 @@ import org.koin.androidx.compose.koinViewModel
 fun DetailsRoot(
     snackbarHostState: SnackbarHostState,
     windowSizeClass: WindowSizeClass,
-    onNavigateToPlayer: (String, Long) -> Unit,
+    onNavigateToPlayer: (MediaType, Long) -> Unit,
     onBack: () -> Unit = {},
     viewModel: DetailsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val resources = androidx.compose.ui.platform.LocalResources.current
-    val snackbarScope = androidx.compose.runtime.rememberCoroutineScope()
+    val resources = LocalResources.current
+    val snackbarScope = rememberCoroutineScope()
     // Snackbars run in their own coroutine so a visible message never delays navigation.
     fun showSnackbar(message: String) {
         snackbarScope.launch { snackbarHostState.showSnackbar(message) }
@@ -123,25 +150,19 @@ fun DetailsRoot(
                     try {
                         context.startActivity(event.intent)
                     } catch (e: Exception) {
-                        showSnackbar(
-                            resources.getString(
-                                com.singam.lionlibrary.R.string.external_launch_error
-                            )
-                        )
+                        showSnackbar(resources.getString(R.string.external_launch_error))
                     }
                 }
                 is DetailsEvent.OpenUrl -> {
                     try {
                         context.startActivity(
-                            android.content.Intent(
-                                android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse(event.url),
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse(event.url),
                             )
                         )
-                    } catch (e: android.content.ActivityNotFoundException) {
-                        showSnackbar(
-                            resources.getString(com.singam.lionlibrary.R.string.error_not_found)
-                        )
+                    } catch (e: ActivityNotFoundException) {
+                        showSnackbar(resources.getString(R.string.error_not_found))
                     }
                 }
             }
@@ -167,7 +188,7 @@ fun DetailsScreen(
 ) {
     val selectedEpisodeForOptions = state.selectedEpisodeForOptions
     val sheetState = rememberModalBottomSheetState()
-    com.singam.lionlibrary.presentation.components.DeletionDialog(
+    DeletionDialog(
         state.deletion,
         { onAction(DetailsAction.ConfirmDelete) },
         { onAction(DetailsAction.DismissDelete) },
@@ -189,9 +210,7 @@ fun DetailsScreen(
                 ) {
                     Text(
                         state.error?.resolve(LocalContext.current)
-                            ?: androidx.compose.ui.res.stringResource(
-                                com.singam.lionlibrary.R.string.file_access_error
-                            ),
+                            ?: stringResource(R.string.file_access_error),
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -203,7 +222,7 @@ fun DetailsScreen(
     val contentAlpha = remember(media.id) { Animatable(0f) }
     LaunchedEffect(media.id) { contentAlpha.animateTo(1f, tween(240, easing = LionMotion.Easing)) }
 
-    var toolbarHeightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var toolbarHeightPx by remember { mutableIntStateOf(0) }
     var primaryActionAboveToolbar by remember(media.id) { mutableStateOf(false) }
     val showTopBarBackground by
         remember(media.id, listState) {
@@ -225,7 +244,7 @@ fun DetailsScreen(
         ModalBottomSheet(
             onDismissRequest = { onAction(DetailsAction.SelectOptions(null)) },
             sheetState = sheetState,
-            containerColor = Color(0xFF1E1E1E),
+            containerColor = LionTheme.colors.sheet,
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
                 Row(
@@ -248,47 +267,42 @@ fun DetailsScreen(
                             text = episode.title ?: "Episode ${episode.episodeNumber}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White,
+                            color = LionTheme.colors.onMedia,
                         )
                         Text(
-                            text = "Season ${episode.seasonNumber}",
+                            text =
+                                stringResource(
+                                    R.string.season_number,
+                                    episode.seasonNumber,
+                                ),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color.Gray,
+                            color = LionTheme.colors.textSecondary,
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                EpisodeOptionItem(
+                MediaOptionItem(
                     icon = Icons.Default.CheckCircle,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_mark_as_watched_upto_here
-                        ),
+                    text = stringResource(R.string.ui_mark_as_watched_upto_here),
                     onClick = {
                         onAction(DetailsAction.SelectOptions(null))
                         onAction(DetailsAction.OnMarkWatchedUpTo(episode))
                     },
                 )
-                EpisodeOptionItem(
+                MediaOptionItem(
                     icon = Icons.Default.PlayArrow,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_play_in_external_player
-                        ),
+                    text = stringResource(R.string.ui_play_in_external_player),
                     onClick = {
                         onAction(DetailsAction.SelectOptions(null))
                         onAction(DetailsAction.OnPlayEpisodeExternal(episode))
                     },
-                    iconTint = Color(0xFFE5B13A),
+                    iconTint = LionTheme.colors.ratingStar,
                 )
-                EpisodeOptionItem(
-                    icon = androidx.compose.material.icons.Icons.Default.Delete,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.delete_from_device
-                        ),
+                MediaOptionItem(
+                    icon = Icons.Default.Delete,
+                    text = stringResource(R.string.delete_from_device),
                     onClick = { onAction(DetailsAction.RequestDeleteEpisode(episode.id)) },
                     iconTint = MaterialTheme.colorScheme.error,
                 )
@@ -296,10 +310,9 @@ fun DetailsScreen(
         }
     }
 
-    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val configuration = LocalConfiguration.current
     val isTablet = configuration.smallestScreenWidthDp >= 600
-    val isPortrait =
-        configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     val isLandscapeMode = !isPortrait
 
     val isTwoPane = isTablet && isLandscapeMode && !media.isSingleFile
@@ -310,7 +323,7 @@ fun DetailsScreen(
         if (isTwoPane) {
             Row(modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                    HeroHeaderSection(media, state, isLandscapeMode, onAction)
+                    HeroHeaderSection(media, state.playbackLabel(), isLandscapeMode, onAction)
                 }
 
                 LazyColumn(
@@ -338,7 +351,7 @@ fun DetailsScreen(
                         if (isTabletPortraitMovie) Modifier.fillParentMaxHeight() else Modifier
                     HeroHeaderSection(
                         media,
-                        state,
+                        state.playbackLabel(),
                         isLandscapeMode,
                         onAction,
                         heroModifier,
@@ -387,32 +400,29 @@ fun DetailsScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription =
-                                androidx.compose.ui.res.stringResource(
-                                    com.singam.lionlibrary.R.string.back
-                                ),
-                            tint = Color.White,
+                            contentDescription = stringResource(R.string.back),
+                            tint = LionTheme.colors.onMedia,
                         )
                     }
                 },
                 colors =
                     TopAppBarDefaults.topAppBarColors(
-                        containerColor = if (isTwoPane) Color(0xFF141414) else topBarColor,
-                        titleContentColor = Color.White,
+                        containerColor = if (isTwoPane) LionTheme.colors.pane else topBarColor,
+                        titleContentColor = LionTheme.colors.onMedia,
                     ),
             )
         } else {
             IconButton(onClick = onBack, modifier = Modifier.padding(16.dp)) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.back
-                        ),
-                    tint = Color.White,
+                    contentDescription = stringResource(R.string.back),
+                    tint = LionTheme.colors.onMedia,
                     modifier =
                         Modifier.size(36.dp)
-                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+                            .background(
+                                LionTheme.colors.scrim.copy(alpha = LionAlpha.ScrimStrong),
+                                RoundedCornerShape(18.dp),
+                            )
                             .padding(6.dp),
                 )
             }
@@ -423,13 +433,14 @@ fun DetailsScreen(
 @Composable
 private fun HeroHeaderSection(
     media: MediaItem,
-    state: DetailsState,
+    @StringRes primaryActionLabel: Int,
     isLandscapeMode: Boolean,
     onAction: (DetailsAction) -> Unit,
     modifier: Modifier = Modifier,
     isTabletPortraitMovie: Boolean = false,
     onPrimaryActionBottomChanged: (Float) -> Unit = {},
 ) {
+    val haptics = LocalHapticFeedback.current
     Column(modifier = modifier.fillMaxWidth()) {
         val imageModifier =
             if (isTabletPortraitMovie) {
@@ -439,9 +450,10 @@ private fun HeroHeaderSection(
                 else
                     Modifier.fillMaxWidth()
                         .height(
-                            (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
-                                    .dp * 1.33f)
-                                .coerceIn(420.dp, 760.dp)
+                            (LocalConfiguration.current.screenWidthDp.dp * 1.33f).coerceIn(
+                                420.dp,
+                                760.dp,
+                            )
                         )
             }
         Box(modifier = imageModifier) {
@@ -460,7 +472,7 @@ private fun HeroHeaderSection(
                                 colors =
                                     listOf(
                                         Color.Transparent,
-                                        Color.Black.copy(alpha = 0.4f),
+                                        LionTheme.colors.scrim.copy(alpha = LionAlpha.Scrim),
                                         MaterialTheme.colorScheme.background,
                                     ),
                                 startY = 0f,
@@ -481,11 +493,7 @@ private fun HeroHeaderSection(
                         media.title,
                         media.logoPath,
                         Modifier.fillMaxWidth(.72f)
-                            .height(
-                                80.dp *
-                                    androidx.compose.ui.platform.LocalDensity.current.fontScale
-                                        .coerceIn(1f, 1.6f)
-                            ),
+                            .height(80.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.6f)),
                     )
 
                     if (!media.genres.isNullOrBlank()) {
@@ -500,7 +508,7 @@ private fun HeroHeaderSection(
                                 ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            textAlign = TextAlign.Center,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -541,13 +549,10 @@ private fun HeroHeaderSection(
                 ) {
                     Icon(
                         Icons.Default.PlayArrow,
-                        contentDescription =
-                            androidx.compose.ui.res.stringResource(
-                                com.singam.lionlibrary.R.string.play
-                            ),
+                        contentDescription = stringResource(R.string.play),
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    val buttonText = androidx.compose.ui.res.stringResource(state.playbackLabel())
+                    val buttonText = stringResource(primaryActionLabel)
                     Text(
                         buttonText,
                         style = MaterialTheme.typography.titleSmall,
@@ -556,10 +561,16 @@ private fun HeroHeaderSection(
                 }
 
                 OutlinedIconButton(
-                    onClick = { onAction(DetailsAction.ToggleWatchlist) },
+                    onClick = {
+                        haptics.performHapticFeedback(
+                            if (media.isWatchlisted) HapticFeedbackType.ToggleOff
+                            else HapticFeedbackType.ToggleOn
+                        )
+                        onAction(DetailsAction.ToggleWatchlist)
+                    },
                     modifier = Modifier.size(48.dp),
                     border =
-                        androidx.compose.foundation.BorderStroke(
+                        BorderStroke(
                             1.dp,
                             MaterialTheme.colorScheme.outline,
                         ),
@@ -569,10 +580,9 @@ private fun HeroHeaderSection(
                         else Icons.Outlined.BookmarkBorder,
                         modifier = Modifier.size(LionLayout.BookmarkGlyph),
                         contentDescription =
-                            androidx.compose.ui.res.stringResource(
-                                if (media.isWatchlisted)
-                                    com.singam.lionlibrary.R.string.remove_watchlist
-                                else com.singam.lionlibrary.R.string.add_watchlist
+                            stringResource(
+                                if (media.isWatchlisted) R.string.remove_watchlist
+                                else R.string.add_watchlist
                             ),
                         tint =
                             if (media.isWatchlisted) MaterialTheme.colorScheme.primary
@@ -615,7 +625,11 @@ private fun HeroHeaderSection(
                 if (!media.certification.isNullOrBlank()) {
                     Box(
                         modifier =
-                            Modifier.border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
+                            Modifier.border(
+                                    1.dp,
+                                    LionTheme.colors.textSecondary,
+                                    RoundedCornerShape(4.dp),
+                                )
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
@@ -629,8 +643,8 @@ private fun HeroHeaderSection(
 
                 if (media.rating != null && media.rating > 0.0) {
                     val ratingDescription =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.hero_score_description,
+                        stringResource(
+                            R.string.hero_score_description,
                             media.rating,
                         )
                     Row(
@@ -641,44 +655,40 @@ private fun HeroHeaderSection(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        com.singam.lionlibrary.presentation.components.ImdbBadge()
+                        ImdbBadge()
                         Text(
                             text =
-                                androidx.compose.ui.res.stringResource(
-                                    com.singam.lionlibrary.R.string.rating_value,
+                                stringResource(
+                                    R.string.rating_value,
                                     media.rating,
                                 ),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = com.singam.lionlibrary.presentation.components.ImdbYellow,
+                            color = ImdbYellow,
                             maxLines = 1,
                         )
                     }
                 }
 
                 if (media.isSingleFile && media.tmdbId != null) {
-                    val letterboxdLabel =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_letterboxd
-                        )
-                    androidx.compose.material3.TextButton(
+                    val letterboxdLabel = stringResource(R.string.ui_letterboxd)
+                    TextButton(
                         onClick = { onAction(DetailsAction.OnOpenLetterboxd) },
                         modifier = Modifier.semantics { contentDescription = letterboxdLabel },
                         contentPadding = PaddingValues(horizontal = 4.dp),
                     ) {
-                        com.singam.lionlibrary.presentation.components.LetterboxdMark()
+                        LetterboxdMark()
                         media.letterboxdRating?.let { lb ->
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text =
-                                    androidx.compose.ui.res.stringResource(
-                                        com.singam.lionlibrary.R.string.rating_value,
+                                    stringResource(
+                                        R.string.rating_value,
                                         lb,
                                     ),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color =
-                                    com.singam.lionlibrary.presentation.components.LetterboxdGreen,
+                                color = LetterboxdGreen,
                                 maxLines = 1,
                             )
                         }
@@ -690,7 +700,7 @@ private fun HeroHeaderSection(
 
             if (!media.overview.isNullOrBlank()) {
                 var isExpanded by
-                    androidx.compose.runtime.saveable.rememberSaveable(media.id) {
+                    rememberSaveable(media.id) {
                         mutableStateOf(false)
                     }
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
@@ -702,14 +712,13 @@ private fun HeroHeaderSection(
                         overflow = TextOverflow.Ellipsis,
                     )
 
-                    androidx.compose.material3.TextButton(
+                    TextButton(
                         onClick = { isExpanded = !isExpanded },
                         contentPadding = PaddingValues(0.dp),
                     ) {
                         Text(
-                            androidx.compose.ui.res.stringResource(
-                                if (isExpanded) com.singam.lionlibrary.R.string.show_less
-                                else com.singam.lionlibrary.R.string.show_more
+                            stringResource(
+                                if (isExpanded) R.string.show_less else R.string.show_more
                             ),
                             style = MaterialTheme.typography.labelLarge,
                         )
@@ -738,19 +747,15 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
                 .coerceAtLeast(0)
 
         item {
-            Box(modifier = Modifier.background(Color(0xFF141414))) {
-                @Suppress("DEPRECATION")
-                ScrollableTabRow(
+            Box(modifier = Modifier.background(LionTheme.colors.pane)) {
+                SecondaryScrollableTabRow(
                     selectedTabIndex = selectedSeasonIndex,
                     edgePadding = 16.dp,
-                    indicator = { tabPositions ->
-                        if (selectedSeasonIndex < tabPositions.size) {
-                            TabRowDefaults.Indicator(
-                                modifier =
-                                    Modifier.tabIndicatorOffset(tabPositions[selectedSeasonIndex]),
-                                color = Color.White,
-                            )
-                        }
+                    indicator = {
+                        TabRowDefaults.SecondaryIndicator(
+                            modifier = Modifier.tabIndicatorOffset(selectedSeasonIndex),
+                            color = LionTheme.colors.onMedia,
+                        )
                     },
                     containerColor = Color.Transparent,
                     divider = {},
@@ -763,13 +768,18 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
                             },
                             text = {
                                 Text(
-                                    text = season.name ?: "Season ${season.seasonNumber}",
+                                    text =
+                                        season.name
+                                            ?: stringResource(
+                                                R.string.season_number,
+                                                season.seasonNumber,
+                                            ),
                                     fontWeight =
                                         if (index == selectedSeasonIndex) FontWeight.Bold
                                         else FontWeight.Normal,
                                     color =
-                                        if (index == selectedSeasonIndex) Color.White
-                                        else Color.Gray,
+                                        if (index == selectedSeasonIndex) LionTheme.colors.onMedia
+                                        else LionTheme.colors.textSecondary,
                                 )
                             },
                         )
@@ -805,48 +815,14 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
                 modifier = Modifier.fillMaxWidth().padding(32.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    androidx.compose.ui.res.stringResource(
-                        com.singam.lionlibrary.R.string.ui_no_episodes_found_for_this_season
-                    )
-                )
+                Text(stringResource(R.string.ui_no_episodes_found_for_this_season))
             }
         }
     }
 }
 
-@Composable
-private fun EpisodeOptionItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String,
-    onClick: () -> Unit,
-    iconTint: Color = Color.White,
-) {
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = text,
-            tint = iconTint,
-            modifier = Modifier.size(24.dp),
-        )
-        Spacer(modifier = Modifier.width(24.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White,
-        )
-    }
-}
-
 private val PreviewDetailsFilm =
-    com.singam.lionlibrary.presentation.components.PreviewFilm.copy(
+    PreviewFilm.copy(
         tmdbId = 7,
         isUnidentified = false,
         overview =
@@ -857,75 +833,86 @@ private val PreviewDetailsFilm =
         letterboxdRating = 3.5f,
     )
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Movie details actions")
+@Preview(name = "Movie details actions")
 @Composable
 private fun MovieHeaderPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         HeroHeaderSection(
             PreviewDetailsFilm,
-            DetailsState(media = PreviewDetailsFilm, isLoading = false),
+            DetailsState(media = PreviewDetailsFilm, isLoading = false).playbackLabel(),
             false,
             {},
         )
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Resume and saved movie",
     fontScale = 2f,
     widthDp = 360,
 )
 @Composable
 private fun ResumeHeaderPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         val media = PreviewDetailsFilm.copy(isWatchlisted = true)
         HeroHeaderSection(
             media,
-            DetailsState(media = media, isLoading = false, moviePositionMs = 65000),
+            DetailsState(media = media, isLoading = false, moviePositionMs = 65000).playbackLabel(),
             false,
             {},
         )
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Watched movie")
+@Preview(name = "Watched movie")
 @Composable
 private fun WatchedHeaderPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         HeroHeaderSection(
             PreviewDetailsFilm,
-            DetailsState(media = PreviewDetailsFilm, isLoading = false, isMovieWatched = true),
+            DetailsState(media = PreviewDetailsFilm, isLoading = false, isMovieWatched = true)
+                .playbackLabel(),
             false,
             {},
         )
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Show header wide", widthDp = 840)
+@Preview(name = "Show header wide", widthDp = 840)
 @Composable
 private fun ShowHeaderPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         val media =
             PreviewDetailsFilm.copy(
                 mediaType = MediaType.TV_SHOW,
                 duration = null,
                 letterboxdRating = null,
             )
-        HeroHeaderSection(media, DetailsState(media = media, isLoading = false), true, {})
+        HeroHeaderSection(
+            media,
+            DetailsState(media = media, isLoading = false).playbackLabel(),
+            true,
+            {},
+        )
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Local file without metadata")
+@Preview(name = "Local file without metadata")
 @Composable
 private fun LocalHeaderPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         val media =
-            com.singam.lionlibrary.presentation.components.PreviewFilm.copy(
+            PreviewFilm.copy(
                 mediaType = MediaType.TV_SHOW,
                 filePath = "content://fixture/episode",
                 genres = null,
                 year = null,
             )
-        HeroHeaderSection(media, DetailsState(media = media, isLoading = false), false, {})
+        HeroHeaderSection(
+            media,
+            DetailsState(media = media, isLoading = false).playbackLabel(),
+            false,
+            {},
+        )
     }
 }

@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.domain.model.PlaybackChapter
 import java.io.File
+import java.io.FileNotFoundException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.videolan.libvlc.Media
@@ -516,9 +517,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                 if (uri.scheme == "content") {
                     val descriptor =
                         context.contentResolver.openFileDescriptor(uri, "r")
-                            ?: throw java.io.FileNotFoundException(
-                                "Video provider returned no descriptor"
-                            )
+                            ?: throw FileNotFoundException("Video provider returned no descriptor")
                     result.descriptor = descriptor
                     Media(libVLC, descriptor.fileDescriptor)
                 } else Media(libVLC, uri)
@@ -537,7 +536,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                     try {
                         val input =
                             context.contentResolver.openInputStream(subtitle)
-                                ?: throw java.io.FileNotFoundException(
+                                ?: throw FileNotFoundException(
                                     "Subtitle provider returned no stream"
                                 )
                         input.use { src -> file.outputStream().use { dst -> src.copyTo(dst) } }

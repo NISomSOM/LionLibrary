@@ -144,9 +144,9 @@ class HomeViewModelTest {
             val vm = viewModel()
             vm.events.test {
                 vm.onAction(HomeAction.OnJumpBackInClick(jump(7, MediaType.MOVIE, episodeId = 0)))
-                assertThat(awaitItem()).isEqualTo(HomeEvent.NavigateToPlayer("MOVIE", 7))
+                assertThat(awaitItem()).isEqualTo(HomeEvent.NavigateToPlayer(MediaType.MOVIE, 7))
                 vm.onAction(HomeAction.OnJumpBackInClick(jump(3, MediaType.ANIME, episodeId = 44)))
-                assertThat(awaitItem()).isEqualTo(HomeEvent.NavigateToPlayer("ANIME", 44))
+                assertThat(awaitItem()).isEqualTo(HomeEvent.NavigateToPlayer(MediaType.ANIME, 44))
             }
             vm.viewModelScope.cancel()
         }
@@ -183,7 +183,7 @@ class HomeViewModelTest {
             vm.events.test {
                 vm.onAction(HomeAction.OnStartFromBeginning(jump(3, MediaType.TV_SHOW, 44)))
                 assertThat(history.calls).containsExactly("unwatched:3:44")
-                assertThat(awaitItem()).isEqualTo(HomeEvent.NavigateToPlayer("TV_SHOW", 44))
+                assertThat(awaitItem()).isEqualTo(HomeEvent.NavigateToPlayer(MediaType.TV_SHOW, 44))
             }
             vm.viewModelScope.cancel()
         }

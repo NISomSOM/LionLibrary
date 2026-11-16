@@ -20,9 +20,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.presentation.player.engine.EngineTrackInfo
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 
 private val PanelShape = RoundedCornerShape(24.dp)
 private val RowShape = RoundedCornerShape(14.dp)
@@ -399,62 +401,62 @@ private val previewAudio =
         EngineTrackInfo("b", "English", false, language = "en", codec = "AAC", channels = 2),
     )
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Subtitles, VLC", widthDp = 360, heightDp = 480)
+@Preview(name = "Subtitles, VLC", widthDp = 360, heightDp = 480)
 @Composable
 private fun SubtitlePanelVlcPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         SubtitlePanel(previewSubtitles, null, 500, 1f, true, false, {}, {}, {}, {}, {}, {})
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Subtitles, ExoPlayer filtered",
     widthDp = 360,
     heightDp = 480,
 )
 @Composable
 private fun SubtitlePanelExoPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         SubtitlePanel(previewSubtitles, "en", 0, 1.2f, false, true, {}, {}, {}, {}, {}, {})
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Subtitles, none",
     widthDp = 360,
     heightDp = 480,
 )
 @Composable
 private fun SubtitlePanelEmptyPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         SubtitlePanel(emptyList(), null, 0, 1f, true, false, {}, {}, {}, {}, {}, {})
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Audio", widthDp = 360)
+@Preview(name = "Audio", widthDp = 360)
 @Composable
 private fun AudioPanelPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { AudioPanel(previewAudio, {}, {}) }
+    LionLibraryTheme { AudioPanel(previewAudio, {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Audio, none", widthDp = 360)
+@Preview(name = "Audio, none", widthDp = 360)
 @Composable
 private fun AudioPanelEmptyPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { AudioPanel(emptyList(), {}, {}) }
+    LionLibraryTheme { AudioPanel(emptyList(), {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Audio, large font",
     widthDp = 360,
     fontScale = 2f,
 )
 @Composable
 private fun AudioPanelLargeFontPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { AudioPanel(previewAudio, {}, {}) }
+    LionLibraryTheme { AudioPanel(previewAudio, {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Speed", widthDp = 420)
+@Preview(name = "Speed", widthDp = 420)
 @Composable
 private fun SpeedPanelPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { SpeedPanel(1.25f, {}, {}) }
+    LionLibraryTheme { SpeedPanel(1.25f, {}, {}) }
 }

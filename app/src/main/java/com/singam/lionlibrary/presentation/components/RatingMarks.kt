@@ -14,8 +14,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 
 // Brand marks keep their own colours in any theme.
 internal val ImdbYellow = Color(0xFFF5C518)
@@ -51,14 +53,14 @@ internal fun LetterboxdMark(modifier: Modifier = Modifier.height(12.dp).aspectRa
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "IMDb badge")
+@Preview(name = "IMDb badge")
 @Composable
 private fun ImdbBadgePreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { ImdbBadge() }
+    LionLibraryTheme { ImdbBadge() }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Letterboxd mark")
+@Preview(name = "Letterboxd mark")
 @Composable
 private fun LetterboxdMarkPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { LetterboxdMark() }
+    LionLibraryTheme { LetterboxdMark() }
 }

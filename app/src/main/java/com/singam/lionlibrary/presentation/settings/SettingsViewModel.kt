@@ -11,6 +11,7 @@ import com.singam.lionlibrary.domain.repository.MetadataRepository
 import com.singam.lionlibrary.domain.repository.SettingsRepository
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.ScanCoordinator
+import com.singam.lionlibrary.domain.usecase.ScanRunState
 import com.singam.lionlibrary.domain.usecase.ScanTrigger
 import com.singam.lionlibrary.presentation.common.*
 import kotlinx.coroutines.CancellationException
@@ -27,8 +28,7 @@ data class SettingsState(
     val apiKey: String = "",
     val keyVerified: Boolean = false,
     val keyChecking: Boolean = false,
-    val scanRun: com.singam.lionlibrary.domain.usecase.ScanRunState =
-        com.singam.lionlibrary.domain.usecase.ScanRunState(),
+    val scanRun: ScanRunState = ScanRunState(),
     val apiKeyInput: String = "",
     val moviesFolderUri: String = "",
     val showsFolderUri: String = "",

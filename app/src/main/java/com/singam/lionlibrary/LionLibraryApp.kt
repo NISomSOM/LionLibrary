@@ -1,6 +1,7 @@
 package com.singam.lionlibrary
 
 import android.app.Application
+import android.content.Context
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
@@ -11,6 +12,7 @@ import com.singam.lionlibrary.di.databaseModule
 import com.singam.lionlibrary.di.domainModule
 import com.singam.lionlibrary.di.networkModule
 import com.singam.lionlibrary.di.presentationModule
+import com.singam.lionlibrary.presentation.player.engine.LibVlcProvider
 import okio.Path.Companion.toPath
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -23,7 +25,7 @@ class LionLibraryApp : Application(), SingletonImageLoader.Factory {
         super.onCreate()
 
         // Prewarm LibVLC and fontconfig.
-        com.singam.lionlibrary.presentation.player.engine.LibVlcProvider.prewarm(this)
+        LibVlcProvider.prewarm(this)
 
         startKoin {
             androidLogger(Level.ERROR)
@@ -32,7 +34,7 @@ class LionLibraryApp : Application(), SingletonImageLoader.Factory {
         }
     }
 
-    override fun newImageLoader(context: android.content.Context): ImageLoader {
+    override fun newImageLoader(context: Context): ImageLoader {
         return ImageLoader.Builder(this)
             .memoryCache { MemoryCache.Builder().maxSizePercent(this@LionLibraryApp, 0.25).build() }
             .diskCache {

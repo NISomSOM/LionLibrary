@@ -8,11 +8,14 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.preferencesDataStore
+import com.singam.lionlibrary.domain.model.ScanSummary
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
 
 private val Context.dataStore: DataStore<Preferences> by
     preferencesDataStore(name = "lionlibrary_settings")
@@ -59,18 +62,14 @@ class PreferencesManager(context: Context) {
     val setupDismissed: Flow<Boolean> = settingsData.map {
         it[PreferencesKeys.SETUP_DISMISSED] ?: false
     }
-    val scanSummary: Flow<com.singam.lionlibrary.domain.model.ScanSummary> = settingsData.map {
+    val scanSummary: Flow<ScanSummary> = settingsData.map {
         val encoded = it[PreferencesKeys.SCAN_SUMMARY]
-        if (encoded == null) com.singam.lionlibrary.domain.model.ScanSummary()
+        if (encoded == null) ScanSummary()
         else
             try {
-                kotlinx.serialization.json.Json.decodeFromString<
-                    com.singam.lionlibrary.domain.model.ScanSummary
-                >(
-                    encoded
-                )
-            } catch (_: kotlinx.serialization.SerializationException) {
-                com.singam.lionlibrary.domain.model.ScanSummary()
+                Json.decodeFromString<ScanSummary>(encoded)
+            } catch (_: SerializationException) {
+                ScanSummary()
             }
     }
 
@@ -82,11 +81,11 @@ class PreferencesManager(context: Context) {
         dataStore.edit { it[PreferencesKeys.SETUP_DISMISSED] = value }
     }
 
-    suspend fun setScanSummary(value: com.singam.lionlibrary.domain.model.ScanSummary) {
+    suspend fun setScanSummary(value: ScanSummary) {
         dataStore.edit {
             it[PreferencesKeys.SCAN_SUMMARY] =
-                kotlinx.serialization.json.Json.encodeToString(
-                    com.singam.lionlibrary.domain.model.ScanSummary.serializer(),
+                Json.encodeToString(
+                    ScanSummary.serializer(),
                     value,
                 )
         }

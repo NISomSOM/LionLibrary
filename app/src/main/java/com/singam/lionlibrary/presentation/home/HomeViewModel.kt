@@ -1,5 +1,6 @@
 package com.singam.lionlibrary.presentation.home
 
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
@@ -8,11 +9,17 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.JumpBackInItem
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
+import com.singam.lionlibrary.domain.repository.DeletionTarget
+import com.singam.lionlibrary.domain.repository.MediaDeletionRepository
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.GetHomeContentUseCase
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
+import com.singam.lionlibrary.presentation.common.DeletionPresenter
+import com.singam.lionlibrary.presentation.common.DeletionUiState
 import com.singam.lionlibrary.presentation.common.UiText
+import com.singam.lionlibrary.presentation.player.ExternalPlaybackRouter
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,8 +46,7 @@ data class HomeState(
     val genresContent: Map<String, List<MediaItem>> = emptyMap(),
     val selectedJumpBackInItem: JumpBackInItem? = null,
     val selectedMediaForOptions: MediaItem? = null,
-    val deletion: com.singam.lionlibrary.presentation.common.DeletionUiState =
-        com.singam.lionlibrary.presentation.common.DeletionUiState(),
+    val deletion: DeletionUiState = DeletionUiState(),
     val isLoading: Boolean = true,
     val error: UiText? = null,
 )
@@ -69,20 +75,19 @@ sealed interface HomeAction {
 sealed interface HomeEvent {
     data class ShowMessage(val message: UiText) : HomeEvent
 
-    data class NavigateToPlayer(val mediaType: String, val mediaId: Long) : HomeEvent
+    data class NavigateToPlayer(val mediaType: MediaType, val mediaId: Long) : HomeEvent
 
     data class ShowError(val message: UiText) : HomeEvent
 
-    data class LaunchPlayer(val intent: android.content.Intent) : HomeEvent
+    data class LaunchPlayer(val intent: Intent) : HomeEvent
 }
 
 class HomeViewModel(
     private val getHomeContentUseCase: GetHomeContentUseCase,
     private val launchPlayerUseCase: LaunchPlayerUseCase,
     private val watchProgressRepository: WatchProgressRepository,
-    private val externalPlaybackRouter:
-        com.singam.lionlibrary.presentation.player.ExternalPlaybackRouter,
-    deletionRepository: com.singam.lionlibrary.domain.repository.MediaDeletionRepository,
+    private val externalPlaybackRouter: ExternalPlaybackRouter,
+    deletionRepository: MediaDeletionRepository,
 ) : ViewModel() {
 
     // Screen-local selections; library content is merged in only while the screen collects.
@@ -91,7 +96,7 @@ class HomeViewModel(
     private val _events = Channel<HomeEvent>()
     val events = _events.receiveAsFlow()
     private val deletion =
-        com.singam.lionlibrary.presentation.common.DeletionPresenter(
+        DeletionPresenter(
             deletionRepository,
             viewModelScope,
             {},
@@ -157,7 +162,7 @@ class HomeViewModel(
         if (external != null) {
             _events.send(HomeEvent.LaunchPlayer(external))
         } else {
-            _events.send(HomeEvent.NavigateToPlayer(mediaType.name, targetId))
+            _events.send(HomeEvent.NavigateToPlayer(mediaType, targetId))
         }
     }
 
@@ -169,9 +174,7 @@ class HomeViewModel(
                 local.update {
                     it.copy(selectedMediaForOptions = null, selectedJumpBackInItem = null)
                 }
-                deletion.request(
-                    com.singam.lionlibrary.domain.repository.DeletionTarget(action.mediaId)
-                )
+                deletion.request(DeletionTarget(action.mediaId))
             }
             HomeAction.ConfirmDelete -> deletion.confirm()
             HomeAction.DismissDelete -> deletion.dismiss()
@@ -202,7 +205,7 @@ class HomeViewModel(
                                     action.item.positionMs,
                                 )
                             _events.send(HomeEvent.LaunchPlayer(intent))
-                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (e: Exception) {
                             _events.send(

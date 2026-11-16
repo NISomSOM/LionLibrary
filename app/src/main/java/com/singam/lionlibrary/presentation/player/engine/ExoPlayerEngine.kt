@@ -5,16 +5,22 @@ import android.net.Uri
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
+import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.extractor.metadata.Chapter
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.domain.model.PlaybackChapter
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 // ExoPlayer implementation.
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@OptIn(UnstableApi::class)
 class ExoPlayerEngine(context: Context) : LionPlayerEngine {
     private val appContext: Context = context.applicationContext
 
@@ -59,7 +65,7 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
 
                 addListener(
                     object : Player.Listener {
-                        override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                        override fun onTracksChanged(tracks: Tracks) {
                             val chapters = chapters(tracks)
                             _state.update {
                                 it.copy(trackRevision = it.trackRevision + 1, chapters = chapters)
@@ -90,24 +96,18 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
                             }
                         }
 
-                        override fun onPlayerError(
-                            error: androidx.media3.common.PlaybackException
-                        ) {
+                        override fun onPlayerError(error: PlaybackException) {
                             val failure =
                                 when (error.errorCode) {
-                                    androidx.media3.common.PlaybackException
-                                        .ERROR_CODE_IO_FILE_NOT_FOUND,
-                                    androidx.media3.common.PlaybackException
-                                        .ERROR_CODE_IO_NO_PERMISSION -> PlaybackFailure.FILE_ACCESS
-                                    androidx.media3.common.PlaybackException
-                                        .ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
-                                    androidx.media3.common.PlaybackException
-                                        .ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ->
+                                    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+                                    PlaybackException.ERROR_CODE_IO_NO_PERMISSION ->
+                                        PlaybackFailure.FILE_ACCESS
+                                    PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+                                    PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ->
                                         PlaybackFailure.TRACK
-                                    androidx.media3.common.PlaybackException
-                                        .ERROR_CODE_DECODER_INIT_FAILED,
-                                    androidx.media3.common.PlaybackException
-                                        .ERROR_CODE_DECODING_FAILED -> PlaybackFailure.DECODER
+                                    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                                    PlaybackException.ERROR_CODE_DECODING_FAILED ->
+                                        PlaybackFailure.DECODER
                                     else -> PlaybackFailure.UNKNOWN
                                 }
                             _state.update { it.copy(isPlaying = false, error = failure) }
@@ -171,7 +171,7 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
                                 trackLabel(
                                     format,
                                     appContext.getString(
-                                        com.singam.lionlibrary.R.string.player_audio_track_fallback,
+                                        R.string.player_audio_track_fallback,
                                         result.size + 1,
                                     ),
                                 ),
@@ -226,8 +226,7 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
                                 trackLabel(
                                     format,
                                     appContext.getString(
-                                        com.singam.lionlibrary.R.string
-                                            .player_subtitle_track_fallback,
+                                        R.string.player_subtitle_track_fallback,
                                         result.size + 1,
                                     ),
                                 ),
@@ -377,7 +376,7 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
      * Media3 attaches MKV chapters and MP4 Nero/QuickTime chapters to the track formats' metadata;
      * every track repeats them, so duplicates are removed. A missing end becomes null.
      */
-    private fun chapters(tracks: androidx.media3.common.Tracks): List<PlaybackChapter> =
+    private fun chapters(tracks: Tracks): List<PlaybackChapter> =
         tracks.groups
             .flatMap { group ->
                 (0 until group.length).mapNotNull { group.getTrackFormat(it).metadata }
@@ -397,7 +396,7 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
             .distinct()
             .sortedBy { it.startMs }
 
-    private fun trackLabel(format: androidx.media3.common.Format, fallback: String): String =
+    private fun trackLabel(format: Format, fallback: String): String =
         listOfNotNull(
                 format.label?.takeIf { it.isNotBlank() },
                 format.language?.takeIf { it.isNotBlank() },

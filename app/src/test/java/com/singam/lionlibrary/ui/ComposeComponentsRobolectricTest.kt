@@ -1,6 +1,8 @@
 package com.singam.lionlibrary.ui
 
 import android.app.Application
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -82,6 +84,35 @@ class ComposeComponentsRobolectricTest {
 
         compose.onNodeWithContentDescription("credits", substring = true).performClick()
 
+        assertEquals(1, clicks)
+    }
+
+    @Test
+    fun optionRowIsOneButtonNamedByItsLabel() {
+        var clicks = 0
+        compose.setContent {
+            LionLibraryTheme {
+                com.singam.lionlibrary.presentation.components.MediaOptionItem(
+                    androidx.compose.material.icons.Icons.Default.PlayArrow,
+                    "Play from beginning",
+                    { clicks++ },
+                )
+            }
+        }
+
+        compose
+            .onNode(
+                androidx.compose.ui.test.hasText("Play from beginning") and
+                    androidx.compose.ui.test.hasClickAction()
+            )
+            .performClick()
+        // The icon is decorative, so the label is not announced twice.
+        compose
+            .onAllNodes(
+                androidx.compose.ui.test.hasContentDescription("Play from beginning"),
+                useUnmergedTree = true,
+            )
+            .assertCountEquals(0)
         assertEquals(1, clicks)
     }
 }

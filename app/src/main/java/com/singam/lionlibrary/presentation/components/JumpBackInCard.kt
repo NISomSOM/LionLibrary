@@ -24,6 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.JumpBackInItem
+import com.singam.lionlibrary.ui.theme.LionLayout
+import com.singam.lionlibrary.ui.theme.LionTheme
+import com.singam.lionlibrary.ui.theme.cardEdge
 
 @Composable
 fun JumpBackInCard(
@@ -39,7 +42,8 @@ fun JumpBackInCard(
     Column(
         modifier
             .width(247.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(LionLayout.CardRadius))
+            .cardEdge(LionLayout.CardRadius, LionTheme.colors)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .combinedClickable(
                 onClick = onClick,

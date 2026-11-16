@@ -7,6 +7,7 @@ import com.singam.lionlibrary.data.mapper.toEpisode
 import com.singam.lionlibrary.data.mapper.toMediaItem
 import com.singam.lionlibrary.data.mapper.toSeason
 import com.singam.lionlibrary.domain.model.Episode
+import com.singam.lionlibrary.domain.model.LibraryQuery
 import com.singam.lionlibrary.domain.model.MediaFilter
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
@@ -23,9 +24,7 @@ class RoomMediaRepository(
     private val seasonDao: SeasonDao,
     private val episodeDao: EpisodeDao,
 ) : MediaRepository {
-    override fun browse(
-        query: com.singam.lionlibrary.domain.model.LibraryQuery
-    ): Flow<List<MediaItem>> {
+    override fun browse(query: LibraryQuery): Flow<List<MediaItem>> {
         val escaped =
             query.text.trim().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         return mediaDao
@@ -50,7 +49,7 @@ class RoomMediaRepository(
     }
 
     override fun search(query: String, filter: MediaFilter): Flow<List<MediaItem>> =
-        browse(com.singam.lionlibrary.domain.model.LibraryQuery(text = query, type = filter))
+        browse(LibraryQuery(text = query, type = filter))
 
     override fun getRecentlyAdded(): Flow<List<MediaItem>> {
         return mediaDao.getRecentlyAdded().map { entities -> entities.map { it.toMediaItem() } }

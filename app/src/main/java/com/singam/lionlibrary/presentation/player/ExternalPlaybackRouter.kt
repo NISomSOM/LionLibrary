@@ -7,6 +7,7 @@ import com.singam.lionlibrary.domain.repository.MediaRepository
 import com.singam.lionlibrary.domain.repository.SettingsRepository
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 // Decides whether a Play action goes to an external app instead of the in-app player.
@@ -44,7 +45,7 @@ class ExternalPlaybackRouter(
                 if (fromStart || progress == null || progress.completed) 0L
                 else progress.lastPositionMs
             launchPlayerUseCase(Uri.parse(path), position)
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
             null

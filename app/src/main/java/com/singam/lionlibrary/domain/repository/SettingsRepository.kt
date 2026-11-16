@@ -1,17 +1,18 @@
 package com.singam.lionlibrary.domain.repository
 
+import com.singam.lionlibrary.domain.model.ScanSummary
 import kotlinx.coroutines.flow.Flow
 
 interface SettingsRepository {
     val keyVerified: Flow<Boolean>
     val setupDismissed: Flow<Boolean>
-    val scanSummary: Flow<com.singam.lionlibrary.domain.model.ScanSummary>
+    val scanSummary: Flow<ScanSummary>
 
     suspend fun setKeyVerified(verified: Boolean)
 
     suspend fun setSetupDismissed(dismissed: Boolean)
 
-    suspend fun setScanSummary(summary: com.singam.lionlibrary.domain.model.ScanSummary)
+    suspend fun setScanSummary(summary: ScanSummary)
 
     val tmdbApiKey: Flow<String>
     val moviesFolderUri: Flow<String>

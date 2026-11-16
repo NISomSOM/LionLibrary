@@ -3,19 +3,27 @@ package com.singam.lionlibrary.data.scanner
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.ColorInfo
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.TrackGroup
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.inspector.MetadataRetriever
 import com.google.common.util.concurrent.ListenableFuture
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 
 // Hardware decoding check.
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@OptIn(UnstableApi::class)
 object CodecCapabilityChecker {
 
     private const val TAG = "CodecCapabilityChecker"
@@ -24,8 +32,7 @@ object CodecCapabilityChecker {
     private const val PROBE_TIMEOUT_MS = 5_000L
 
     // Cache video capabilities.
-    private val videoCapabilityCache =
-        java.util.concurrent.ConcurrentHashMap<VideoCapabilityKey, Boolean>()
+    private val videoCapabilityCache = ConcurrentHashMap<VideoCapabilityKey, Boolean>()
 
     // Blocked Audio MIMEs: ExoPlayer can't decode these without extensions.
     private val UNSUPPORTED_AUDIO_MIMES =
@@ -46,13 +53,13 @@ object CodecCapabilityChecker {
         val width: Int,
         val height: Int,
         val frameRate: Float,
-        val colorInfo: androidx.media3.common.ColorInfo?,
+        val colorInfo: ColorInfo?,
     )
 
     // Share the renderer's codec/profile/HDR and device-workaround checks, not MIME alone.
     internal fun isVideoHardwareSupported(
         context: Context,
-        format: androidx.media3.common.Format,
+        format: Format,
     ): Boolean {
         val mime = format.sampleMimeType ?: return false
         val key =
@@ -66,8 +73,8 @@ object CodecCapabilityChecker {
             )
         return videoCapabilityCache.getOrPut(key) {
             try {
-                androidx.media3.exoplayer.mediacodec.MediaCodecUtil.getDecoderInfosSoftMatch(
-                        androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT,
+                MediaCodecUtil.getDecoderInfosSoftMatch(
+                        MediaCodecSelector.DEFAULT,
                         format,
                         false,
                         false,
@@ -145,7 +152,7 @@ object CodecCapabilityChecker {
                 }
 
                 allTracksSupported
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
                 Log.d(TAG, "Probe error for $uri: ${e.message}")

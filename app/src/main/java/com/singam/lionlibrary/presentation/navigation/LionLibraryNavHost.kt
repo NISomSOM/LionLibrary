@@ -69,7 +69,7 @@ fun LionLibraryNavHost(
                 onSettingsClick = { navController.navigate(SettingsRoute) },
             )
         }
-        composable<SettingsRoute> { SettingsRoot(snackbarHostState, windowSizeClass) }
+        composable<SettingsRoute> { SettingsRoot(snackbarHostState) }
         composable<DetailsRoute>(
             enterTransition = { fadeIn(tween(240, delayMillis = 70, easing = LionMotion.Easing)) },
             exitTransition = { fadeOut(tween(100, easing = LionMotion.Easing)) },

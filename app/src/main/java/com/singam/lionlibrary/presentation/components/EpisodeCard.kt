@@ -19,18 +19,28 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.Episode
+import com.singam.lionlibrary.ui.theme.LionLayout
+import com.singam.lionlibrary.ui.theme.LionTheme
+import com.singam.lionlibrary.ui.theme.OrangeAccent
+import com.singam.lionlibrary.ui.theme.cardEdge
 
 @Composable
 fun EpisodeCard(
@@ -43,6 +53,7 @@ fun EpisodeCard(
     onLongClick: () -> Unit = {},
     fallbackArtwork: List<String?> = emptyList(),
 ) {
+    val haptics = LocalHapticFeedback.current
     Column(
         modifier =
             modifier
@@ -54,24 +65,21 @@ fun EpisodeCard(
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Box(
                 modifier =
-                    Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp))
+                    Modifier.width(96.dp)
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(LionLayout.CardRadius))
+                        .cardEdge(LionLayout.CardRadius, LionTheme.colors)
             ) {
                 LocalArtwork(
                     listOf(episode.thumbnailPath) + fallbackArtwork,
                     episode.title,
-                    Modifier.fillMaxSize()
-                        .background(
-                            androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
-                        ),
+                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
                 )
 
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
-                    contentDescription =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.play
-                        ),
-                    tint = Color.White,
+                    contentDescription = stringResource(R.string.play),
+                    tint = LionTheme.colors.onMedia,
                     modifier =
                         Modifier.align(Alignment.BottomStart)
                             .padding(start = 8.dp, bottom = 8.dp)
@@ -85,7 +93,7 @@ fun EpisodeCard(
                             Modifier.align(Alignment.BottomStart)
                                 .fillMaxWidth(progressValue)
                                 .height(4.dp)
-                                .background(com.singam.lionlibrary.ui.theme.OrangeAccent)
+                                .background(OrangeAccent)
                     )
                 }
             }
@@ -98,10 +106,8 @@ fun EpisodeCard(
                     Text(
                         text = episode.title ?: "Episode ${episode.episodeNumber}",
                         style =
-                            androidx.compose.material3.MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold
-                            ),
-                        color = Color.White,
+                            MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = LionTheme.colors.onMedia,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -111,15 +117,15 @@ fun EpisodeCard(
                     val subtitleParts = mutableListOf<String>()
                     subtitleParts.add(
                         if (episode.episodeEndNumber != null)
-                            androidx.compose.ui.res.stringResource(
-                                com.singam.lionlibrary.R.string.episode_range,
+                            stringResource(
+                                R.string.episode_range,
                                 episode.seasonNumber,
                                 episode.episodeNumber,
                                 episode.episodeEndNumber,
                             )
                         else
-                            androidx.compose.ui.res.stringResource(
-                                com.singam.lionlibrary.R.string.episode_number,
+                            stringResource(
+                                R.string.episode_number,
                                 episode.seasonNumber,
                                 episode.episodeNumber,
                             )
@@ -132,8 +138,8 @@ fun EpisodeCard(
                     }
                     Text(
                         text = subtitleParts.joinToString(" · "),
-                        style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
-                        color = Color.Gray,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = LionTheme.colors.textSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -142,27 +148,29 @@ fun EpisodeCard(
                 IconButton(onClick = onLongClick) {
                     Icon(
                         Icons.Default.MoreVert,
-                        contentDescription =
-                            androidx.compose.ui.res.stringResource(
-                                com.singam.lionlibrary.R.string.more_actions
-                            ),
+                        contentDescription = stringResource(R.string.more_actions),
                     )
                 }
-                IconButton(onClick = { onMarkWatched(episode.id) }, modifier = Modifier) {
+                IconButton(
+                    onClick = {
+                        haptics.performHapticFeedback(
+                            if (isWatched) HapticFeedbackType.ToggleOff
+                            else HapticFeedbackType.ToggleOn
+                        )
+                        onMarkWatched(episode.id)
+                    },
+                    modifier = Modifier,
+                ) {
                     Icon(
                         imageVector =
                             if (isWatched) Icons.Rounded.CheckCircle
                             else Icons.Outlined.CheckCircle,
                         contentDescription =
-                            if (isWatched)
-                                androidx.compose.ui.res.stringResource(
-                                    com.singam.lionlibrary.R.string.ui_mark_as_unwatched
-                                )
-                            else
-                                androidx.compose.ui.res.stringResource(
-                                    com.singam.lionlibrary.R.string.ui_mark_as_watched
-                                ),
-                        tint = if (isWatched) Color.White else Color.Gray,
+                            if (isWatched) stringResource(R.string.ui_mark_as_unwatched)
+                            else stringResource(R.string.ui_mark_as_watched),
+                        tint =
+                            if (isWatched) LionTheme.colors.onMedia
+                            else LionTheme.colors.textSecondary,
                         modifier = Modifier.size(24.dp),
                     )
                 }
@@ -173,17 +181,17 @@ fun EpisodeCard(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = episode.overview,
-                style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                color = Color.Gray,
+                style = MaterialTheme.typography.bodyMedium,
+                color = LionTheme.colors.textSecondary,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
-        androidx.compose.material3.HorizontalDivider(
+        HorizontalDivider(
             modifier = Modifier.fillMaxWidth(),
-            color = Color(0xFF333333),
+            color = LionTheme.colors.divider,
             thickness = 1.dp,
         )
     }

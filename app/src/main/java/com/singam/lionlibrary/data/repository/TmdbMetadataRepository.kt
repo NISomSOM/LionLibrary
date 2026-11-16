@@ -1,5 +1,6 @@
 package com.singam.lionlibrary.data.repository
 
+import android.database.sqlite.SQLiteFullException
 import com.singam.lionlibrary.data.local.db.MediaDatabase
 import com.singam.lionlibrary.data.remote.api.TmdbApiService
 import com.singam.lionlibrary.data.scanner.ImageCacheManager
@@ -8,6 +9,7 @@ import com.singam.lionlibrary.domain.repository.*
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -33,7 +35,7 @@ class TmdbMetadataRepository(
         var refreshed = 0
         var failure: DataError? = null
         for (item in items) {
-            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            currentCoroutineContext().ensureActive()
             val result = safely {
                 val id = item.tmdbId!!
                 val movie = item.mediaType == "MOVIE"
@@ -189,7 +191,7 @@ class TmdbMetadataRepository(
                 OperationResult.Failure(DataError.OFFLINE)
             } catch (_: SecurityException) {
                 OperationResult.Failure(DataError.PERMISSION)
-            } catch (_: android.database.sqlite.SQLiteFullException) {
+            } catch (_: SQLiteFullException) {
                 OperationResult.Failure(DataError.STORAGE)
             } catch (_: Exception) {
                 OperationResult.Failure(DataError.UNKNOWN)

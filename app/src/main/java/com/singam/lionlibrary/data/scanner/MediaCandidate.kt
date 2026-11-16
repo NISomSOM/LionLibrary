@@ -1,6 +1,7 @@
 package com.singam.lionlibrary.data.scanner
 
 import android.net.Uri
+import com.singam.lionlibrary.domain.model.MediaType
 
 sealed interface MediaCandidate {
     data class Movie(
@@ -19,7 +20,7 @@ sealed interface MediaCandidate {
         val sourceUri: Uri,
         val rawName: String,
         val reason: String,
-        val expectedType: com.singam.lionlibrary.domain.model.MediaType,
+        val expectedType: MediaType,
     ) : MediaCandidate
 }
 

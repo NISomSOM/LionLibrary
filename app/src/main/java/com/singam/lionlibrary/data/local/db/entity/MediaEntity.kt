@@ -1,5 +1,6 @@
 package com.singam.lionlibrary.data.local.db.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -37,8 +38,8 @@ data class MediaEntity(
     val preferredEngine: String = "EXOPLAYER",
     val letterboxdRating: Float? = null, // Out of 5; fetched lazily on Details open.
     val letterboxdUpdatedAt: Long? = null,
-    @androidx.room.ColumnInfo(defaultValue = "0") val isWatchlisted: Boolean = false,
-    @androidx.room.ColumnInfo(defaultValue = "0") val addedAt: Long = lastUpdated,
+    @ColumnInfo(defaultValue = "0") val isWatchlisted: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val addedAt: Long = lastUpdated,
     val sourceShowTitle: String? = null,
     val sourceSeason: Int? = null,
     val sourceEpisode: Int? = null,

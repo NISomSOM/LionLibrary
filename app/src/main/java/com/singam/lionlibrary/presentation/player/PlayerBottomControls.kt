@@ -19,14 +19,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.PlaybackChapter
 import com.singam.lionlibrary.presentation.player.engine.AspectMode
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
+import java.util.Locale
 
 /**
  * Compact Nuvio-style footer: title, a slim seekbar, then one row holding the action pill on the
@@ -177,7 +181,7 @@ private fun PlayerTimes(positionMs: () -> Long, durationMs: Long, modifier: Modi
         MaterialTheme.typography.labelLarge.copy(
             fontFeatureSettings = "tnum",
             shadow =
-                androidx.compose.ui.graphics.Shadow(
+                Shadow(
                     MaterialTheme.colorScheme.scrim.copy(alpha = .8f),
                     blurRadius = 6f,
                 ),
@@ -245,9 +249,9 @@ internal fun formatTime(ms: Long): String {
     val minutes = (totalSeconds / 60) % 60
     val hours = totalSeconds / 3600
     return if (hours > 0) {
-        String.format(java.util.Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
+        String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
     } else {
-        String.format(java.util.Locale.getDefault(), "%02d:%02d", minutes, seconds)
+        String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
     }
 }
 
@@ -263,7 +267,7 @@ private fun BottomControlsPreview(
     speed: Float = 1f,
     aspectMode: AspectMode = AspectMode.FIT,
 ) {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         PlayerBottomControls(
             title = title,
             subtitle = subtitle,
@@ -289,15 +293,15 @@ private fun BottomControlsPreview(
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "First episode", widthDp = 760)
+@Preview(name = "First episode", widthDp = 760)
 @Composable
 private fun EpisodeControlsPreview() = BottomControlsPreview(isEpisode = true, hasPrevious = false)
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Last episode", widthDp = 760)
+@Preview(name = "Last episode", widthDp = 760)
 @Composable
 private fun LastEpisodeControlsPreview() = BottomControlsPreview(isEpisode = true, hasNext = false)
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Movie, speed and zoom active", widthDp = 760)
+@Preview(name = "Movie, speed and zoom active", widthDp = 760)
 @Composable
 private fun MovieControlsPreview() =
     BottomControlsPreview(
@@ -310,12 +314,12 @@ private fun MovieControlsPreview() =
         aspectMode = AspectMode.ZOOM,
     )
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Unknown duration", widthDp = 760)
+@Preview(name = "Unknown duration", widthDp = 760)
 @Composable
 private fun UnknownDurationControlsPreview() =
     BottomControlsPreview(isEpisode = false, positionMs = 0, durationMs = 0)
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Long title, large font",
     widthDp = 640,
     fontScale = 2f,

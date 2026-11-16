@@ -1,5 +1,9 @@
 package com.singam.lionlibrary.presentation.player
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalResources
+import com.singam.lionlibrary.R
 import com.singam.lionlibrary.presentation.player.engine.EngineTrackInfo
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -117,20 +121,20 @@ internal object PlayerFormatting {
     fun subtitleScale(scale: Float): String = "${(scale * 100).roundToInt()}%"
 }
 
-@androidx.compose.runtime.Composable
+@Composable
 internal fun rememberPlayerFormatLabels(): PlayerFormatLabels {
-    val resources = androidx.compose.ui.platform.LocalResources.current
-    return androidx.compose.runtime.remember(resources) {
+    val resources = LocalResources.current
+    return remember(resources) {
         PlayerFormatLabels(
-            mono = resources.getString(com.singam.lionlibrary.R.string.player_audio_mono),
-            stereo = resources.getString(com.singam.lionlibrary.R.string.player_audio_stereo),
-            channels = resources.getString(com.singam.lionlibrary.R.string.player_audio_channels),
-            kilohertz = resources.getString(com.singam.lionlibrary.R.string.player_unit_khz),
-            kilobits = resources.getString(com.singam.lionlibrary.R.string.player_unit_kbps),
-            megabits = resources.getString(com.singam.lionlibrary.R.string.player_unit_mbps),
-            framesPerSecond = resources.getString(com.singam.lionlibrary.R.string.player_unit_fps),
-            speed = resources.getString(com.singam.lionlibrary.R.string.player_unit_speed),
-            seconds = resources.getString(com.singam.lionlibrary.R.string.player_unit_seconds),
+            mono = resources.getString(R.string.player_audio_mono),
+            stereo = resources.getString(R.string.player_audio_stereo),
+            channels = resources.getString(R.string.player_audio_channels),
+            kilohertz = resources.getString(R.string.player_unit_khz),
+            kilobits = resources.getString(R.string.player_unit_kbps),
+            megabits = resources.getString(R.string.player_unit_mbps),
+            framesPerSecond = resources.getString(R.string.player_unit_fps),
+            speed = resources.getString(R.string.player_unit_speed),
+            seconds = resources.getString(R.string.player_unit_seconds),
         )
     }
 }

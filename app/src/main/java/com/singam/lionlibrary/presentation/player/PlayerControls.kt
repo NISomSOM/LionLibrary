@@ -15,8 +15,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 
 /** Back, in the top-left corner. */
 @Composable
@@ -154,44 +156,44 @@ private fun PlayerTonalIconButton(
 private fun onVideoIconColors() =
     IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onBackground)
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Top actions")
+@Preview(name = "Top actions")
 @Composable
 private fun TopActionsPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerTopActions(false, {}, {}) }
+    LionLibraryTheme { PlayerTopActions(false, {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Top actions, opening external")
+@Preview(name = "Top actions, opening external")
 @Composable
 private fun TopActionsLoadingPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerTopActions(true, {}, {}) }
+    LionLibraryTheme { PlayerTopActions(true, {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Back")
+@Preview(name = "Back")
 @Composable
 private fun BackButtonPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerBackButton({}) }
+    LionLibraryTheme { PlayerBackButton({}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Center, playing")
+@Preview(name = "Center, playing")
 @Composable
 private fun CenterPlayingPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerCenterControls(true, {}, {}, {}) }
+    LionLibraryTheme { PlayerCenterControls(true, {}, {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Center, paused")
+@Preview(name = "Center, paused")
 @Composable
 private fun CenterPausedPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerCenterControls(false, {}, {}, {}) }
+    LionLibraryTheme { PlayerCenterControls(false, {}, {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Unlock")
+@Preview(name = "Unlock")
 @Composable
 private fun UnlockPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerUnlockButton({}) }
+    LionLibraryTheme { PlayerUnlockButton({}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Unlock, large font", fontScale = 2f)
+@Preview(name = "Unlock, large font", fontScale = 2f)
 @Composable
 private fun UnlockLargeFontPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerUnlockButton({}) }
+    LionLibraryTheme { PlayerUnlockButton({}) }
 }

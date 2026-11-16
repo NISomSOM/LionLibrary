@@ -2,6 +2,7 @@ package com.singam.lionlibrary.presentation.player
 
 import android.content.Intent
 import android.net.Uri
+import android.view.ViewGroup
 import androidx.core.net.toUri
 import androidx.lifecycle.*
 import com.singam.lionlibrary.R
@@ -161,7 +162,11 @@ class PlayerViewModel(
     skipSegments: SkipSegmentRepository,
 ) : ViewModel() {
     private val mediaType =
-        MediaType.valueOf(checkNotNull(savedStateHandle.get<String>("mediaType")))
+        // Typed route arguments arrive as the enum; restored/legacy state may hold its name.
+        when (val stored = checkNotNull(savedStateHandle.get<Any>("mediaType"))) {
+            is MediaType -> stored
+            else -> MediaType.valueOf(stored.toString())
+        }
     private val mediaId = checkNotNull(savedStateHandle.get<Long>("mediaId"))
     private val mutableState = MutableStateFlow(PlayerState())
     val state = mutableState.asStateFlow()
@@ -223,7 +228,7 @@ class PlayerViewModel(
     }
 
     /** Binds the current engine's video output to the surface the screen created for it. */
-    fun attachVideoSurface(view: android.view.ViewGroup) {
+    fun attachVideoSurface(view: ViewGroup) {
         engine?.attachToView(view)
     }
 

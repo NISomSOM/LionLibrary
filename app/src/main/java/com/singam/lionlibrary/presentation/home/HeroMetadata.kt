@@ -23,12 +23,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.presentation.components.ImdbBadge
 import com.singam.lionlibrary.presentation.components.ImdbYellow
 import com.singam.lionlibrary.presentation.components.LetterboxdMark
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 
 /** First non-blank genre from the stored comma-separated list. */
 internal fun firstHeroGenre(genres: String?): String? =
@@ -179,38 +181,38 @@ private fun RatingBadge(
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Movie, both ratings", widthDp = 360)
+@Preview(name = "Movie, both ratings", widthDp = 360)
 @Composable
 private fun HeroMetadataMoviePreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         HeroMetadata(MediaType.MOVIE, "Drama, History", 125, 2025, 7.4f, 3.9f, "en")
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Series, TMDB only", widthDp = 360)
+@Preview(name = "Series, TMDB only", widthDp = 360)
 @Composable
 private fun HeroMetadataSeriesPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         HeroMetadata(MediaType.TV_SHOW, "Animation, Comedy", 13, 2007, 8.1f, null, "ja")
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "No ratings or runtime", widthDp = 360)
+@Preview(name = "No ratings or runtime", widthDp = 360)
 @Composable
 private fun HeroMetadataSparsePreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         HeroMetadata(MediaType.ANIME, null, null, 2019, null, null, null)
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Hero metadata enlarged",
     widthDp = 320,
     fontScale = 2f,
 )
 @Composable
 private fun HeroMetadataEnlargedPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         HeroMetadata(MediaType.MOVIE, "Science Fiction, Drama", 166, 2024, 8.2f, 4.3f, "en")
     }
 }

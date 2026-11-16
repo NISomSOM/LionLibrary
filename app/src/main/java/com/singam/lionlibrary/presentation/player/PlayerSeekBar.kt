@@ -23,7 +23,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
@@ -88,6 +90,8 @@ internal fun PlayerSeekBar(
             }
         }
     val description = stringResource(R.string.cd_seek_bar)
+    val haptics = LocalHapticFeedback.current
+    val currentMarks by rememberUpdatedState(marks)
 
     Column(modifier.fillMaxWidth()) {
         chapterTitle?.let {
@@ -118,10 +122,17 @@ internal fun PlayerSeekBar(
                     awaitEachGesture {
                         val down = awaitFirstDown()
                         val width = size.width.toFloat()
+                        // Chapter region under the finger; a change while scrubbing ticks once.
+                        var region = -1
                         fun report(x: Float) {
                             val duration = currentDuration
-                            if (duration > 0 && width > 0f)
-                                onScrub(((x / width).coerceIn(0f, 1f) * duration).toLong())
+                            if (duration <= 0 || width <= 0f) return
+                            val fraction = (x / width).coerceIn(0f, 1f)
+                            val now = currentMarks.count { it <= fraction }
+                            if (region >= 0 && now != region)
+                                haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                            region = now
+                            onScrub((fraction * duration).toLong())
                         }
                         pressed = true
                         down.consume()

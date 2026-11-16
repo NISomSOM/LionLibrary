@@ -3,6 +3,7 @@ package com.singam.lionlibrary.presentation.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
@@ -14,12 +15,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.ui.theme.LionLayout
+import com.singam.lionlibrary.ui.theme.LionTheme
+import com.singam.lionlibrary.ui.theme.cardEdge
 
 @Composable
 fun MediaCard(
@@ -29,13 +35,14 @@ fun MediaCard(
     onToggleWatchlist: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
 ) {
+    val haptics = LocalHapticFeedback.current
     Surface(
         modifier =
             modifier
                 .width(LionLayout.PosterWidth)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         // Only artwork is rounded: rounding the caption cuts the year at the bottom corners.
-        shape = androidx.compose.ui.graphics.RectangleShape,
+        shape = RectangleShape,
         color = Color.Transparent,
     ) {
         Column {
@@ -43,6 +50,7 @@ fun MediaCard(
                 Modifier.fillMaxWidth()
                     .aspectRatio(2f / 3f)
                     .clip(RoundedCornerShape(LionLayout.CardRadius))
+                    .cardEdge(LionLayout.CardRadius, LionTheme.colors)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 LocalArtwork(
@@ -72,7 +80,16 @@ fun MediaCard(
                     }
                 }
                 onToggleWatchlist?.let { toggle ->
-                    IconButton(onClick = toggle, modifier = Modifier.align(Alignment.TopEnd)) {
+                    IconButton(
+                        onClick = {
+                            haptics.performHapticFeedback(
+                                if (mediaItem.isWatchlisted) HapticFeedbackType.ToggleOff
+                                else HapticFeedbackType.ToggleOn
+                            )
+                            toggle()
+                        },
+                        modifier = Modifier.align(Alignment.TopEnd),
+                    ) {
                         Icon(
                             if (mediaItem.isWatchlisted) Icons.Filled.Bookmark
                             else Icons.Outlined.BookmarkBorder,
@@ -80,7 +97,7 @@ fun MediaCard(
                                 Modifier.size(LionLayout.BookmarkBadge)
                                     .background(
                                         MaterialTheme.colorScheme.scrim.copy(alpha = .65f),
-                                        androidx.compose.foundation.shape.CircleShape,
+                                        CircleShape,
                                     )
                                     .padding(
                                         (LionLayout.BookmarkBadge - LionLayout.BookmarkGlyph) / 2

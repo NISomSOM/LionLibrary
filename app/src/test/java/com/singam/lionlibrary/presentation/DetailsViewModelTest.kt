@@ -219,7 +219,7 @@ class DetailsViewModelTest {
             backgroundScope.launch { playable.state.collect {} }
             playable.events.test {
                 playable.onAction(DetailsAction.OnPlayMovie)
-                assertThat(awaitItem()).isEqualTo(DetailsEvent.NavigateToPlayer("MOVIE", 7))
+                assertThat(awaitItem()).isEqualTo(DetailsEvent.NavigateToPlayer(MediaType.MOVIE, 7))
             }
             assertThat(history.calls).containsExactly("started:7:0")
 

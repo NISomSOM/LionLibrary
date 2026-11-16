@@ -45,3 +45,8 @@
     public static int d(...);
     public static int i(...);
 }
+
+# PlayerRoute carries MediaType as a typed navigation argument (serialized by name), and Room rows
+# store MediaType/EngineType names. Keep enum constant names stable in minified builds.
+-keep enum com.singam.lionlibrary.domain.model.MediaType { *; }
+-keep enum com.singam.lionlibrary.domain.model.EngineType { *; }

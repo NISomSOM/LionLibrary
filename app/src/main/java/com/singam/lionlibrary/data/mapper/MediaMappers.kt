@@ -7,6 +7,7 @@ import com.singam.lionlibrary.data.local.db.entity.SeasonEntity
 import com.singam.lionlibrary.data.local.db.entity.WatchProgressEntity
 import com.singam.lionlibrary.data.remote.dto.MovieDetailsDto
 import com.singam.lionlibrary.data.remote.dto.TvDetailsDto
+import com.singam.lionlibrary.data.scanner.FileNameParser
 import com.singam.lionlibrary.domain.model.Episode
 import com.singam.lionlibrary.domain.model.JumpBackInItem
 import com.singam.lionlibrary.domain.model.MediaItem
@@ -21,7 +22,7 @@ fun TvDetailsDto.inferMediaType(): MediaType {
 }
 
 // Stateless and immutable; reused so mapping does not recompile its patterns per row.
-private val displayTitleParser = com.singam.lionlibrary.data.scanner.FileNameParser()
+private val displayTitleParser = FileNameParser()
 
 fun MediaEntity.toMediaItem(): MediaItem =
     MediaItem(

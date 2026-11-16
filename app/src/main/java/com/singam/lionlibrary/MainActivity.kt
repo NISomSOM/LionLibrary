@@ -1,5 +1,6 @@
 package com.singam.lionlibrary
 
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,6 +20,7 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -27,10 +29,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -94,44 +98,36 @@ class MainActivity : ComponentActivity() {
                     } == true
                 // A phone's forced landscape player can have a wide window. Orientation
                 // policy must use its smallest width, independent of that temporary window.
-                val isTablet =
-                    androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >=
-                        600
+                val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
                 val useNavigationRail =
                     windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
 
-                androidx.compose.runtime.DisposableEffect(navController, isTablet) {
-                    val listener =
-                        androidx.navigation.NavController.OnDestinationChangedListener {
-                            _,
-                            destination,
-                            _ ->
-                            val isPlayer = destination.hasRoute<PlayerRoute>()
-                            requestedOrientation =
-                                if (isPlayer) {
-                                    android.content.pm.ActivityInfo
-                                        .SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                DisposableEffect(navController, isTablet) {
+                    val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
+                        val isPlayer = destination.hasRoute<PlayerRoute>()
+                        requestedOrientation =
+                            if (isPlayer) {
+                                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            } else {
+                                if (isTablet) {
+                                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                                 } else {
-                                    if (isTablet) {
-                                        android.content.pm.ActivityInfo
-                                            .SCREEN_ORIENTATION_UNSPECIFIED
-                                    } else {
-                                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                    }
+                                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                                 }
-                        }
+                            }
+                    }
                     navController.addOnDestinationChangedListener(listener)
 
                     // Initial orientation.
                     val isPlayer = navController.currentDestination?.hasRoute<PlayerRoute>() == true
                     requestedOrientation =
                         if (isPlayer) {
-                            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                         } else {
                             if (isTablet) {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                             } else {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                             }
                         }
 

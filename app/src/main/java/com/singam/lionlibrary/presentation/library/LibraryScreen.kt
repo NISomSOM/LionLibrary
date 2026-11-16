@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.*
+import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.components.LibraryFilterChip
 import com.singam.lionlibrary.presentation.components.LibrarySearchField
 import com.singam.lionlibrary.presentation.components.MediaCard
@@ -89,7 +91,7 @@ fun LibraryScreen(
             Column(
                 Modifier.weight(1f, fill = false)
                     .heightIn(max = 240.dp)
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                    .verticalScroll(rememberScrollState())
             ) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(LibrarySort.entries) { sort ->
@@ -166,7 +168,7 @@ fun LibraryScreen(
                 else R.string.library_empty_help
             Column(
                 Modifier.weight(1f)
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                    .verticalScroll(rememberScrollState())
                     .padding(top = 16.dp, bottom = bottomInset + 16.dp)
             ) {
                 Text(stringResource(title), style = MaterialTheme.typography.titleLarge)
@@ -268,10 +270,7 @@ private fun ErrorPreview() {
         LibraryScreen(
             LibraryState(
                 isLoading = false,
-                error =
-                    com.singam.lionlibrary.presentation.common.UiText.Resource(
-                        R.string.error_unknown
-                    ),
+                error = UiText.Resource(R.string.error_unknown),
             ),
             {},
             { _, _ -> },

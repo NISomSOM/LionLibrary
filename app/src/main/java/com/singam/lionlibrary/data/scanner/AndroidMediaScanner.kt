@@ -3,6 +3,7 @@ package com.singam.lionlibrary.data.scanner
 import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
+import com.singam.lionlibrary.data.local.db.MediaDatabase
 import com.singam.lionlibrary.data.local.db.dao.EpisodeDao
 import com.singam.lionlibrary.data.local.db.dao.MediaDao
 import com.singam.lionlibrary.data.local.db.dao.SeasonDao
@@ -15,6 +16,8 @@ import com.singam.lionlibrary.data.remote.TmdbRetryPolicy
 import com.singam.lionlibrary.data.remote.api.TmdbApiService
 import com.singam.lionlibrary.data.remote.dto.SeasonDetailsDto
 import com.singam.lionlibrary.data.remote.retryTmdb
+import com.singam.lionlibrary.data.storage.LibraryMutationGate
+import com.singam.lionlibrary.data.storage.LibraryReconciler
 import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.ScanProgress
@@ -23,8 +26,12 @@ import com.singam.lionlibrary.domain.repository.SettingsRepository
 import com.singam.lionlibrary.domain.usecase.ScanLibraryUseCase
 import com.singam.lionlibrary.util.Constants
 import com.singam.lionlibrary.util.KeyedMutex
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.asFlow
@@ -34,6 +41,8 @@ import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import retrofit2.HttpException
 
 private class ScanAbortedException : RuntimeException()
 
@@ -47,9 +56,9 @@ class AndroidMediaScanner(
     private val seasonDao: SeasonDao,
     private val episodeDao: EpisodeDao,
     private val settingsRepository: SettingsRepository,
-    private val database: com.singam.lionlibrary.data.local.db.MediaDatabase,
-    private val reconciler: com.singam.lionlibrary.data.storage.LibraryReconciler,
-    private val mutationGate: com.singam.lionlibrary.data.storage.LibraryMutationGate,
+    private val database: MediaDatabase,
+    private val reconciler: LibraryReconciler,
+    private val mutationGate: LibraryMutationGate,
 ) : ScanLibraryUseCase {
 
     private val matcher = TmdbMatcher(tmdbApiService)
@@ -78,7 +87,7 @@ class AndroidMediaScanner(
         data class FatalAbort(val status: ScanStatus, val displayName: String) : FileResult
     }
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @OptIn(ExperimentalCoroutinesApi::class)
     override operator fun invoke(): Flow<ScanProgress> = flow {
         mutationGate.mutex.withLock {
             reconciler.reconcile()
@@ -170,7 +179,7 @@ class AndroidMediaScanner(
      * fatal status (invalid key, no connection) stopped the scan; completed writes are flushed in
      * every case, including cancellation.
      */
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun FlowCollector<ScanProgress>.processCandidates(
         candidates: List<MediaCandidate>,
         apiKey: String,
@@ -226,7 +235,7 @@ class AndroidMediaScanner(
         } catch (_: ScanAbortedException) {
             // A fatal status has already been emitted; cancel remaining candidate work.
         } finally {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { writer.flush() }
+            withContext(NonCancellable) { writer.flush() }
         }
         return abortStatus != null
     }
@@ -306,17 +315,17 @@ class AndroidMediaScanner(
                     emit(FileResult.Error(candidate.rawName, ScanStatus.UNIDENTIFIED))
                 }
             }
-        } catch (e: retrofit2.HttpException) {
+        } catch (e: HttpException) {
             if (e.code() == 401) {
                 emit(FileResult.FatalAbort(ScanStatus.INVALID_API_KEY, getCandidateName(candidate)))
             } else {
                 handleCandidateError(candidate)
                 emit(FileResult.Error(getCandidateName(candidate), ScanStatus.ERROR))
             }
-        } catch (e: java.io.IOException) {
+        } catch (e: IOException) {
             handleCandidateError(candidate)
             emit(FileResult.FatalAbort(ScanStatus.NO_INTERNET, getCandidateName(candidate)))
-        } catch (e: kotlinx.coroutines.CancellationException) {
+        } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             handleCandidateError(candidate)
@@ -458,11 +467,11 @@ class AndroidMediaScanner(
             val images =
                 try {
                     withRetry { tmdbApiService.getMovieImages(details.id, apiKey) }
-                } catch (e: kotlinx.coroutines.CancellationException) {
+                } catch (e: CancellationException) {
                     throw e
-                } catch (e: retrofit2.HttpException) {
+                } catch (e: HttpException) {
                     if (e.code() == 404) null else throw e
-                } catch (e: java.io.IOException) {
+                } catch (e: IOException) {
                     throw e
                 } catch (e: Exception) {
                     null
@@ -596,11 +605,11 @@ class AndroidMediaScanner(
             val images =
                 try {
                     withRetry { tmdbApiService.getTvImages(tmdbId, apiKey) }
-                } catch (e: kotlinx.coroutines.CancellationException) {
+                } catch (e: CancellationException) {
                     throw e
-                } catch (e: retrofit2.HttpException) {
+                } catch (e: HttpException) {
                     if (e.code() == 404) null else throw e
-                } catch (e: java.io.IOException) {
+                } catch (e: IOException) {
                     throw e
                 } catch (e: Exception) {
                     null
@@ -638,11 +647,11 @@ class AndroidMediaScanner(
             val seasonDetails =
                 try {
                     withRetry { tmdbApiService.getSeasonDetails(tmdbId, seasonNumber, apiKey) }
-                } catch (e: kotlinx.coroutines.CancellationException) {
+                } catch (e: CancellationException) {
                     throw e
-                } catch (e: retrofit2.HttpException) {
+                } catch (e: HttpException) {
                     if (e.code() == 404) null else throw e
-                } catch (e: java.io.IOException) {
+                } catch (e: IOException) {
                     throw e
                 } catch (e: Exception) {
                     null

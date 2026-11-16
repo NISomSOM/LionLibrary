@@ -11,14 +11,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.singam.lionlibrary.R
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 
 internal data class TopLevelDestination(
     val route: Any,
@@ -112,7 +116,7 @@ private fun DestinationBar(
 ) {
     NavigationBar(
         modifier = Modifier.height(if (LocalDensity.current.fontScale > 1.4f) 80.dp else 64.dp),
-        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        containerColor = Color.Transparent,
         tonalElevation = 0.dp,
         windowInsets = WindowInsets(0, 0, 0, 0),
     ) {
@@ -128,7 +132,7 @@ private fun DestinationBar(
                     Text(
                         stringResource(item.label),
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelMedium,
                     )
                 },
@@ -144,24 +148,24 @@ private fun DestinationBar(
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Home selected")
+@Preview(name = "Home selected")
 @Composable
 private fun HomeNavigationPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { BottomNavBarContent(0, {}) }
+    LionLibraryTheme { BottomNavBarContent(0, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Library selected")
+@Preview(name = "Library selected")
 @Composable
 private fun LibraryNavigationPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { BottomNavBarContent(1, {}) }
+    LionLibraryTheme { BottomNavBarContent(1, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Settings selected, enlarged text",
     fontScale = 2f,
     widthDp = 360,
 )
 @Composable
 private fun SettingsNavigationPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { BottomNavBarContent(2, {}) }
+    LionLibraryTheme { BottomNavBarContent(2, {}) }
 }

@@ -7,6 +7,7 @@ import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.repository.LetterboxdRepository
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -47,13 +48,13 @@ class WebLetterboxdRepository(okHttpClient: OkHttpClient, private val mediaDao: 
 
                 mediaDao.updateLetterboxdRating(mediaId, rating, System.currentTimeMillis())
                 entity.toMediaItem().copy(letterboxdRating = rating)
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
                 // Offline or unexpected markup: fall back to whatever is cached.
                 try {
                     mediaDao.getById(mediaId)?.toMediaItem()
-                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
                     null

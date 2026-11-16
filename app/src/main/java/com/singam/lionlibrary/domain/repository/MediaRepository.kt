@@ -1,6 +1,7 @@
 package com.singam.lionlibrary.domain.repository
 
 import com.singam.lionlibrary.domain.model.Episode
+import com.singam.lionlibrary.domain.model.LibraryQuery
 import com.singam.lionlibrary.domain.model.MediaFilter
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
@@ -8,7 +9,7 @@ import com.singam.lionlibrary.domain.model.Season
 import kotlinx.coroutines.flow.Flow
 
 interface MediaRepository {
-    fun browse(query: com.singam.lionlibrary.domain.model.LibraryQuery): Flow<List<MediaItem>>
+    fun browse(query: LibraryQuery): Flow<List<MediaItem>>
 
     suspend fun toggleWatchlist(id: Long)
 

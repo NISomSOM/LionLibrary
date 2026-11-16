@@ -14,12 +14,17 @@ import com.singam.lionlibrary.domain.model.Season
 import com.singam.lionlibrary.domain.model.WatchProgress
 import com.singam.lionlibrary.domain.model.WatchProgressPolicy
 import com.singam.lionlibrary.domain.model.isSingleFile
+import com.singam.lionlibrary.domain.repository.DeletionTarget
 import com.singam.lionlibrary.domain.repository.LetterboxdRepository
+import com.singam.lionlibrary.domain.repository.MediaDeletionRepository
 import com.singam.lionlibrary.domain.repository.MediaRepository
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
+import com.singam.lionlibrary.presentation.common.DeletionPresenter
+import com.singam.lionlibrary.presentation.common.DeletionUiState
 import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.player.ExternalPlaybackRouter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -52,8 +57,7 @@ data class DetailsState(
     val watchedEpisodeIds: Set<Long> = emptySet(),
     val episodeProgressMap: Map<Long, Float> = emptyMap(),
     val selectedEpisodeForOptions: Episode? = null,
-    val deletion: com.singam.lionlibrary.presentation.common.DeletionUiState =
-        com.singam.lionlibrary.presentation.common.DeletionUiState(),
+    val deletion: DeletionUiState = DeletionUiState(),
     val isLoading: Boolean = true,
     val error: UiText? = null,
 )
@@ -93,7 +97,7 @@ sealed interface DetailsEvent {
 
     data class ShowMessage(val message: UiText) : DetailsEvent
 
-    data class NavigateToPlayer(val mediaType: String, val mediaId: Long) : DetailsEvent
+    data class NavigateToPlayer(val mediaType: MediaType, val mediaId: Long) : DetailsEvent
 
     data class ShowError(val message: UiText) : DetailsEvent
 
@@ -110,7 +114,7 @@ class DetailsViewModel(
     private val launchPlayerUseCase: LaunchPlayerUseCase,
     private val letterboxdRepository: LetterboxdRepository,
     private val externalPlaybackRouter: ExternalPlaybackRouter,
-    deletionRepository: com.singam.lionlibrary.domain.repository.MediaDeletionRepository,
+    deletionRepository: MediaDeletionRepository,
 ) : ViewModel() {
 
     private val mediaId: Long = savedStateHandle.get<Long>("mediaId") ?: 0L
@@ -121,7 +125,7 @@ class DetailsViewModel(
     private val _events = Channel<DetailsEvent>()
     val events = _events.receiveAsFlow()
     private val deletion =
-        com.singam.lionlibrary.presentation.common.DeletionPresenter(
+        DeletionPresenter(
             deletionRepository,
             viewModelScope,
             { if (mediaId in it.removedMediaIds) _events.send(DetailsEvent.NavigateBack) },
@@ -229,7 +233,7 @@ class DetailsViewModel(
         if (external != null) {
             _events.send(DetailsEvent.LaunchPlayer(external))
         } else {
-            _events.send(DetailsEvent.NavigateToPlayer(mediaType.name, targetId))
+            _events.send(DetailsEvent.NavigateToPlayer(mediaType, targetId))
         }
     }
 
@@ -238,7 +242,7 @@ class DetailsViewModel(
             is DetailsAction.RequestDeleteEpisode -> {
                 local.update { it.copy(selectedEpisodeForOptions = null) }
                 deletion.request(
-                    com.singam.lionlibrary.domain.repository.DeletionTarget(
+                    DeletionTarget(
                         mediaId,
                         action.episodeId,
                     )
@@ -339,7 +343,7 @@ class DetailsViewModel(
                         try {
                             val intent = launchPlayerUseCase(Uri.parse(path), 0L)
                             _events.send(DetailsEvent.LaunchPlayer(intent))
-                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (e: Exception) {
                             _events.send(

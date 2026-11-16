@@ -87,6 +87,8 @@ class LibraryDatabaseTest {
                 com.singam.lionlibrary.data.repository.RoomWatchProgressRepository(
                     db.watchProgressDao(),
                     db.episodeDao(),
+                    db.mediaDao(),
+                    db,
                 )
             val nextUp = history.getJumpBackInItems().first().single()
             assertEquals(21L, nextUp.episodeId)
@@ -142,6 +144,78 @@ class LibraryDatabaseTest {
             assertNotNull(db.episodeDao().getById(20))
             assertEquals(1, db.seasonDao().getSeasonsForShow(3).first().size)
             assertNotNull(db.watchProgressDao().getProgress(3, 20))
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun jumpBackInNextUpSkipsCombinedRangeAndMenuWritesNeedAnExistingTarget() = runBlocking {
+        val db =
+            Room.inMemoryDatabaseBuilder(
+                    InstrumentationRegistry.getInstrumentation().targetContext,
+                    MediaDatabase::class.java,
+                )
+                .build()
+        try {
+            db.mediaDao()
+                .insert(
+                    MediaEntity(
+                        id = 3,
+                        tmdbId = null,
+                        title = "Show",
+                        originalTitle = null,
+                        overview = null,
+                        posterPath = null,
+                        backdropPath = null,
+                        genres = null,
+                        rating = null,
+                        year = null,
+                        mediaType = "TV_SHOW",
+                        matchConfidence = 1f,
+                        isUnidentified = false,
+                        lastUpdated = 1,
+                    )
+                )
+            fun episode(id: Long, number: Int, end: Int? = null) =
+                EpisodeEntity(
+                    id = id,
+                    showId = 3,
+                    seasonNumber = 1,
+                    episodeNumber = number,
+                    episodeEndNumber = end,
+                    title = null,
+                    overview = null,
+                    runtime = null,
+                    airDate = null,
+                    thumbnailPath = null,
+                    filePath = "content://fixture/ep$id",
+                )
+            db.episodeDao().insert(episode(20, 1, end = 2))
+            db.episodeDao().insert(episode(22, 3))
+            val history =
+                com.singam.lionlibrary.data.repository.RoomWatchProgressRepository(
+                    db.watchProgressDao(),
+                    db.episodeDao(),
+                    db.mediaDao(),
+                    db,
+                )
+            history.markAsWatched(3, 20)
+            // E1-E2 is one combined file, so next up is E3, not a phantom E2.
+            assertEquals(22L, history.getJumpBackInItems().first().single().episodeId)
+
+            history.markAsStarted(3, 22)
+            db.watchProgressDao().upsert(WatchProgressEntity(3, 22, .4f, 400, 1000, 5, false))
+            history.markAsStarted(3, 22)
+            assertEquals(400L, db.watchProgressDao().getProgress(3, 22)!!.lastPositionMs)
+
+            // Writes for a missing show, or an episode of another show, are dropped.
+            history.markAsStarted(99, 0)
+            history.markAsWatched(99, 22)
+            history.markAsUnwatched(3, 777)
+            assertNull(db.watchProgressDao().getProgress(99, 0))
+            assertNull(db.watchProgressDao().getProgress(99, 22))
+            assertNull(db.watchProgressDao().getProgress(3, 777))
         } finally {
             db.close()
         }

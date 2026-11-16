@@ -5,48 +5,58 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.*
-import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.DataError
+import com.singam.lionlibrary.domain.model.ScanOutcome
 import com.singam.lionlibrary.presentation.components.PageHeading
 import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
+import java.text.DateFormat
+import java.util.Date
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun SettingsRoot(
     snackbarHostState: SnackbarHostState,
-    windowSizeClass: WindowSizeClass,
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val resources = androidx.compose.ui.platform.LocalResources.current
+    val resources = LocalResources.current
     var notices by remember { mutableStateOf<List<LicenseNotice>>(emptyList()) }
     LaunchedEffect(context, resources) {
         notices =
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            withContext(Dispatchers.IO) {
                 listOf(
                         R.string.license_notices to "THIRD_PARTY_NOTICES.md",
                         R.string.license_apache to "licenses/Apache-2.0.txt",
@@ -131,7 +141,7 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
             .padding(bottom = LocalFloatingNavigationInset.current + 24.dp),
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column(
@@ -149,13 +159,12 @@ fun SettingsScreen(
                         else PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.keyChecking,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(12.dp),
                     trailingIcon = {
                         IconButton(onClick = { revealKey = !revealKey }) {
                             Icon(
-                                if (revealKey)
-                                    androidx.compose.material.icons.Icons.Default.VisibilityOff
-                                else androidx.compose.material.icons.Icons.Default.Visibility,
+                                if (revealKey) Icons.Default.VisibilityOff
+                                else Icons.Default.Visibility,
                                 stringResource(
                                     if (revealKey) R.string.hide_key else R.string.show_key
                                 ),
@@ -165,7 +174,7 @@ fun SettingsScreen(
                 )
                 Row(
                     Modifier.fillMaxWidth(),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     if (state.isApiKeySaved)
@@ -231,7 +240,7 @@ fun SettingsScreen(
                             progress.currentFile,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     } else {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -255,12 +264,20 @@ fun SettingsScreen(
                         Text(stringResource(R.string.scan_library))
                     }
                 }
+                if (
+                    !state.isScanning &&
+                        state.scanRun.summary.outcome == ScanOutcome.PERMISSION_REVOKED
+                )
+                    Text(
+                        stringResource(R.string.scan_folder_unavailable),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 if (state.lastScanTime > 0)
                     Text(
                         stringResource(
                             R.string.last_scan,
-                            java.text.DateFormat.getDateTimeInstance()
-                                .format(java.util.Date(state.lastScanTime)),
+                            DateFormat.getDateTimeInstance().format(Date(state.lastScanTime)),
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -303,8 +320,8 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(stringResource(R.string.privacy_summary))
-                    androidx.compose.foundation.Image(
-                        painter = androidx.compose.ui.res.painterResource(R.drawable.tmdb_logo),
+                    Image(
+                        painter = painterResource(R.drawable.tmdb_logo),
                         contentDescription = stringResource(R.string.tmdb_logo_description),
                         modifier = Modifier.width(180.dp).height(24.dp),
                     )
@@ -363,7 +380,7 @@ private fun SettingsSection(
 ) {
     Card(
         modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(12.dp),
         border = BorderStroke(.5.dp, MaterialTheme.colorScheme.outline),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
@@ -388,21 +405,21 @@ private fun FolderSetting(
     Surface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
     ) {
         Row(
             Modifier.heightIn(min = 64.dp).padding(vertical = 10.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Surface(
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.primaryContainer,
             ) {
-                Box(Modifier.size(36.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
                     Icon(
-                        androidx.compose.material.icons.Icons.Outlined.Folder,
+                        Icons.Outlined.Folder,
                         null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(22.dp),
@@ -417,11 +434,11 @@ private fun FolderSetting(
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Icon(
-                androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -440,7 +457,7 @@ private fun PlaybackSetting(
 ) {
     Row(
         modifier.fillMaxWidth().heightIn(min = 56.dp),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Column(Modifier.weight(1f).padding(vertical = 8.dp)) {

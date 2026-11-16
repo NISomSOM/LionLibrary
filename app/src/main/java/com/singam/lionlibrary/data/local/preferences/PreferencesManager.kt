@@ -6,10 +6,16 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.preferencesDataStore
+import com.singam.lionlibrary.domain.model.ScanSummary
+import java.io.IOException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
 
 private val Context.dataStore: DataStore<Preferences> by
     preferencesDataStore(name = "lionlibrary_settings")
@@ -48,25 +54,24 @@ class PreferencesManager(context: Context) {
 
     private val dataStore = context.dataStore
 
-    val keyVerified: Flow<Boolean> =
-        dataStore.data.map { it[PreferencesKeys.KEY_VERIFIED] ?: false }
-    val setupDismissed: Flow<Boolean> =
-        dataStore.data.map { it[PreferencesKeys.SETUP_DISMISSED] ?: false }
-    val scanSummary: Flow<com.singam.lionlibrary.domain.model.ScanSummary> =
-        dataStore.data.map {
-            val encoded = it[PreferencesKeys.SCAN_SUMMARY]
-            if (encoded == null) com.singam.lionlibrary.domain.model.ScanSummary()
-            else
-                try {
-                    kotlinx.serialization.json.Json.decodeFromString<
-                        com.singam.lionlibrary.domain.model.ScanSummary
-                    >(
-                        encoded
-                    )
-                } catch (_: kotlinx.serialization.SerializationException) {
-                    com.singam.lionlibrary.domain.model.ScanSummary()
-                }
-        }
+    // A corrupt or unreadable file must not crash collectors; readers fall back to defaults.
+    private val settingsData: Flow<Preferences> = dataStore.data.orDefaultsOnReadError()
+    private val portableData: Flow<Preferences> = portable.data.orDefaultsOnReadError()
+
+    val keyVerified: Flow<Boolean> = settingsData.map { it[PreferencesKeys.KEY_VERIFIED] ?: false }
+    val setupDismissed: Flow<Boolean> = settingsData.map {
+        it[PreferencesKeys.SETUP_DISMISSED] ?: false
+    }
+    val scanSummary: Flow<ScanSummary> = settingsData.map {
+        val encoded = it[PreferencesKeys.SCAN_SUMMARY]
+        if (encoded == null) ScanSummary()
+        else
+            try {
+                Json.decodeFromString<ScanSummary>(encoded)
+            } catch (_: SerializationException) {
+                ScanSummary()
+            }
+    }
 
     suspend fun setKeyVerified(value: Boolean) {
         dataStore.edit { it[PreferencesKeys.KEY_VERIFIED] = value }
@@ -76,27 +81,31 @@ class PreferencesManager(context: Context) {
         dataStore.edit { it[PreferencesKeys.SETUP_DISMISSED] = value }
     }
 
-    suspend fun setScanSummary(value: com.singam.lionlibrary.domain.model.ScanSummary) {
+    suspend fun setScanSummary(value: ScanSummary) {
         dataStore.edit {
             it[PreferencesKeys.SCAN_SUMMARY] =
-                kotlinx.serialization.json.Json.encodeToString(
-                    com.singam.lionlibrary.domain.model.ScanSummary.serializer(),
+                Json.encodeToString(
+                    ScanSummary.serializer(),
                     value,
                 )
         }
     }
 
-    val tmdbApiKey: Flow<String> =
-        dataStore.data.map { prefs -> prefs[PreferencesKeys.TMDB_API_KEY] ?: "" }
+    val tmdbApiKey: Flow<String> = settingsData.map { prefs ->
+        prefs[PreferencesKeys.TMDB_API_KEY] ?: ""
+    }
 
-    val moviesFolderUri: Flow<String> =
-        dataStore.data.map { prefs -> prefs[PreferencesKeys.MOVIES_FOLDER_URI] ?: "" }
+    val moviesFolderUri: Flow<String> = settingsData.map { prefs ->
+        prefs[PreferencesKeys.MOVIES_FOLDER_URI] ?: ""
+    }
 
-    val showsFolderUri: Flow<String> =
-        dataStore.data.map { prefs -> prefs[PreferencesKeys.SHOWS_FOLDER_URI] ?: "" }
+    val showsFolderUri: Flow<String> = settingsData.map { prefs ->
+        prefs[PreferencesKeys.SHOWS_FOLDER_URI] ?: ""
+    }
 
-    val lastScanTime: Flow<Long> =
-        dataStore.data.map { prefs -> prefs[PreferencesKeys.LAST_SCAN_TIME] ?: 0L }
+    val lastScanTime: Flow<Long> = settingsData.map { prefs ->
+        prefs[PreferencesKeys.LAST_SCAN_TIME] ?: 0L
+    }
 
     suspend fun setTmdbApiKey(key: String) {
         dataStore.edit { prefs ->
@@ -117,25 +126,33 @@ class PreferencesManager(context: Context) {
         dataStore.edit { prefs -> prefs[PreferencesKeys.LAST_SCAN_TIME] = time }
     }
 
-    val forceLibVlc: Flow<Boolean> =
-        portable.data.map { prefs -> prefs[PreferencesKeys.FORCE_LIBVLC] ?: false }
+    val forceLibVlc: Flow<Boolean> = portableData.map { prefs ->
+        prefs[PreferencesKeys.FORCE_LIBVLC] ?: false
+    }
 
     suspend fun setForceLibVlc(enabled: Boolean) {
         portable.edit { prefs -> prefs[PreferencesKeys.FORCE_LIBVLC] = enabled }
     }
 
-    val forceExternalPlayer: Flow<Boolean> =
-        portable.data.map { prefs -> prefs[PreferencesKeys.FORCE_EXTERNAL_PLAYER] ?: false }
+    val forceExternalPlayer: Flow<Boolean> = portableData.map { prefs ->
+        prefs[PreferencesKeys.FORCE_EXTERNAL_PLAYER] ?: false
+    }
 
     suspend fun setForceExternalPlayer(enabled: Boolean) {
         portable.edit { prefs -> prefs[PreferencesKeys.FORCE_EXTERNAL_PLAYER] = enabled }
     }
 
     /** Online intro/credits lookups; on by default. File chapters work regardless. */
-    val onlineSkipTimes: Flow<Boolean> =
-        portable.data.map { prefs -> prefs[PreferencesKeys.ONLINE_SKIP_TIMES] ?: true }
+    val onlineSkipTimes: Flow<Boolean> = portableData.map { prefs ->
+        prefs[PreferencesKeys.ONLINE_SKIP_TIMES] ?: true
+    }
 
     suspend fun setOnlineSkipTimes(enabled: Boolean) {
         portable.edit { prefs -> prefs[PreferencesKeys.ONLINE_SKIP_TIMES] = enabled }
     }
+}
+
+/** Emits empty preferences (so every key reads its default) when the file cannot be read. */
+internal fun Flow<Preferences>.orDefaultsOnReadError(): Flow<Preferences> = catch { error ->
+    if (error is IOException) emit(emptyPreferences()) else throw error
 }

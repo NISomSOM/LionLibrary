@@ -1,18 +1,20 @@
 package com.singam.lionlibrary.data.remote.api
 
+import com.singam.lionlibrary.data.remote.dto.AlternativeTitlesResponse
+import com.singam.lionlibrary.data.remote.dto.ExternalIdsDto
 import com.singam.lionlibrary.data.remote.dto.MovieDetailsDto
 import com.singam.lionlibrary.data.remote.dto.MovieSearchResponse
 import com.singam.lionlibrary.data.remote.dto.SeasonDetailsDto
 import com.singam.lionlibrary.data.remote.dto.TvDetailsDto
 import com.singam.lionlibrary.data.remote.dto.TvImagesResponseDto
 import com.singam.lionlibrary.data.remote.dto.TvSearchResponse
+import kotlinx.serialization.json.JsonObject
 import retrofit2.http.GET
 import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface TmdbApiService {
-    @GET("authentication")
-    suspend fun validateKey(@Query("api_key") key: String): kotlinx.serialization.json.JsonObject
+    @GET("authentication") suspend fun validateKey(@Query("api_key") key: String): JsonObject
 
     @GET("search/movie")
     suspend fun searchMovie(
@@ -53,24 +55,24 @@ interface TmdbApiService {
     suspend fun getTvAlternativeTitles(
         @Path("id") id: Int,
         @Query("api_key") key: String,
-    ): com.singam.lionlibrary.data.remote.dto.AlternativeTitlesResponse
+    ): AlternativeTitlesResponse
 
     @GET("movie/{id}/alternative_titles")
     suspend fun getMovieAlternativeTitles(
         @Path("id") id: Int,
         @Query("api_key") key: String,
-    ): com.singam.lionlibrary.data.remote.dto.AlternativeTitlesResponse
+    ): AlternativeTitlesResponse
 
     @GET("movie/{id}/external_ids")
     suspend fun getMovieExternalIds(
         @Path("id") id: Int,
         @Query("api_key") key: String,
-    ): com.singam.lionlibrary.data.remote.dto.ExternalIdsDto
+    ): ExternalIdsDto
 
     /** Show-level ids; SkipDB addresses episodes by the series IMDb id plus numbers. */
     @GET("tv/{id}/external_ids")
     suspend fun getTvExternalIds(
         @Path("id") id: Int,
         @Query("api_key") key: String,
-    ): com.singam.lionlibrary.data.remote.dto.ExternalIdsDto
+    ): ExternalIdsDto
 }

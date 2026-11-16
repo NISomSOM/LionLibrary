@@ -6,6 +6,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
@@ -32,6 +34,7 @@ fun DeletionDialog(
         return
     }
     val preview = state.preview ?: return
+    val haptics = LocalHapticFeedback.current
     AlertDialog(
         onDismissRequest = { if (!state.deleting) onDismiss() },
         modifier = modifier,
@@ -61,7 +64,10 @@ fun DeletionDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = onConfirm,
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    onConfirm()
+                },
                 enabled = !state.deleting,
                 colors =
                     ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),

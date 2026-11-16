@@ -1,9 +1,9 @@
 package com.singam.lionlibrary.presentation.player
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AspectRatio
@@ -19,21 +19,29 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
+import com.singam.lionlibrary.domain.model.PlaybackChapter
 import com.singam.lionlibrary.presentation.player.engine.AspectMode
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
+import java.util.Locale
 
-/** Title, timeline with time pills, and the bar of player actions along the bottom edge. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Compact Nuvio-style footer: title, a slim seekbar, then one row holding the action pill on the
+ * left and the elapsed / total time on the right. Three rows instead of five keep the whole block
+ * clear of the centre play button on a landscape phone.
+ */
 @Composable
 internal fun PlayerBottomControls(
     title: String,
     subtitle: String,
-    currentPositionMs: Long,
+    currentPositionMs: () -> Long,
     durationMs: Long,
     isEpisode: Boolean,
     hasPrevious: Boolean,
@@ -51,165 +59,148 @@ internal fun PlayerBottomControls(
     onInfoClick: () -> Unit,
     onNextClick: () -> Unit,
     modifier: Modifier = Modifier,
+    chapters: List<PlaybackChapter> = emptyList(),
 ) {
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Column(Modifier.fillMaxWidth()) {
+    val formatLabels = rememberPlayerFormatLabels()
+    Column(modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            // Never reaches under the centre controls, however long the title is.
+            modifier = Modifier.fillMaxWidth(.6f),
+        )
+        if (subtitle.isNotBlank()) {
             Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(.6f),
             )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
-        PlayerSeekBar(currentPositionMs, durationMs, onScrub, onScrubEnd)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            PlayerTimePill(formatTime(currentPositionMs))
-            PlayerTimePill(formatTime(durationMs))
-        }
-        Spacer(Modifier.height(8.dp))
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.scrim.copy(alpha = .7f),
-            contentColor = MaterialTheme.colorScheme.onBackground,
-            border = BorderStroke(.5.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = .25f)),
+        PlayerSeekBar(currentPositionMs, durationMs, chapters, onScrub, onScrubEnd)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            FlowRow(
-                Modifier.padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.Center,
-                itemVerticalAlignment = Alignment.CenterVertically,
+            Surface(
+                modifier = Modifier.weight(1f, fill = false),
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.scrim.copy(alpha = .7f),
+                contentColor = MaterialTheme.colorScheme.onBackground,
+                border =
+                    BorderStroke(.5.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = .25f)),
             ) {
-                if (isEpisode) {
-                    PlayerActionIcon(
-                        icon = Icons.Outlined.SkipPrevious,
-                        contentDescription = stringResource(R.string.previous_episode),
-                        onClick = onPreviousClick,
-                        enabled = hasPrevious,
-                    )
-                }
-                TextButton(
-                    onClick = onSeekForward90Click,
-                    colors =
-                        ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.onBackground
-                        ),
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        stringResource(R.string.ui_90s),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                }
-                PlayerActionIcon(
-                    icon = Icons.Outlined.ClosedCaption,
-                    contentDescription = stringResource(R.string.ui_subtitles),
-                    onClick = onSubtitleClick,
-                )
-                PlayerActionIcon(
-                    icon = Icons.Outlined.GraphicEq,
-                    contentDescription = stringResource(R.string.ui_audio_tracks),
-                    onClick = onAudioClick,
-                )
-                PlayerActionIcon(
-                    icon = Icons.Outlined.Speed,
-                    contentDescription =
-                        stringResource(
-                            R.string.ui_speed_value,
-                            PlayerFormatting.speed(playbackSpeed),
-                        ),
-                    onClick = onSpeedClick,
-                    isActive = playbackSpeed != 1f,
-                )
-                PlayerActionIcon(
-                    icon = aspectMode.icon(),
-                    contentDescription =
-                        stringResource(
-                            R.string.ui_aspect_value,
-                            stringResource(aspectMode.label()),
-                        ),
-                    onClick = onAspectClick,
-                    isActive = aspectMode != AspectMode.FIT,
-                )
-                PlayerActionIcon(
-                    icon = Icons.Outlined.Info,
-                    contentDescription = stringResource(R.string.ui_info),
-                    onClick = onInfoClick,
-                )
-                if (isEpisode) {
+                    if (isEpisode) {
+                        PlayerActionIcon(
+                            icon = Icons.Outlined.SkipPrevious,
+                            contentDescription = stringResource(R.string.previous_episode),
+                            onClick = onPreviousClick,
+                            enabled = hasPrevious,
+                        )
+                    }
+                    TextButton(
+                        onClick = onSeekForward90Click,
+                        colors =
+                            ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onBackground
+                            ),
+                    ) {
+                        Text(
+                            stringResource(R.string.ui_90s),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
                     PlayerActionIcon(
-                        icon = Icons.Outlined.SkipNext,
-                        contentDescription = stringResource(R.string.next_episode),
-                        onClick = onNextClick,
-                        enabled = hasNext,
+                        icon = Icons.Outlined.ClosedCaption,
+                        contentDescription = stringResource(R.string.ui_subtitles),
+                        onClick = onSubtitleClick,
                     )
+                    PlayerActionIcon(
+                        icon = Icons.Outlined.GraphicEq,
+                        contentDescription = stringResource(R.string.ui_audio_tracks),
+                        onClick = onAudioClick,
+                    )
+                    PlayerActionIcon(
+                        icon = Icons.Outlined.Speed,
+                        contentDescription =
+                            stringResource(
+                                R.string.ui_speed_value,
+                                PlayerFormatting.speed(playbackSpeed, formatLabels),
+                            ),
+                        onClick = onSpeedClick,
+                        isActive = playbackSpeed != 1f,
+                    )
+                    PlayerActionIcon(
+                        icon = aspectMode.icon(),
+                        contentDescription =
+                            stringResource(
+                                R.string.ui_aspect_value,
+                                stringResource(aspectMode.label()),
+                            ),
+                        onClick = onAspectClick,
+                        isActive = aspectMode != AspectMode.FIT,
+                    )
+                    PlayerActionIcon(
+                        icon = Icons.Outlined.Info,
+                        contentDescription = stringResource(R.string.ui_info),
+                        onClick = onInfoClick,
+                    )
+                    if (isEpisode) {
+                        PlayerActionIcon(
+                            icon = Icons.Outlined.SkipNext,
+                            contentDescription = stringResource(R.string.next_episode),
+                            onClick = onNextClick,
+                            enabled = hasNext,
+                        )
+                    }
                 }
             }
+
+            PlayerTimes(currentPositionMs, durationMs)
         }
     }
 }
 
+/** "12:34 / 1:30:00" with tabular digits so the line does not jitter as seconds tick. */
 @Composable
-private fun PlayerTimePill(time: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.scrim.copy(alpha = .6f),
-        contentColor = MaterialTheme.colorScheme.onBackground,
-        border = BorderStroke(.5.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = .15f)),
-    ) {
+private fun PlayerTimes(positionMs: () -> Long, durationMs: Long, modifier: Modifier = Modifier) {
+    val elapsed = formatTime(positionMs())
+    val total = formatTime(durationMs)
+    val style =
+        MaterialTheme.typography.labelLarge.copy(
+            fontFeatureSettings = "tnum",
+            shadow =
+                Shadow(
+                    MaterialTheme.colorScheme.scrim.copy(alpha = .8f),
+                    blurRadius = 6f,
+                ),
+        )
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(elapsed, style = style, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
         Text(
-            time,
-            Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.labelSmall,
+            " / ",
+            style = style,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = .5f),
+            maxLines = 1,
+        )
+        Text(
+            total,
+            style = style,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = .75f),
             maxLines = 1,
         )
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PlayerSeekBar(
-    currentPositionMs: Long,
-    durationMs: Long,
-    onScrub: (Long) -> Unit,
-    onScrubEnd: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors =
-        SliderDefaults.colors(
-            thumbColor = MaterialTheme.colorScheme.primary,
-            activeTrackColor = MaterialTheme.colorScheme.primary,
-            inactiveTrackColor = MaterialTheme.colorScheme.onBackground.copy(alpha = .25f),
-        )
-    Slider(
-        value =
-            if (durationMs > 0) (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f,
-        onValueChange = { onScrub((it * durationMs).toLong()) },
-        onValueChangeFinished = onScrubEnd,
-        modifier = modifier.fillMaxWidth(),
-        colors = colors,
-        thumb = {
-            Box(Modifier.size(14.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
-        },
-        track = { sliderState ->
-            SliderDefaults.Track(
-                sliderState = sliderState,
-                modifier = Modifier.height(3.dp),
-                colors = colors,
-                drawStopIndicator = null,
-                thumbTrackGapSize = 0.dp,
-            )
-        },
-    )
 }
 
 @Composable
@@ -258,9 +249,9 @@ internal fun formatTime(ms: Long): String {
     val minutes = (totalSeconds / 60) % 60
     val hours = totalSeconds / 3600
     return if (hours > 0) {
-        String.format(java.util.Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
+        String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
     } else {
-        String.format(java.util.Locale.getDefault(), "%02d:%02d", minutes, seconds)
+        String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
     }
 }
 
@@ -276,11 +267,11 @@ private fun BottomControlsPreview(
     speed: Float = 1f,
     aspectMode: AspectMode = AspectMode.FIT,
 ) {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         PlayerBottomControls(
             title = title,
             subtitle = subtitle,
-            currentPositionMs = positionMs,
+            currentPositionMs = { positionMs },
             durationMs = durationMs,
             isEpisode = isEpisode,
             hasPrevious = hasPrevious,
@@ -302,15 +293,15 @@ private fun BottomControlsPreview(
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "First episode", widthDp = 760)
+@Preview(name = "First episode", widthDp = 760)
 @Composable
 private fun EpisodeControlsPreview() = BottomControlsPreview(isEpisode = true, hasPrevious = false)
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Last episode", widthDp = 760)
+@Preview(name = "Last episode", widthDp = 760)
 @Composable
 private fun LastEpisodeControlsPreview() = BottomControlsPreview(isEpisode = true, hasNext = false)
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Movie, speed and zoom active", widthDp = 760)
+@Preview(name = "Movie, speed and zoom active", widthDp = 760)
 @Composable
 private fun MovieControlsPreview() =
     BottomControlsPreview(
@@ -323,12 +314,12 @@ private fun MovieControlsPreview() =
         aspectMode = AspectMode.ZOOM,
     )
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Unknown duration", widthDp = 760)
+@Preview(name = "Unknown duration", widthDp = 760)
 @Composable
 private fun UnknownDurationControlsPreview() =
     BottomControlsPreview(isEpisode = false, positionMs = 0, durationMs = 0)
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Long title, large font",
     widthDp = 640,
     fontScale = 2f,

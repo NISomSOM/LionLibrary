@@ -1,6 +1,7 @@
 package com.singam.lionlibrary.data.repository
 
 import androidx.room.withTransaction
+import com.singam.lionlibrary.data.local.db.MediaDatabase
 import com.singam.lionlibrary.data.local.db.dao.*
 import com.singam.lionlibrary.data.local.db.entity.*
 import com.singam.lionlibrary.data.mapper.toWatchProgress
@@ -13,7 +14,7 @@ class RoomPlaybackRepository(
     private val media: MediaDao,
     private val episodes: EpisodeDao,
     private val history: WatchProgressDao,
-    private val database: com.singam.lionlibrary.data.local.db.MediaDatabase,
+    private val database: MediaDatabase,
 ) : PlaybackRepository {
     private val writer =
         OrderedProgressWriter(CoroutineScope(SupervisorJob() + Dispatchers.IO)) { snapshot ->

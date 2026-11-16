@@ -38,7 +38,7 @@ class ScanCoordinatorIntegrationTest {
         assertFalse(coordinator.startScan(ScanTrigger.MANUAL))
         release.complete(Unit)
         val run = withTimeout(5000) { coordinator.state.first { !it.isScanning } }
-        assertEquals("COMPLETE", run.summary.outcome)
+        assertEquals(ScanOutcome.COMPLETE, run.summary.outcome)
     }
 
     @Test
@@ -72,7 +72,7 @@ class ScanCoordinatorIntegrationTest {
         coordinator.cancelScan()
         val result = withTimeout(5000) { coordinator.state.first { !it.isScanning } }
         assertTrue(flushed.isCompleted)
-        assertEquals("CANCELLED", result.summary.outcome)
+        assertEquals(ScanOutcome.CANCELLED, result.summary.outcome)
         assertFalse(settings.saved.value.wasRunning)
     }
 
@@ -93,7 +93,7 @@ class ScanCoordinatorIntegrationTest {
             coordinator.cancelScan()
             val run = withTimeout(5000) { coordinator.state.first { !it.isScanning } }
             assertFalse(run.summary.wasRunning)
-            assertEquals("CANCELLED", run.summary.outcome)
+            assertEquals(ScanOutcome.CANCELLED, run.summary.outcome)
         }
     }
 
@@ -110,7 +110,9 @@ class ScanCoordinatorIntegrationTest {
                 MetadataFake(),
             )
         val run =
-            withTimeout(5000) { coordinator.state.first { it.summary.outcome == "INTERRUPTED" } }
+            withTimeout(5000) {
+                coordinator.state.first { it.summary.outcome == ScanOutcome.INTERRUPTED }
+            }
         assertEquals(3, run.summary.matched)
         assertFalse(run.summary.wasRunning)
         withTimeout(5000) { settings.saved.first { !it.wasRunning } }
@@ -132,24 +134,5 @@ internal class MetadataFake : com.singam.lionlibrary.domain.repository.MetadataR
         OperationResult.Success(0)
 
     override suspend fun validateKey(key: String): OperationResult<Unit, DataError> =
-        error("unused")
-
-    override suspend fun search(
-        title: String,
-        type: MediaType,
-    ): OperationResult<
-        List<com.singam.lionlibrary.domain.repository.MetadataCandidate>,
-        DataError,
-    > = error("unused")
-
-    override suspend fun identify(
-        mediaId: Long,
-        candidate: com.singam.lionlibrary.domain.repository.MetadataCandidate,
-        assignment: com.singam.lionlibrary.domain.repository.EpisodeAssignment?,
-    ): OperationResult<Unit, DataError> = error("unused")
-
-    override suspend fun retry(mediaId: Long): OperationResult<Unit, DataError> = error("unused")
-
-    override suspend fun checkAvailability(): OperationResult<Set<Long>, DataError> =
         error("unused")
 }

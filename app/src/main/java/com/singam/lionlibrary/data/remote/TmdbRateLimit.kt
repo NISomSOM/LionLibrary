@@ -1,5 +1,7 @@
 package com.singam.lionlibrary.data.remote
 
+import java.io.InterruptedIOException
+import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
@@ -35,7 +37,7 @@ internal fun retryAfterDelayMs(
 private fun httpDateMs(value: String): Long? =
     try {
         SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US).parse(value)?.time
-    } catch (_: java.text.ParseException) {
+    } catch (_: ParseException) {
         null
     }
 
@@ -71,7 +73,7 @@ class TmdbRateLimitInterceptor(private val limiter: TmdbRateLimiter) : Intercept
                 Thread.sleep(minOf(remaining, WaitSliceMs))
             } catch (interrupted: InterruptedException) {
                 Thread.currentThread().interrupt()
-                throw java.io.InterruptedIOException("Interrupted during TMDB cooldown")
+                throw InterruptedIOException("Interrupted during TMDB cooldown")
             }
         }
         val response = chain.proceed(request)

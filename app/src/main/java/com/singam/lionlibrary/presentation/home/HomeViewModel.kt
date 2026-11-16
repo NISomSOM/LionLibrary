@@ -1,5 +1,6 @@
 package com.singam.lionlibrary.presentation.home
 
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
@@ -8,15 +9,29 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.JumpBackInItem
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
+import com.singam.lionlibrary.domain.repository.DeletionTarget
+import com.singam.lionlibrary.domain.repository.MediaDeletionRepository
+import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.GetHomeContentUseCase
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
-import com.singam.lionlibrary.domain.usecase.UpdateWatchProgressUseCase
+import com.singam.lionlibrary.presentation.common.DeletionPresenter
+import com.singam.lionlibrary.presentation.common.DeletionUiState
 import com.singam.lionlibrary.presentation.common.UiText
+import com.singam.lionlibrary.presentation.player.ExternalPlaybackRouter
+import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -31,8 +46,7 @@ data class HomeState(
     val genresContent: Map<String, List<MediaItem>> = emptyMap(),
     val selectedJumpBackInItem: JumpBackInItem? = null,
     val selectedMediaForOptions: MediaItem? = null,
-    val deletion: com.singam.lionlibrary.presentation.common.DeletionUiState =
-        com.singam.lionlibrary.presentation.common.DeletionUiState(),
+    val deletion: DeletionUiState = DeletionUiState(),
     val isLoading: Boolean = true,
     val error: UiText? = null,
 )
@@ -61,40 +75,81 @@ sealed interface HomeAction {
 sealed interface HomeEvent {
     data class ShowMessage(val message: UiText) : HomeEvent
 
-    data class NavigateToPlayer(val mediaType: String, val mediaId: Long) : HomeEvent
+    data class NavigateToPlayer(val mediaType: MediaType, val mediaId: Long) : HomeEvent
 
     data class ShowError(val message: UiText) : HomeEvent
 
-    data class LaunchPlayer(val intent: android.content.Intent) : HomeEvent
+    data class LaunchPlayer(val intent: Intent) : HomeEvent
 }
 
 class HomeViewModel(
     private val getHomeContentUseCase: GetHomeContentUseCase,
     private val launchPlayerUseCase: LaunchPlayerUseCase,
-    private val updateWatchProgressUseCase: UpdateWatchProgressUseCase,
-    private val externalPlaybackRouter:
-        com.singam.lionlibrary.presentation.player.ExternalPlaybackRouter,
-    deletionRepository: com.singam.lionlibrary.domain.repository.MediaDeletionRepository,
+    private val watchProgressRepository: WatchProgressRepository,
+    private val externalPlaybackRouter: ExternalPlaybackRouter,
+    deletionRepository: MediaDeletionRepository,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(HomeState())
-    val state = _state.asStateFlow()
+    // Screen-local selections; library content is merged in only while the screen collects.
+    private val local = MutableStateFlow(HomeState())
 
     private val _events = Channel<HomeEvent>()
     val events = _events.receiveAsFlow()
     private val deletion =
-        com.singam.lionlibrary.presentation.common.DeletionPresenter(
+        DeletionPresenter(
             deletionRepository,
             viewModelScope,
             {},
             { _events.send(HomeEvent.ShowMessage(it)) },
         )
 
+    // Last library answer: a restarted collection resumes from it instead of a loading state, and
+    // the hero keeps its titles.
+    private var lastLibrary = HomeLibrary()
+
+    private val library: Flow<HomeLibrary> =
+        getHomeContentUseCase()
+            .map { content ->
+                HomeLibrary(
+                    carouselItems =
+                        selectHeroCarousel(
+                            lastLibrary.carouselItems,
+                            content.allMedia,
+                            Random.Default,
+                        ),
+                    jumpBackInItems = content.jumpBackInItems,
+                    movies = content.movies,
+                    tvShows = content.tvShows,
+                    anime = content.anime,
+                    recentlyAdded = content.recentlyAdded,
+                    genresContent = content.genres,
+                    isLoading = false,
+                )
+            }
+            .catch {
+                _events.send(HomeEvent.ShowError(UiText.Resource(R.string.error_unknown)))
+                emit(
+                    lastLibrary.copy(
+                        isLoading = false,
+                        error = UiText.Resource(R.string.error_unknown),
+                    )
+                )
+            }
+            .onEach { lastLibrary = it }
+            .onStart { emit(lastLibrary) }
+
+    /**
+     * Room flows run only while the UI collects (5 s grace for rotation), so Home is not rebuilt
+     * during playback. Genre shelves are grouped off the main thread in [GetHomeContentUseCase].
+     */
+    val state: StateFlow<HomeState> =
+        combine(local, library) { screen, content -> content.mergeInto(screen) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
+
     init {
         viewModelScope.launch {
-            deletion.state.collect { value -> _state.update { it.copy(deletion = value) } }
+            deletion.state.collect { value -> local.update { it.copy(deletion = value) } }
         }
-        loadContent()
     }
 
     // In-app player, unless "Always use external player" is on.
@@ -107,26 +162,24 @@ class HomeViewModel(
         if (external != null) {
             _events.send(HomeEvent.LaunchPlayer(external))
         } else {
-            _events.send(HomeEvent.NavigateToPlayer(mediaType.name, targetId))
+            _events.send(HomeEvent.NavigateToPlayer(mediaType, targetId))
         }
     }
 
     fun onAction(action: HomeAction) {
         when (action) {
             is HomeAction.MediaOptions ->
-                _state.update { it.copy(selectedMediaForOptions = action.item) }
+                local.update { it.copy(selectedMediaForOptions = action.item) }
             is HomeAction.RequestDelete -> {
-                _state.update {
+                local.update {
                     it.copy(selectedMediaForOptions = null, selectedJumpBackInItem = null)
                 }
-                deletion.request(
-                    com.singam.lionlibrary.domain.repository.DeletionTarget(action.mediaId)
-                )
+                deletion.request(DeletionTarget(action.mediaId))
             }
             HomeAction.ConfirmDelete -> deletion.confirm()
             HomeAction.DismissDelete -> deletion.dismiss()
             is HomeAction.SelectOptions ->
-                _state.update { it.copy(selectedJumpBackInItem = action.item) }
+                local.update { it.copy(selectedJumpBackInItem = action.item) }
             is HomeAction.OnJumpBackInClick -> {
                 val targetId =
                     if (action.item.mediaType == MediaType.MOVIE) action.item.mediaId
@@ -152,7 +205,7 @@ class HomeViewModel(
                                     action.item.positionMs,
                                 )
                             _events.send(HomeEvent.LaunchPlayer(intent))
-                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (e: Exception) {
                             _events.send(
@@ -168,7 +221,7 @@ class HomeViewModel(
                     else (action.item.episodeId ?: 0L)
                 if (targetId > 0L) {
                     viewModelScope.launch {
-                        updateWatchProgressUseCase.markAsUnwatched(
+                        watchProgressRepository.markAsUnwatched(
                             action.item.mediaId,
                             if (action.item.mediaType == MediaType.MOVIE) 0L else targetId,
                         )
@@ -181,61 +234,35 @@ class HomeViewModel(
                     val targetId =
                         if (action.item.mediaType == MediaType.MOVIE) 0L
                         else (action.item.episodeId ?: 0L)
-                    updateWatchProgressUseCase.removeWatchProgress(action.item.mediaId, targetId)
+                    watchProgressRepository.deleteProgress(action.item.mediaId, targetId)
+                    watchProgressRepository.hideMediaFromJumpBackIn(action.item.mediaId)
                 }
             }
         }
     }
+}
 
-    private fun loadContent() {
-        viewModelScope.launch {
-            getHomeContentUseCase()
-                .catch { e ->
-                    _state.update {
-                        it.copy(isLoading = false, error = UiText.Resource(R.string.error_unknown))
-                    }
-                    _events.send(HomeEvent.ShowError(UiText.Resource(R.string.error_unknown)))
-                }
-                .collect { content ->
-                    // Built once outside update {}, which may re-run its lambda and reshuffle.
-                    // Only this collector writes carouselItems, so reading it here is stable.
-                    val allMedia =
-                        (content.movies + content.tvShows + content.anime).distinctBy { it.id }
-                    val previousCarousel = _state.value.carouselItems
-                    // 10 random items for hero.
-                    val randomCarousel =
-                        if (previousCarousel.isNotEmpty()) {
-                            val byId = allMedia.associateBy { it.id }
-                            previousCarousel.mapNotNull { previous -> byId[previous.id] }
-                        } else {
-                            allMedia.shuffled().take(10)
-                        }
-
-                    val genreMap = mutableMapOf<String, MutableList<MediaItem>>()
-                    allMedia.forEach { item ->
-                        item.genres?.split(",")?.forEach { genre ->
-                            val trimmedGenre = genre.trim()
-                            if (trimmedGenre.isNotEmpty()) {
-                                genreMap.getOrPut(trimmedGenre) { mutableListOf() }.add(item)
-                            }
-                        }
-                    }
-                    val genresContent = genreMap.mapValues { it.value.toList() }.toSortedMap()
-
-                    _state.update { currentState ->
-                        currentState.copy(
-                            carouselItems = randomCarousel,
-                            jumpBackInItems = content.jumpBackInItems,
-                            movies = content.movies,
-                            tvShows = content.tvShows,
-                            anime = content.anime,
-                            recentlyAdded = content.recentlyAdded,
-                            genresContent = genresContent,
-                            isLoading = false,
-                            error = null,
-                        )
-                    }
-                }
-        }
-    }
+private data class HomeLibrary(
+    val carouselItems: List<MediaItem> = emptyList(),
+    val jumpBackInItems: List<JumpBackInItem> = emptyList(),
+    val movies: List<MediaItem> = emptyList(),
+    val tvShows: List<MediaItem> = emptyList(),
+    val anime: List<MediaItem> = emptyList(),
+    val recentlyAdded: List<MediaItem> = emptyList(),
+    val genresContent: Map<String, List<MediaItem>> = emptyMap(),
+    val isLoading: Boolean = true,
+    val error: UiText? = null,
+) {
+    fun mergeInto(screen: HomeState) =
+        screen.copy(
+            carouselItems = carouselItems,
+            jumpBackInItems = jumpBackInItems,
+            movies = movies,
+            tvShows = tvShows,
+            anime = anime,
+            recentlyAdded = recentlyAdded,
+            genresContent = genresContent,
+            isLoading = isLoading,
+            error = error,
+        )
 }

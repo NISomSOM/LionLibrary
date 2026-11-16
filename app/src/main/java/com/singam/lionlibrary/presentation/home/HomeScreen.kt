@@ -1,9 +1,15 @@
 package com.singam.lionlibrary.presentation.home
 
+import android.content.Context
+import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +34,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -36,9 +45,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarHostState
@@ -46,9 +53,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -60,38 +69,57 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.JumpBackInItem
+import com.singam.lionlibrary.domain.model.MediaFilter
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.presentation.components.ArtworkTitle
+import com.singam.lionlibrary.presentation.components.DeletionDialog
+import com.singam.lionlibrary.presentation.components.HomeSkeleton
 import com.singam.lionlibrary.presentation.components.JumpBackInCard
 import com.singam.lionlibrary.presentation.components.LocalArtwork
 import com.singam.lionlibrary.presentation.components.MediaCard
+import com.singam.lionlibrary.presentation.components.MediaOptionItem
+import com.singam.lionlibrary.presentation.components.PosterPreview
+import com.singam.lionlibrary.presentation.components.PreviewFilm
 import com.singam.lionlibrary.presentation.components.ShelfHeading
+import com.singam.lionlibrary.presentation.components.rememberBackdropAlignment
 import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
 import com.singam.lionlibrary.ui.theme.LionLayout
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import com.singam.lionlibrary.ui.theme.LionMotion
+import com.singam.lionlibrary.ui.theme.LionTheme
 import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
-@androidx.compose.foundation.ExperimentalFoundationApi
+@ExperimentalFoundationApi
 @Composable
 fun HomeRoot(
     viewModel: HomeViewModel = koinViewModel(),
@@ -99,15 +127,15 @@ fun HomeRoot(
     windowSizeClass: WindowSizeClass,
     onNavigateToMovieDetails: (Long) -> Unit,
     onNavigateToShowDetails: (Long) -> Unit,
-    onNavigateToPlayer: (String, Long) -> Unit,
-    onNavigateToLibrary: (com.singam.lionlibrary.domain.model.MediaFilter) -> Unit,
+    onNavigateToPlayer: (MediaType, Long) -> Unit,
+    onNavigateToLibrary: (MediaFilter) -> Unit,
     onSettingsClick: () -> Unit = {},
     onMediaClick: (Long, MediaType) -> Unit = { _, _ -> },
-    onLibraryClick: (com.singam.lionlibrary.domain.model.MediaFilter) -> Unit = {},
+    onLibraryClick: (MediaFilter) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val resources = androidx.compose.ui.platform.LocalResources.current
+    val resources = LocalResources.current
     val snackbarScope = rememberCoroutineScope()
     // Snackbars run in their own coroutine so a visible message never delays navigation.
     fun showSnackbar(message: String) {
@@ -124,11 +152,7 @@ fun HomeRoot(
                     try {
                         context.startActivity(event.intent)
                     } catch (e: Exception) {
-                        showSnackbar(
-                            resources.getString(
-                                com.singam.lionlibrary.R.string.external_launch_error
-                            )
-                        )
+                        showSnackbar(resources.getString(R.string.external_launch_error))
                     }
                 }
             }
@@ -149,7 +173,7 @@ fun HomeRoot(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@androidx.compose.foundation.ExperimentalFoundationApi
+@ExperimentalFoundationApi
 @Composable
 fun HomeScreen(
     state: HomeState,
@@ -157,42 +181,36 @@ fun HomeScreen(
     onAction: (HomeAction) -> Unit,
     onSettingsClick: () -> Unit = {},
     onMediaClick: (Long, MediaType) -> Unit = { _, _ -> },
-    onLibraryClick: (com.singam.lionlibrary.domain.model.MediaFilter) -> Unit = {},
+    onLibraryClick: (MediaFilter) -> Unit = {},
 ) {
     val selectedJumpBackInItem = state.selectedJumpBackInItem
     val sheetState = rememberModalBottomSheetState()
-    com.singam.lionlibrary.presentation.components.DeletionDialog(
+    DeletionDialog(
         state.deletion,
         { onAction(HomeAction.ConfirmDelete) },
         { onAction(HomeAction.DismissDelete) },
     )
+    // Poster long press: lifted preview over a blurred/dimmed page, same actions as before.
     state.selectedMediaForOptions?.let { media ->
-        ModalBottomSheet(
-            onDismissRequest = { onAction(HomeAction.MediaOptions(null)) },
-            containerColor = MaterialTheme.colorScheme.surface,
+        PosterPreview(
+            media = media,
+            onOpen = {
+                onAction(HomeAction.MediaOptions(null))
+                onMediaClick(media.id, media.mediaType)
+            },
+            onDismiss = { onAction(HomeAction.MediaOptions(null)) },
         ) {
-            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                Text(
-                    media.title,
-                    Modifier.padding(24.dp),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                JumpBackInOptionItem(
-                    Icons.Default.Delete,
-                    androidx.compose.ui.res.stringResource(
-                        com.singam.lionlibrary.R.string.delete_from_device
-                    ),
-                    { onAction(HomeAction.RequestDelete(media.id)) },
-                    iconTint = MaterialTheme.colorScheme.error,
-                )
-            }
+            MediaOptionItem(
+                Icons.Default.Delete,
+                stringResource(R.string.delete_from_device),
+                { onAction(HomeAction.RequestDelete(media.id)) },
+                iconTint = MaterialTheme.colorScheme.error,
+            )
         }
     }
 
     if (state.isLoading) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
+        HomeSkeleton()
         return
     }
 
@@ -216,27 +234,20 @@ fun HomeScreen(
         Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.library_empty_help
-                        ),
+                    text = stringResource(R.string.library_empty_help),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center,
                 )
                 Button(onClick = onSettingsClick) {
-                    Text(
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.open_settings
-                        )
-                    )
+                    Text(stringResource(R.string.open_settings))
                 }
             }
         }
         return
     }
 
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listState = rememberLazyListState()
     LazyColumn(
         state = listState,
         modifier =
@@ -267,10 +278,7 @@ fun HomeScreen(
         if (state.jumpBackInItems.isNotEmpty()) {
             item(key = "jump-back-in", contentType = "jump-back-in") {
                 JumpBackInRow(
-                    title =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_jump_back_in
-                        ),
+                    title = stringResource(R.string.ui_jump_back_in),
                     items = state.jumpBackInItems,
                     onItemClick = { onAction(HomeAction.OnJumpBackInClick(it)) },
                     onItemLongClick = { onAction(HomeAction.SelectOptions(it)) },
@@ -281,15 +289,13 @@ fun HomeScreen(
         if (state.movies.isNotEmpty()) {
             item(key = "movies", contentType = "shelf") {
                 MediaRow(
-                    title =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.movies
-                        ),
+                    title = stringResource(R.string.movies),
                     items = state.movies,
                     onItemClick = { onMediaClick(it.id, it.mediaType) },
                     onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    shelfKey = "movies",
                     onHeaderClick = {
-                        onLibraryClick(com.singam.lionlibrary.domain.model.MediaFilter.MOVIES)
+                        onLibraryClick(MediaFilter.MOVIES)
                     },
                 )
             }
@@ -298,15 +304,13 @@ fun HomeScreen(
         if (state.tvShows.isNotEmpty()) {
             item(key = "tv-shows", contentType = "shelf") {
                 MediaRow(
-                    title =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.tv_shows
-                        ),
+                    title = stringResource(R.string.tv_shows),
                     items = state.tvShows,
                     onItemClick = { onMediaClick(it.id, it.mediaType) },
                     onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    shelfKey = "tv-shows",
                     onHeaderClick = {
-                        onLibraryClick(com.singam.lionlibrary.domain.model.MediaFilter.TV_SHOWS)
+                        onLibraryClick(MediaFilter.TV_SHOWS)
                     },
                 )
             }
@@ -315,15 +319,13 @@ fun HomeScreen(
         if (state.anime.isNotEmpty()) {
             item(key = "anime", contentType = "shelf") {
                 MediaRow(
-                    title =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.anime
-                        ),
+                    title = stringResource(R.string.anime),
                     items = state.anime,
                     onItemClick = { onMediaClick(it.id, it.mediaType) },
                     onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    shelfKey = "anime",
                     onHeaderClick = {
-                        onLibraryClick(com.singam.lionlibrary.domain.model.MediaFilter.ANIME)
+                        onLibraryClick(MediaFilter.ANIME)
                     },
                 )
             }
@@ -332,13 +334,11 @@ fun HomeScreen(
         if (state.recentlyAdded.isNotEmpty()) {
             item(key = "recently-added", contentType = "shelf") {
                 MediaRow(
-                    title =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_recently_added
-                        ),
+                    title = stringResource(R.string.ui_recently_added),
                     items = state.recentlyAdded,
                     onItemClick = { onMediaClick(it.id, it.mediaType) },
                     onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    shelfKey = "recently-added",
                 )
             }
         }
@@ -351,6 +351,7 @@ fun HomeScreen(
                         items = items,
                         onItemClick = { onMediaClick(it.id, it.mediaType) },
                         onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                        shelfKey = "genre:$genre",
                     )
                 }
             }
@@ -389,14 +390,19 @@ fun HomeScreen(
                             text = item.mediaTitle,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White,
+                            color = LionTheme.colors.onMedia,
                         )
                         if (item.mediaType != MediaType.MOVIE) {
                             Text(
                                 text =
-                                    "S${item.seasonNumber}E${item.episodeNumber} • ${item.episodeTitle ?: ""}",
+                                    stringResource(
+                                        R.string.jump_back_in_episode,
+                                        item.seasonNumber ?: 0,
+                                        item.episodeNumber ?: 0,
+                                        item.episodeTitle.orEmpty(),
+                                    ),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.Gray,
+                                color = LionTheme.colors.textSecondary,
                             )
                         }
                     }
@@ -404,59 +410,44 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                JumpBackInOptionItem(
+                MediaOptionItem(
                     icon = Icons.Default.Info,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_go_to_details
-                        ),
+                    text = stringResource(R.string.ui_go_to_details),
                     onClick = {
                         onAction(HomeAction.SelectOptions(null))
                         onMediaClick(item.mediaId, item.mediaType)
                     },
                 )
-                JumpBackInOptionItem(
+                MediaOptionItem(
                     icon = Icons.Default.PlayArrow,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_play_in_external_player
-                        ),
+                    text = stringResource(R.string.ui_play_in_external_player),
                     onClick = {
                         onAction(HomeAction.SelectOptions(null))
                         onAction(HomeAction.OnPlayExternal(item))
                     },
                     iconTint = MaterialTheme.colorScheme.primary,
                 )
-                JumpBackInOptionItem(
+                MediaOptionItem(
                     icon = Icons.Default.Refresh,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_start_from_beginning
-                        ),
+                    text = stringResource(R.string.ui_start_from_beginning),
                     onClick = {
                         onAction(HomeAction.SelectOptions(null))
                         onAction(HomeAction.OnStartFromBeginning(item))
                     },
                     iconTint = MaterialTheme.colorScheme.primary,
                 )
-                JumpBackInOptionItem(
+                MediaOptionItem(
                     icon = Icons.Default.Delete,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_remove
-                        ),
+                    text = stringResource(R.string.ui_remove),
                     onClick = {
                         onAction(HomeAction.SelectOptions(null))
                         onAction(HomeAction.OnRemoveWatchProgress(item))
                     },
                     iconTint = MaterialTheme.colorScheme.primary,
                 )
-                JumpBackInOptionItem(
+                MediaOptionItem(
                     icon = Icons.Default.Delete,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.delete_from_device
-                        ),
+                    text = stringResource(R.string.delete_from_device),
                     onClick = { onAction(HomeAction.RequestDelete(item.mediaId)) },
                     iconTint = MaterialTheme.colorScheme.error,
                 )
@@ -465,39 +456,9 @@ fun HomeScreen(
     }
 }
 
-@Composable
-private fun JumpBackInOptionItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String,
-    onClick: () -> Unit,
-    iconTint: Color = Color.White,
-) {
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = text,
-            tint = iconTint,
-            modifier = Modifier.size(24.dp),
-        )
-        Spacer(modifier = Modifier.width(24.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White,
-        )
-    }
-}
-
 private const val HERO_AUTO_SCROLL_MS = 8_000L
 
-@androidx.compose.foundation.ExperimentalFoundationApi
+@ExperimentalFoundationApi
 @Composable
 internal fun HeroBannerCarousel(
     mediaItems: List<MediaItem>,
@@ -507,40 +468,41 @@ internal fun HeroBannerCarousel(
     onItemLongClick: (MediaItem) -> Unit = {},
 ) {
     if (mediaItems.isEmpty()) return
-    val pagerState =
-        androidx.compose.foundation.pager.rememberPagerState(pageCount = { mediaItems.size })
+    val pagerState = rememberPagerState(pageCount = { mediaItems.size })
     // Rotation is decorative. Stop after interaction and for accessibility/reduced motion.
     val context = LocalContext.current
     val accessibility =
         remember(context) {
-            context.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE)
-                as android.view.accessibility.AccessibilityManager
+            context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         }
     var exploring by remember {
-        androidx.compose.runtime.mutableStateOf(accessibility.isTouchExplorationEnabled)
+        mutableStateOf(accessibility.isTouchExplorationEnabled)
     }
-    androidx.compose.runtime.DisposableEffect(accessibility) {
-        val listener =
-            android.view.accessibility.AccessibilityManager.TouchExplorationStateChangeListener {
-                exploring = it
-            }
+    DisposableEffect(accessibility) {
+        val listener = AccessibilityManager.TouchExplorationStateChangeListener {
+            exploring = it
+        }
         accessibility.addTouchExplorationStateChangeListener(listener)
         onDispose { accessibility.removeTouchExplorationStateChangeListener(listener) }
     }
     var interacted by
         androidx.compose.runtime.saveable.rememberSaveable {
-            androidx.compose.runtime.mutableStateOf(false)
+            mutableStateOf(false)
         }
     val dragging by pagerState.interactionSource.collectIsDraggedAsState()
     LaunchedEffect(dragging) { if (dragging) interacted = true }
-    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val lifecycle = LocalLifecycleOwner.current
     val lifecycleState by lifecycle.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+    // Read once per lifecycle change rather than every recomposition; returning from system
+    // settings resumes the screen, so a changed animation scale is still picked up.
     val motionEnabled =
-        android.provider.Settings.Global.getFloat(
-            context.contentResolver,
-            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f,
-        ) > 0f
+        remember(context, lifecycleState) {
+            Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f,
+            ) > 0f
+        }
     LaunchedEffect(
         pagerState.settledPage,
         mediaItems.size,
@@ -554,7 +516,7 @@ internal fun HeroBannerCarousel(
                 exploring ||
                 interacted ||
                 !motionEnabled ||
-                !lifecycleState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                !lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
         )
             return@LaunchedEffect
         delay(HERO_AUTO_SCROLL_MS)
@@ -572,8 +534,8 @@ internal fun HeroBannerCarousel(
             (80.dp * (fontScale - 1f).coerceIn(0f, 1f))
     val logoHeight = 80.dp * fontScale.coerceIn(1f, 1.6f)
     val background = MaterialTheme.colorScheme.background
-    val optionsLabel =
-        androidx.compose.ui.res.stringResource(com.singam.lionlibrary.R.string.media_options)
+    val optionsLabel = stringResource(R.string.media_options)
+    val haptics = LocalHapticFeedback.current
     val scrim = MaterialTheme.colorScheme.scrim
     val gradient =
         remember(background, scrim) {
@@ -588,10 +550,10 @@ internal fun HeroBannerCarousel(
             )
         }
     Column(modifier.fillMaxWidth().height(heroHeight)) {
-        Box(Modifier.fillMaxWidth().weight(1f).clip(androidx.compose.ui.graphics.RectangleShape)) {
+        Box(Modifier.fillMaxWidth().weight(1f).clip(RectangleShape)) {
             // Pager supplies native swipe/fling semantics. Visual layers move less than a full
             // page and crossfade; read offsets in draw to keep frames out of composition.
-            androidx.compose.foundation.pager.HorizontalPager(
+            HorizontalPager(
                 state = pagerState,
                 modifier =
                     Modifier.fillMaxSize()
@@ -606,6 +568,7 @@ internal fun HeroBannerCarousel(
                         .pointerInput(mediaItems) {
                             detectTapGestures(
                                 onLongPress = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     interacted = true
                                     onItemLongClick(mediaItems[pagerState.currentPage])
                                 }
@@ -621,19 +584,25 @@ internal fun HeroBannerCarousel(
             visiblePages.forEach { page ->
                 key(mediaItems[page].id) {
                     val media = mediaItems[page]
+                    // Tall hero over a wide backdrop: bias the crop toward the subject.
+                    val focus = rememberBackdropAlignment(media.backdropPath ?: media.posterPath)
                     LocalArtwork(
                         listOf(media.backdropPath, media.posterPath),
                         null,
-                        Modifier.fillMaxSize().graphicsLayer {
-                            val offset =
-                                (pagerState.currentPage - page) +
-                                    pagerState.currentPageOffsetFraction
-                            alpha = (1f - abs(offset)).coerceIn(0f, 1f)
-                            translationX = if (motionEnabled) -offset * size.width * .055f else 0f
-                            translationY = if (motionEnabled) verticalScrollOffset() * .22f else 0f
-                            scaleX = if (motionEnabled) 1.14f else 1f
-                            scaleY = if (motionEnabled) 1.14f else 1f
-                        },
+                        alignment = focus,
+                        modifier =
+                            Modifier.fillMaxSize().graphicsLayer {
+                                val offset =
+                                    (pagerState.currentPage - page) +
+                                        pagerState.currentPageOffsetFraction
+                                alpha = (1f - abs(offset)).coerceIn(0f, 1f)
+                                translationX =
+                                    if (motionEnabled) -offset * size.width * .055f else 0f
+                                translationY =
+                                    if (motionEnabled) verticalScrollOffset() * .22f else 0f
+                                scaleX = if (motionEnabled) 1.14f else 1f
+                                scaleY = if (motionEnabled) 1.14f else 1f
+                            },
                     )
                 }
             }
@@ -663,17 +632,14 @@ internal fun HeroBannerCarousel(
                             media.logoPath,
                             Modifier.fillMaxWidth(.72f).height(logoHeight),
                         )
-                        HeroMetadataLine(
-                            media.year?.toString(),
-                            media.genres,
-                            media.rating
-                                ?.takeIf { it > 0f }
-                                ?.let {
-                                    androidx.compose.ui.res.stringResource(
-                                        com.singam.lionlibrary.R.string.star_rating_value,
-                                        it,
-                                    )
-                                },
+                        HeroMetadata(
+                            mediaType = media.mediaType,
+                            genres = media.genres,
+                            durationMinutes = media.duration,
+                            year = media.year,
+                            tmdbRating = media.rating,
+                            letterboxdRating = media.letterboxdRating,
+                            language = media.originalLanguage,
                         )
                     }
                 }
@@ -703,9 +669,7 @@ internal fun HeroBannerCarousel(
                     ),
             ) {
                 Text(
-                    androidx.compose.ui.res.stringResource(
-                        com.singam.lionlibrary.R.string.ui_view_details
-                    ),
+                    stringResource(R.string.ui_view_details),
                     style = MaterialTheme.typography.titleSmall,
                 )
             }
@@ -745,6 +709,8 @@ fun MediaRow(
     onItemClick: (MediaItem) -> Unit,
     onHeaderClick: (() -> Unit)? = null,
     onItemLongClick: (MediaItem) -> Unit = {},
+    // Identifies this shelf for the poster-to-Details transition; null keeps the plain fade.
+    shelfKey: String? = null,
 ) {
     Column(modifier = Modifier.padding(bottom = LionLayout.SectionGap)) {
         ShelfHeading(
@@ -762,6 +728,8 @@ fun MediaRow(
                     mediaItem = item,
                     onClick = { onItemClick(item) },
                     onLongClick = { onItemLongClick(item) },
+                    modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
+                    sharedShelf = shelfKey,
                 )
             }
         }
@@ -785,66 +753,79 @@ fun JumpBackInRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(items, key = { "${it.mediaId}-${it.episodeId}" }) { item ->
+            // One card per title, keyed by title: a title moving to the front (just watched) or its
+            // next-up episode changing animates as a move/update instead of remove + add.
+            items(items, key = { it.mediaId }) { item ->
                 JumpBackInCard(
                     item = item,
                     onClick = { onItemClick(item) },
                     onLongClick = { onItemLongClick(item) },
+                    modifier =
+                        Modifier.animateItem(
+                            fadeInSpec =
+                                tween(LionMotion.Standard, easing = LionMotion.EnterEasing),
+                            placementSpec =
+                                spring(
+                                    stiffness = Spring.StiffnessMediumLow,
+                                    visibilityThreshold = IntOffset.VisibilityThreshold,
+                                ),
+                            fadeOutSpec = tween(LionMotion.Fast, easing = LionMotion.ExitEasing),
+                        ),
                 )
             }
         }
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Hero with one local title")
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(name = "Hero with one local title")
+@Preview(
     name = "Hero enlarged text",
     widthDp = 320,
     fontScale = 2f,
 )
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SingleHeroPreview() {
 
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         HeroBannerCarousel(
-            listOf(com.singam.lionlibrary.presentation.components.PreviewFilm),
+            listOf(PreviewFilm),
             { _, _ -> },
         )
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Hero carousel", widthDp = 840)
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Preview(name = "Hero carousel", widthDp = 840)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CarouselPreview() {
 
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
-        val film = com.singam.lionlibrary.presentation.components.PreviewFilm
+    LionLibraryTheme {
+        val film = PreviewFilm
 
         HeroBannerCarousel(listOf(film, film.copy(id = 2, title = "Michael")), { _, _ -> })
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Media shelf")
+@Preview(name = "Media shelf")
 @Composable
 private fun ShelfPreview() {
 
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         MediaRow(
             "Movies",
-            listOf(com.singam.lionlibrary.presentation.components.PreviewFilm),
+            listOf(PreviewFilm),
             {},
             {},
         )
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Continue watching shelf")
+@Preview(name = "Continue watching shelf")
 @Composable
 private fun ResumeShelfPreview() {
 
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         JumpBackInRow(
             "Jump Back In",
             listOf(

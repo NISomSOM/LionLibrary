@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Seek bar and gesture feedback -->
+    <string name="cd_seek_bar">Playback position</string>
+    <string name="player_seek_back_10">−10 s</string>
+    <string name="player_seek_forward_10">+10 s</string>
+    <!-- %1$s = signed offset such as +1:05, %2$s = target time such as 12:34 -->
+    <string name="player_seek_drag">%1$s · %2$s</string>
+    <string name="player_hold_speed">2× speed</string>
+    <string name="cd_hold_speed">Playing at double speed while held</string>
+
+    <!-- Fallback names for unlabelled tracks; %1$d = position in the list -->
+    <string name="player_audio_track_fallback">Audio Track %1$d</string>
+    <string name="player_subtitle_track_fallback">Subtitle Track %1$d</string>
+
+    <!-- Format labels (info overlay, audio panel, speed) -->
+    <string name="player_audio_mono">Mono</string>
+    <string name="player_audio_stereo">Stereo</string>
+    <string name="player_audio_channels">%1$d ch</string>
+    <string name="player_unit_khz">%1$s kHz</string>
+    <string name="player_unit_kbps">%1$s kbps</string>
+    <string name="player_unit_mbps">%1$s Mbps</string>
+    <string name="player_unit_fps">%1$s fps</string>
+    <string name="player_unit_speed">%1$sx</string>
+    <string name="player_unit_seconds">%1$s s</string>
+</resources>

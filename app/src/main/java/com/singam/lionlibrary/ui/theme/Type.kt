@@ -18,8 +18,8 @@ val Inter =
     )
 
 private fun type(
-    size: Int,
-    line: Int,
+    size: Float,
+    line: Float,
     weight: FontWeight = FontWeight.Normal,
     tracking: Float = 0f,
 ) =
@@ -31,21 +31,23 @@ private fun type(
         letterSpacing = tracking.sp,
     )
 
+// Compact, Nuvio-like scale: smaller body copy, bold tight headings and slightly tracked labels.
+// Sizes respect the user's system font scale, so every value here is the 1.0x size.
 val Typography =
     Typography(
-        displayLarge = type(48, 56, FontWeight.Bold),
-        displayMedium = type(40, 48, FontWeight.Bold),
-        displaySmall = type(32, 40, FontWeight.Bold),
-        headlineLarge = type(38, 42, FontWeight.Bold, -1.2f),
-        headlineMedium = type(26, 34, FontWeight.SemiBold),
-        headlineSmall = type(22, 30, FontWeight.SemiBold),
-        titleLarge = type(20, 26, FontWeight.SemiBold),
-        titleMedium = type(18, 24, FontWeight.SemiBold),
-        titleSmall = type(15, 22, FontWeight.SemiBold),
-        bodyLarge = type(15, 22),
-        bodyMedium = type(14, 22),
-        bodySmall = type(13, 18),
-        labelLarge = type(14, 18, FontWeight.SemiBold),
-        labelMedium = type(12, 16, FontWeight.Medium),
-        labelSmall = type(12, 16, FontWeight.Medium),
+        displayLarge = type(40f, 46f, FontWeight.Bold, -1f),
+        displayMedium = type(34f, 40f, FontWeight.Bold, -.8f),
+        displaySmall = type(28f, 34f, FontWeight.Bold, -.6f),
+        headlineLarge = type(30f, 34f, FontWeight.Bold, -.8f),
+        headlineMedium = type(22f, 28f, FontWeight.Bold, -.3f),
+        headlineSmall = type(19f, 24f, FontWeight.Bold, -.2f),
+        titleLarge = type(16f, 21f, FontWeight.SemiBold, -.1f),
+        titleMedium = type(15f, 20f, FontWeight.Bold, -.2f),
+        titleSmall = type(13f, 18f, FontWeight.SemiBold),
+        bodyLarge = type(13.5f, 19f),
+        bodyMedium = type(12.5f, 18f),
+        bodySmall = type(11.5f, 15f),
+        labelLarge = type(13f, 16f, FontWeight.SemiBold, .1f),
+        labelMedium = type(11f, 14f, FontWeight.Medium, .2f),
+        labelSmall = type(10f, 13f, FontWeight.Medium, .4f),
     )

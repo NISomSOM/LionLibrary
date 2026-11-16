@@ -146,22 +146,29 @@ the observed Nuvio Search section remains reference material.
 
 | Active LionLibrary decision | Implementation |
 | --- | --- |
-| Identity | Orange #FF5722; background #0B0D10, surface #171A20, outline #232831, warm selection #36221B |
+| Identity | Orange #FF5722; background #0B0D10, surface #171A20, outline #232831, hairline #343B46 (outlineVariant, 2026-11-15), warm selection #36221B; text primary #F5F7F8, secondary #B8BEC5 (replaces grey), muted #A1A8B2 |
 | Font | Bundled, licensed Inter 400/500/600/700; system text scaling is respected |
 | Page headings | 38/42 sp, bold, tracking -1.2 sp |
 | Shelf headings | 18/24 sp, semibold; full category heading remains a navigation action |
 | Reading / captions | Body 15/22 sp; poster title 14/18 sp with up to two lines; standard small labels 12 sp; compact resume metadata/status 10 sp per the requested reference |
 | Rhythm | 16 dp page gutter, 18 dp Details gutter, 12 dp item gap, 24 dp shelf separation, 6 dp caption gap |
-| Posters | 126 dp shelf width, 2:3 artwork, 12 dp artwork corners; caption/year are not rounded or clipped; 16 dp bookmark glyph in a 24 dp circular badge; standard touch target |
+| Posters | 126 dp shelf width, 2:3 artwork, 12 dp artwork corners with a 1 dp top-lit edge and faint top sheen (also Jump Back In and episode thumbnails); caption/year are not rounded or clipped; 16 dp bookmark glyph in a 24 dp circular badge; standard touch target; long press lifts the poster into a centred preview over a blurred (Android 12+) or dimmed page |
 | Grids | Adaptive minimum 104 dp; widen cells above 130% text scale, with 12 dp row/column gaps |
 | Home hero | 58% screen height bounded to 360-600 dp, with extra space for large text; extends under status bar; clipped crossfade/parallax layers and live-offset indicators; metadata measures available width and omits whole genres to remain one line |
 | Resume | 247 dp, 16:9; episode code/title/episode-title caption, top-right timing badge and inset orange progress; tap resumes, long press/accessibility actions open options; caption moves below the image above 140% text scale |
-| Navigation | Centered translucent Material capsule over page content, capped at 280 ? 64 dp for normal text; Home/Library/Settings, orange selection, current-tab taps do not navigate, persistent whole labels (two rows above 140% text scale); trailing scroll inset preserves final items and navigation yields to the keyboard |
+| Navigation | Centered translucent Material capsule over page content, capped at 280 ? 64 dp for normal text, narrowing to 208 ? 52 dp with labels hidden while content scrolls down (never above 140% text scale); Home/Library/Settings, orange selection, current-tab taps do not navigate, persistent whole labels (two rows above 140% text scale); trailing scroll inset preserves final items and navigation yields to the keyboard |
 | Settings | Same key, two folders, playback overrides, scan, history and About; quieter group labels and folder rows |
-| Details | White primary action plus independent orange watchlist state with 16 dp glyph and 48 dp target; Play for unstarted shows, Next Episode after any episode completes, Resume/Replay when appropriate; opaque toolbar only after the primary action passes it |
-| Player footer | Smaller outlined translucent pill; +90s/Subs/Audio retained; 12/16 sp labels, 16 dp icons and 48 dp touch targets; elapsed/total badges sit beneath opposite ends of the full-width seek bar |
-| Motion | 150 ms quick feedback, 220 ms general screen/carousel motion; 240 ms media entrance fade after 70 ms navigation delay; Details also fades actual loaded content for 240 ms, without restarting on ordinary state updates; easing (0.2, 0, 0, 1); swipe offsets read in graphics layers/indicator draw |
+| Details | White primary action plus independent orange watchlist state with 16 dp glyph and 48 dp target; Play for unstarted shows, Next Episode after any episode completes, Resume/Replay when appropriate; opaque toolbar only after the primary action passes it, now sliding down 35% as it fades (220 ms); hero parallax at half speed with 1.06 over-scale and a spring pull stretch; multi-stop gradient into a blurred, darkened ambient copy of the local backdrop (Android 12+); poster-to-hero shared bounds transition (400 ms) |
+| Player footer | Smaller outlined translucent pill; +90s/Subs/Audio retained; 12/16 sp labels, 16 dp icons and 48 dp touch targets; thumbless 6 dp seek bar growing to 10 dp while touched (48 dp target), chapter notches and current chapter name; times in the footer row |
+| Player gestures | One handler: tap, double-tap ±10 s on the side thirds, hold for 2x, duration-scaled horizontal seek (60/90/120 s per width), clear-vertical drags for volume (left) and brightness (right), system edges ignored; slim 4 dp edge level bars; shadowed seek/speed text near the top; haptics on double tap, hold and chapter ticks |
+| Motion | Tokens 150/220/300/400/700 ms with standard (0.2, 0, 0, 1), enter (0.05, 0.7, 0.1, 1) and exit (0.3, 0, 0.8, 0.15) easings; skeleton placeholders with one shared shimmer clock instead of spinners; animateItem on shelves, grid and Jump Back In; tall heroes bias their crop toward the estimated subject; 150 ms quick feedback, 220 ms general screen/carousel motion; 240 ms media entrance fade after 70 ms navigation delay; Details also fades actual loaded content for 240 ms, without restarting on ordinary state updates; easing (0.2, 0, 0, 1); swipe offsets read in graphics layers/indicator draw |
 | Autoplay | Eight-second decorative rotation only while resumed; stops after dragging or action, with touch exploration or reduced motion |
+
+Design tokens (spacing, radii, opacity, hairline, motion, colour roles) live in
+`app/src/main/java/com/singam/lionlibrary/ui/theme/DesignTokens.kt` and are read through
+`LionLayout`, `LionAlpha`, `LionMotion` and `LionTheme.colors`; screens no longer use inline colours.
+The 2026-11-15 pass changed only the values marked above (secondary text, hairline, card edge); text
+sizes are unchanged. All new motion stops when system animations are off.
 
 The episode list and its actions keep their existing logic and layout structure.
 Only the shared typography and formatting affect that area. No Nuvio source,

@@ -2,6 +2,7 @@ package com.singam.lionlibrary.presentation.player.engine
 
 import android.net.Uri
 import android.view.ViewGroup
+import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.domain.model.PlaybackChapter
 import kotlinx.coroutines.flow.StateFlow
 
@@ -58,11 +59,6 @@ enum class AspectMode {
     ZOOM,
 }
 
-enum class EngineType {
-    EXOPLAYER,
-    LIBVLC,
-}
-
 // Video engine interface.
 interface LionPlayerEngine {
 
@@ -98,6 +94,12 @@ interface LionPlayerEngine {
 
     // Attach to view.
     fun attachToView(container: ViewGroup)
+
+    /**
+     * The hosting screen stopped (false) or started again (true). Engines whose video output does
+     * not survive the surface being destroyed release and rebuild it here.
+     */
+    fun setHostVisible(visible: Boolean) {}
 
     // Current position.
     val currentPositionMs: Long

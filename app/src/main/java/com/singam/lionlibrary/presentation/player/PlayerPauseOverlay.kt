@@ -13,9 +13,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.presentation.components.LocalArtwork
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 
 /**
  * "You're watching" card shown while paused with the controls hidden: the title logo (or the title
@@ -112,14 +114,14 @@ internal fun PlayerPauseOverlay(
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Paused, episode",
     widthDp = 800,
     heightDp = 380,
 )
 @Composable
 private fun PauseEpisodePreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         PlayerPauseOverlay(
             title = "Frieren: Beyond Journey's End",
             logoPath = null,
@@ -132,15 +134,15 @@ private fun PauseEpisodePreview() {
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Paused, movie", widthDp = 900, heightDp = 480)
+@Preview(name = "Paused, movie", widthDp = 900, heightDp = 480)
 @Composable
 private fun PauseMoviePreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         PlayerPauseOverlay("Tenzing", null, "2026", null, Modifier.fillMaxSize())
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Paused, large font",
     widthDp = 800,
     heightDp = 380,
@@ -148,7 +150,7 @@ private fun PauseMoviePreview() {
 )
 @Composable
 private fun PauseLargeFontPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         PlayerPauseOverlay(
             "The Expanse",
             null,

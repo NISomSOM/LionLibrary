@@ -1,6 +1,7 @@
 package com.singam.lionlibrary.data.repository
 
 import com.singam.lionlibrary.data.local.preferences.PreferencesManager
+import com.singam.lionlibrary.domain.model.ScanSummary
 import com.singam.lionlibrary.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 
@@ -17,7 +18,7 @@ class DataStoreSettingsRepository(private val preferencesManager: PreferencesMan
     override suspend fun setSetupDismissed(dismissed: Boolean) =
         preferencesManager.setSetupDismissed(dismissed)
 
-    override suspend fun setScanSummary(summary: com.singam.lionlibrary.domain.model.ScanSummary) =
+    override suspend fun setScanSummary(summary: ScanSummary) =
         preferencesManager.setScanSummary(summary)
 
     override val tmdbApiKey: Flow<String> = preferencesManager.tmdbApiKey

@@ -7,6 +7,7 @@ import com.singam.lionlibrary.data.local.db.entity.SeasonEntity
 import com.singam.lionlibrary.data.local.db.entity.WatchProgressEntity
 import com.singam.lionlibrary.data.remote.dto.MovieDetailsDto
 import com.singam.lionlibrary.data.remote.dto.TvDetailsDto
+import com.singam.lionlibrary.data.scanner.FileNameParser
 import com.singam.lionlibrary.domain.model.Episode
 import com.singam.lionlibrary.domain.model.JumpBackInItem
 import com.singam.lionlibrary.domain.model.MediaItem
@@ -21,7 +22,7 @@ fun TvDetailsDto.inferMediaType(): MediaType {
 }
 
 // Stateless and immutable; reused so mapping does not recompile its patterns per row.
-private val displayTitleParser = com.singam.lionlibrary.data.scanner.FileNameParser()
+private val displayTitleParser = FileNameParser()
 
 fun MediaEntity.toMediaItem(): MediaItem =
     MediaItem(
@@ -59,6 +60,7 @@ fun MediaEntity.toMediaItem(): MediaItem =
         sourceEpisode = sourceEpisode,
         sourceEpisodeEnd = sourceEpisodeEnd,
         identificationFailure = identificationFailure,
+        originalLanguage = originalLanguage,
     )
 
 fun MediaItem.toMediaEntity(): MediaEntity =
@@ -92,6 +94,7 @@ fun MediaItem.toMediaEntity(): MediaEntity =
         sourceEpisode = sourceEpisode,
         sourceEpisodeEnd = sourceEpisodeEnd,
         identificationFailure = identificationFailure,
+        originalLanguage = originalLanguage,
     )
 
 fun EpisodeEntity.toEpisode(): Episode =
@@ -225,6 +228,7 @@ fun MovieDetailsDto.toMediaEntity(
         lastUpdated = System.currentTimeMillis(),
         filePath = filePath,
         preferredEngine = preferredEngine,
+        originalLanguage = originalLanguage.orEmpty(),
     )
 }
 
@@ -253,4 +257,5 @@ fun TvDetailsDto.toMediaEntity(
         lastUpdated = System.currentTimeMillis(),
         logoPath = null,
         preferredEngine = preferredEngine,
+        originalLanguage = originalLanguage.orEmpty(),
     )

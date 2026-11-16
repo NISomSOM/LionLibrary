@@ -12,7 +12,28 @@ object DatabaseMigrations {
                     override fun migrate(db: SupportSQLiteDatabase) = upgrade(db)
                 }
             }
+            .plus(AddOriginalLanguage)
+            .plus(AddEpisodeOrderIndex)
             .toTypedArray()
+
+    /** Additive only: the new nullable column is filled later by the artwork/metadata refresh. */
+    private object AddOriginalLanguage : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE media ADD COLUMN originalLanguage TEXT")
+        }
+    }
+
+    /**
+     * Additive only: next/previous episode, season lists and next-up order by (showId,
+     * seasonNumber, episodeNumber). No rows or columns change.
+     */
+    private object AddEpisodeOrderIndex : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_episodes_showId_seasonNumber_episodeNumber` ON `episodes` (`showId`, `seasonNumber`, `episodeNumber`)"
+            )
+        }
+    }
 
     private fun upgrade(db: SupportSQLiteDatabase) {
         rebuild(

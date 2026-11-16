@@ -41,8 +41,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Ships only the owner's phone ABI (vivo X300, Android 16). Debug keeps every ABI,
+            // including x86_64 for emulators.
             ndk {
-                abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+                abiFilters += listOf("arm64-v8a")
             }
         }
     }
@@ -54,6 +56,9 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 }
 
@@ -80,6 +85,8 @@ dependencies {
 
     // Core
     implementation(libs.androidx.core.ktx)
+    // Installs src/main/baseline-prof.txt at install/first run for faster startup and scrolling.
+    implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -135,9 +142,16 @@ dependencies {
     testImplementation(libs.turbine)
     // Local loopback HTTP for skip-time provider contracts; tests never reach the internet.
     testImplementation(libs.okhttp.mockwebserver)
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.coroutines.get()}")
-    androidTestImplementation("androidx.room:room-testing:${libs.versions.room.get()}")
-    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.coroutines.get()}")
+    testImplementation(libs.kotlinx.coroutines.test)
+    // Compose UI tests that need no emulator run on the JVM through Robolectric (JUnit 4 runner via
+    // Vintage). Room migrations, SAF, the deletion provider and native players stay instrumented.
+    testImplementation(libs.robolectric)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    // Compose test idling goes through Espresso; older transitive versions fail on SDK 35+.
+    testImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
     // Existing JUnit 4 suites remain runnable through Vintage.
     // Tests
     testImplementation(libs.junit)

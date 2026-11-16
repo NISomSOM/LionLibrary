@@ -1,6 +1,7 @@
 package com.singam.lionlibrary.domain.usecase
 
 import com.singam.lionlibrary.domain.model.HomeContent
+import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.repository.MediaRepository
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
@@ -31,14 +32,31 @@ class GetHomeContentUseCase(
                     it.genres?.contains("Anime", ignoreCase = true) == true
                 }
 
+                val allMedia = (movies + tvShows + anime).distinctBy { it.id }
                 HomeContent(
                     jumpBackInItems = jumpBackInItems,
                     movies = movies,
                     tvShows = tvShows,
                     anime = anime + animeMovies,
                     recentlyAdded = recentlyAdded,
+                    allMedia = allMedia,
+                    genres = genreShelves(allMedia),
                 )
             }
             .flowOn(dispatcher)
     }
+}
+
+/** Groups titles by their comma-separated genres (trimmed, blanks dropped), sorted by name. */
+internal fun genreShelves(items: List<MediaItem>): Map<String, List<MediaItem>> {
+    val shelves = sortedMapOf<String, MutableList<MediaItem>>()
+    items.forEach { item ->
+        item.genres
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.distinct()
+            ?.forEach { genre -> shelves.getOrPut(genre) { mutableListOf() }.add(item) }
+    }
+    return shelves
 }

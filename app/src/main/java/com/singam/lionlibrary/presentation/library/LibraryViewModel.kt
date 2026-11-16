@@ -7,6 +7,7 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.domain.repository.MediaRepository
 import com.singam.lionlibrary.presentation.common.UiText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
@@ -63,58 +64,80 @@ class LibraryViewModel(private val media: MediaRepository, private val saved: Sa
                     ?: LibrarySort.TITLE_ASC,
             watchlistOnly = saved["watchlist"] ?: false,
         )
-    private val _state =
+    // Screen-local query/filter choices. Results are merged in only while the screen collects.
+    private val local =
         MutableStateFlow(LibraryState(query = initial, yearInput = saved["year"] ?: ""))
-    val state = _state.asStateFlow()
 
-    init {
-        viewModelScope.launch {
-            media
-                .browse(LibraryQuery())
-                .map { items ->
-                    items
-                        .flatMap { it.genres?.split(",").orEmpty() }
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() }
-                        .distinct()
-                        .sorted()
-                }
-                .distinctUntilChanged()
-                .catch { emit(emptyList()) }
-                .collect { genres -> _state.update { it.copy(genres = genres) } }
-        }
-        viewModelScope.launch {
-            _state
-                .map { it.query }
-                .distinctUntilChanged()
-                .debounce(200)
-                .flatMapLatest { query ->
-                    media
-                        .browse(query)
-                        .onStart { _state.update { it.copy(isLoading = true, error = null) } }
-                        .catch {
-                            _state.update {
-                                it.copy(
-                                    isLoading = false,
-                                    error = UiText.Resource(R.string.error_unknown),
-                                )
-                            }
-                            emit(emptyList())
-                        }
-                }
-                .collect { entries ->
-                    _state.update { it.copy(items = entries, isLoading = false) }
-                }
-        }
-    }
+    private var lastGenres: List<String> = emptyList()
+    private var lastResult: BrowseResult? = null
+
+    private val genres: Flow<List<String>> =
+        media
+            .browse(LibraryQuery())
+            .map { items ->
+                items
+                    .flatMap { it.genres?.split(",").orEmpty() }
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .distinct()
+                    .sorted()
+            }
+            .distinctUntilChanged()
+            .catch { emit(emptyList()) }
+            .onEach { lastGenres = it }
+            // A restarted collection starts from the last answer, never from an empty placeholder.
+            .onStart { emit(lastGenres) }
+
+    private val results: Flow<BrowseResult?> =
+        local
+            .map { it.query }
+            .distinctUntilChanged()
+            .debounce(200)
+            .flatMapLatest { query ->
+                media
+                    .browse(query)
+                    .map<List<MediaItem>, BrowseResult?> { BrowseResult(query, it, null) }
+                    .catch {
+                        emit(
+                            BrowseResult(
+                                query,
+                                emptyList(),
+                                UiText.Resource(R.string.error_unknown),
+                            )
+                        )
+                    }
+            }
+            .onEach { lastResult = it }
+            .onStart { emit(lastResult) }
+
+    /**
+     * Collected only while the UI is subscribed (5 s grace). Loading means "no result yet for the
+     * current query", so resubscribing after playback keeps showing the cached results instead of a
+     * loading state, and scroll position/filters stay as they were.
+     */
+    val state: StateFlow<LibraryState> =
+        combine(local, genres, results) { screen, genreList, result ->
+                val current = result?.query == screen.query
+                screen.copy(
+                    genres = genreList,
+                    items = result?.items ?: screen.items,
+                    isLoading = !current,
+                    error = screen.error ?: result?.error.takeIf { current },
+                )
+            }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5_000),
+                local.value,
+            )
 
     fun setInitialFilter(filter: MediaFilter) {
         if (!saved.contains("type")) updateQuery { it.copy(type = filter) }
     }
 
     private fun updateQuery(transform: (LibraryQuery) -> LibraryQuery) {
-        _state.update { it.copy(query = transform(it.query)) }
-        val query = _state.value.query
+        local.update { it.copy(query = transform(it.query), error = null) }
+        val query = local.value.query
         saved["query"] = query.text
         saved["type"] = query.type.name
         saved["genre"] = query.genre
@@ -129,10 +152,10 @@ class LibraryViewModel(private val media: MediaRepository, private val saved: Sa
                 viewModelScope.launch {
                     try {
                         media.toggleWatchlist(action.id)
-                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
-                        _state.update { it.copy(error = UiText.Resource(R.string.error_storage)) }
+                        local.update { it.copy(error = UiText.Resource(R.string.error_storage)) }
                     }
                 }
             is LibraryAction.QueryChanged -> updateQuery { it.copy(text = action.value) }
@@ -142,18 +165,24 @@ class LibraryViewModel(private val media: MediaRepository, private val saved: Sa
             is LibraryAction.GenreChanged -> updateQuery { it.copy(genre = action.value) }
             is LibraryAction.YearChanged -> {
                 saved["year"] = action.value
-                _state.update { it.copy(yearInput = action.value) }
+                local.update { it.copy(yearInput = action.value) }
                 updateQuery { it.copy(year = action.value.toIntOrNull()) }
             }
             LibraryAction.ToggleWatchlist ->
                 updateQuery { it.copy(watchlistOnly = !it.watchlistOnly) }
             LibraryAction.ToggleFilters ->
-                _state.update { it.copy(filtersVisible = !it.filtersVisible) }
+                local.update { it.copy(filtersVisible = !it.filtersVisible) }
             LibraryAction.Reset -> {
                 saved["year"] = ""
-                _state.update { it.copy(yearInput = "") }
+                local.update { it.copy(yearInput = "") }
                 updateQuery { LibraryQuery(watchlistOnly = it.watchlistOnly) }
             }
         }
     }
 }
+
+private data class BrowseResult(
+    val query: LibraryQuery,
+    val items: List<MediaItem>,
+    val error: UiText?,
+)

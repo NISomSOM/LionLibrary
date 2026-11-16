@@ -2,10 +2,12 @@ package com.singam.lionlibrary.data.repository
 
 import com.singam.lionlibrary.data.local.db.dao.MediaDao
 import com.singam.lionlibrary.data.mapper.toMediaItem
+import com.singam.lionlibrary.data.remote.await
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.repository.LetterboxdRepository
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -34,7 +36,7 @@ class WebLetterboxdRepository(okHttpClient: OkHttpClient, private val mediaDao: 
                     Request.Builder().url(filmUrl(tmdbId)).header("User-Agent", USER_AGENT).build()
 
                 val rating: Float? =
-                    client.newCall(request).execute().use { response ->
+                    client.newCall(request).await().use { response ->
                         when {
                             response.isSuccessful -> parseLetterboxdRating(response.body.string())
                             // Film not on Letterboxd: cache the miss.
@@ -46,13 +48,13 @@ class WebLetterboxdRepository(okHttpClient: OkHttpClient, private val mediaDao: 
 
                 mediaDao.updateLetterboxdRating(mediaId, rating, System.currentTimeMillis())
                 entity.toMediaItem().copy(letterboxdRating = rating)
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
                 // Offline or unexpected markup: fall back to whatever is cached.
                 try {
                     mediaDao.getById(mediaId)?.toMediaItem()
-                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
                     null

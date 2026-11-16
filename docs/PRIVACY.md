@@ -4,6 +4,9 @@ LionLibrary has no account, analytics SDK, cloud library sync or app telemetry.
 Videos and subtitles stay in the folders you select through Android's folder picker.
 Scanning, automatic recognition retries and key verification send search titles and your own API key
 to TMDB. Artwork is downloaded from TMDB's image service into private app storage.
+A small private list of artwork file sizes/modification times (`artwork_signatures.tsv`) lets
+refreshes skip re-checking unchanged images; it contains only local file paths, stays on the device
+and is not backed up.
 Opening movie details may fetch a Letterboxd rating; opening its link launches your
 browser. External playback grants temporary read access to the selected player.
 

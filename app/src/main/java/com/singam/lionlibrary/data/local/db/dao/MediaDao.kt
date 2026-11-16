@@ -14,22 +14,9 @@ interface MediaDao {
     @Query("SELECT * FROM media WHERE mediaType = :type AND isUnidentified = 0 ORDER BY title ASC")
     fun getByType(type: String): Flow<List<MediaEntity>>
 
-    @Query(
-        """
-        SELECT * FROM media 
-        WHERE (title LIKE '%' || :query || '%' 
-        OR overview LIKE '%' || :query || '%' 
-        OR genres LIKE '%' || :query || '%')
-        AND isUnidentified = 0
-        ORDER BY title ASC
-        """
-    )
-    fun search(query: String): Flow<List<MediaEntity>>
-
     @Query("SELECT * FROM media WHERE id = :id") suspend fun getById(id: Long): MediaEntity?
 
-    @Query("SELECT * FROM media WHERE tmdbId = :tmdbId LIMIT 1")
-    suspend fun getByTmdbId(tmdbId: Int): MediaEntity?
+    @Query("SELECT * FROM media WHERE id = :id") fun observeById(id: Long): Flow<MediaEntity?>
 
     @Query("SELECT * FROM media WHERE tmdbId = :tmdbId AND mediaType != 'MOVIE' LIMIT 1")
     suspend fun getTvByTmdbId(tmdbId: Int): MediaEntity?
@@ -41,13 +28,17 @@ interface MediaDao {
     )
     suspend fun updateArtwork(id: Long, poster: String?, backdrop: String?, logo: String?)
 
+    @Query("UPDATE media SET originalLanguage = :language WHERE id = :id")
+    suspend fun updateOriginalLanguage(id: Long, language: String)
+
     @Query("UPDATE media SET isWatchlisted = NOT isWatchlisted WHERE id = :id")
     suspend fun toggleWatchlist(id: Long)
 
-    @Query("SELECT * FROM media WHERE isUnidentified = 1 ORDER BY sourceShowTitle, title")
-    fun getUnidentified(): Flow<List<MediaEntity>>
-
     @Query("DELETE FROM media WHERE id = :id") suspend fun deleteById(id: Long)
+
+    /** Raw "local file" rows for these files (one query per scanner write batch). */
+    @Query("SELECT * FROM media WHERE isUnidentified = 1 AND filePath IN (:paths)")
+    suspend fun getUnidentifiedByFilePaths(paths: List<String>): List<MediaEntity>
 
     /** Unidentified rows whose file is also an episode row: duplicates from older scans. */
     @Query(
@@ -62,9 +53,6 @@ interface MediaDao {
         "UPDATE media SET externalSubtitlePath = :subtitle WHERE filePath = :path AND externalSubtitlePath IS NULL"
     )
     suspend fun fillMissingSubtitle(path: String, subtitle: String)
-
-    @Query("SELECT * FROM media WHERE sourceShowTitle = :title AND isUnidentified = 1")
-    suspend fun getUnidentifiedShow(title: String): List<MediaEntity>
 
     @Query(
         """

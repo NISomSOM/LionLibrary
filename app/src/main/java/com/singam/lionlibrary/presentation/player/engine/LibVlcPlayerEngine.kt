@@ -6,8 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.view.ViewGroup
+import com.singam.lionlibrary.domain.model.EngineType
 import com.singam.lionlibrary.domain.model.PlaybackChapter
 import java.io.File
+import java.io.FileNotFoundException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.videolan.libvlc.Media
@@ -33,6 +35,13 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
     private var hiddenSpuTrack = -1
     private var released = false
     private var currentLayout: VLCVideoLayout? = null
+    // While the host is stopped the views are detached; this is the layout to reattach on start.
+    private var hostStopped = false
+    private var stoppedLayout: VLCVideoLayout? = null
+    // Video track switched off on stop, re-enabled once the new surface exists (-2: none).
+    private var videoTrackToRestore = NO_VIDEO_RESTORE
+    // Set when the video track comes back after the app returns; see seekForRestoredVideo.
+    private var refreshAfterVideoRestore = false
     private var pendingMedia: PreparedMedia? = null
     private var activeMedia: PreparedMedia? = null
     private var mediaGeneration = 0L
@@ -46,6 +55,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                 mainHandler.post {
                     if (!released) {
                         surfaceReady = true
+                        restoreVideoTrack()
                         loadPreparedMedia()
                     }
                 }
@@ -137,7 +147,10 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                             it.copy(trackRevision = it.trackRevision + 1)
                         }
                     }
-                    MediaPlayer.Event.ESSelected -> keepSubtitlesHidden()
+                    MediaPlayer.Event.ESSelected -> {
+                        keepSubtitlesHidden()
+                        if (event.esChangedType == IMedia.Track.Type.Video) seekForRestoredVideo()
+                    }
                 }
             }
         }
@@ -366,6 +379,10 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         val layout =
             container as? VLCVideoLayout
                 ?: throw IllegalArgumentException("LibVlcPlayerEngine requires a VLCVideoLayout")
+        if (hostStopped) {
+            stoppedLayout = layout
+            return
+        }
         if (layout === currentLayout) return
         if (currentLayout != null) mediaPlayer.detachViews()
         surfaceReady = false
@@ -373,6 +390,64 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         // SurfaceView supports direct hardware output. Reattaching never resets position/autoplays.
         mediaPlayer.attachViews(layout, null, true, false)
         mediaPlayer.videoScale = aspectMode.toScaleType()
+    }
+
+    /**
+     * libVLC's video output dies with the SurfaceView's surface when the app is backgrounded and is
+     * not rebuilt on the new surface, leaving a frozen picture with no playback. Switch the video
+     * track off and detach while stopped; on start reattach, and re-enable the track once the new
+     * surface is created, which builds a fresh video output.
+     */
+    override fun setHostVisible(visible: Boolean) {
+        if (released || visible == !hostStopped) return
+        if (!visible) {
+            hostStopped = true
+            val layout = currentLayout ?: return
+            if (mediaLoaded && videoTrackToRestore == NO_VIDEO_RESTORE) {
+                // By ON_STOP libVLC may already have dropped the track with the dying surface
+                // (it reports -1), so fall back to the file's first video track.
+                videoTrackToRestore =
+                    mediaPlayer.videoTrack.takeIf { it >= 0 }
+                        ?: mediaPlayer.videoTracks?.firstOrNull { it.id >= 0 }?.id
+                        ?: -1
+                if (videoTrackToRestore != -1) {
+                    refreshAfterVideoRestore = true
+                    mediaPlayer.setVideoTrackEnabled(false)
+                }
+            }
+            mediaPlayer.detachViews()
+            currentLayout = null
+            stoppedLayout = layout
+            surfaceReady = false
+        } else {
+            hostStopped = false
+            val layout = stoppedLayout ?: return
+            stoppedLayout = null
+            attachToView(layout)
+        }
+    }
+
+    private fun restoreVideoTrack() {
+        val track = videoTrackToRestore
+        if (track == NO_VIDEO_RESTORE) return
+        videoTrackToRestore = NO_VIDEO_RESTORE
+        if (!mediaLoaded || track == -1) return
+        if (mediaPlayer.videoTrack < 0 && !mediaPlayer.setVideoTrack(track))
+            mediaPlayer.setVideoTrackEnabled(true)
+    }
+
+    /**
+     * A re-enabled video decoder starts at the next keyframe, which in long-GOP files is many
+     * seconds away (a black screen meanwhile). Once the video stream is selected again, a fast
+     * (keyframe) seek to the current time restarts audio and video together from the previous
+     * keyframe: a picture at once, at the cost of replaying up to a few seconds. A precise seek
+     * instead held a still frame for seconds while it decoded up to the exact time.
+     */
+    private fun seekForRestoredVideo() {
+        // The track also changes while stopping; only its return after start counts.
+        if (!refreshAfterVideoRestore || hostStopped || mediaPlayer.videoTrack < 0) return
+        refreshAfterVideoRestore = false
+        if (mediaPlayer.isSeekable) mediaPlayer.setTime(mediaPlayer.time.coerceAtLeast(0), true)
     }
 
     override fun release() {
@@ -389,6 +464,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         mediaLoaded = false
         surfaceReady = false
         currentLayout = null
+        stoppedLayout = null
         closeOwnedMedia()
         // Application-wide LibVLC remains alive.
     }
@@ -404,6 +480,8 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         mediaGeneration++
         commands.reset()
         mediaLoaded = false
+        videoTrackToRestore = NO_VIDEO_RESTORE
+        refreshAfterVideoRestore = false
         mediaPlayer.setEventListener(null)
         mediaPlayer.stop()
         mediaPlayer.media = null
@@ -439,9 +517,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                 if (uri.scheme == "content") {
                     val descriptor =
                         context.contentResolver.openFileDescriptor(uri, "r")
-                            ?: throw java.io.FileNotFoundException(
-                                "Video provider returned no descriptor"
-                            )
+                            ?: throw FileNotFoundException("Video provider returned no descriptor")
                     result.descriptor = descriptor
                     Media(libVLC, descriptor.fileDescriptor)
                 } else Media(libVLC, uri)
@@ -460,7 +536,7 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
                     try {
                         val input =
                             context.contentResolver.openInputStream(subtitle)
-                                ?: throw java.io.FileNotFoundException(
+                                ?: throw FileNotFoundException(
                                     "Subtitle provider returned no stream"
                                 )
                         input.use { src -> file.outputStream().use { dst -> src.copyTo(dst) } }
@@ -500,6 +576,10 @@ class LibVlcPlayerEngine(private val context: Context) : LionPlayerEngine {
         } finally {
             media.release()
         }
+    }
+
+    private companion object {
+        const val NO_VIDEO_RESTORE = -2
     }
 
     private class PreparedMedia : AutoCloseable {

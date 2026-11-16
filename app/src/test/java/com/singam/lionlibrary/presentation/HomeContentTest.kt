@@ -7,6 +7,7 @@ import com.singam.lionlibrary.data.remote.dto.*
 import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.GetHomeContentUseCase
+import com.singam.lionlibrary.testing.FakeMediaRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -48,6 +49,34 @@ class HomeContentTest {
         assertThat(content.anime.map { it.id }).isEqualTo(listOf(8L, 7L))
         assertThat(content.anime.last().mediaType).isEqualTo(MediaType.MOVIE)
         assertThat(content.anime.last().filePath).isEqualTo(film.filePath)
+    }
+
+    @Test
+    fun `genre shelves trim, drop blanks, list a title once per genre and sort by name`() {
+        val base =
+            MediaItem(
+                id = 1,
+                tmdbId = 1,
+                title = "A",
+                originalTitle = null,
+                overview = null,
+                posterPath = null,
+                backdropPath = null,
+                genres = " Drama , ,Drama,Ação ",
+                rating = null,
+                year = null,
+                mediaType = MediaType.MOVIE,
+                matchConfidence = 1f,
+                isUnidentified = false,
+                lastUpdated = 1,
+            )
+        val shelves =
+            com.singam.lionlibrary.domain.usecase.genreShelves(
+                listOf(base, base.copy(id = 2, genres = null), base.copy(id = 3, genres = "Comedy"))
+            )
+
+        assertThat(shelves.keys.toList()).isEqualTo(listOf("Ação", "Comedy", "Drama"))
+        assertThat(shelves.getValue("Drama").map { it.id }).isEqualTo(listOf(1L))
     }
 
     @Test

@@ -1,15 +1,16 @@
 package com.singam.lionlibrary.data.scanner
 
+import com.singam.lionlibrary.data.remote.TmdbRetryPolicy
 import com.singam.lionlibrary.data.remote.api.TmdbApiService
 import com.singam.lionlibrary.data.remote.dto.MovieDto
 import com.singam.lionlibrary.data.remote.dto.TvShowDto
+import com.singam.lionlibrary.data.remote.retryTmdb
 import com.singam.lionlibrary.domain.model.MatchScore
 import com.singam.lionlibrary.domain.model.selectConfidentMatch
 import com.singam.lionlibrary.util.ConfidenceScorer
 import com.singam.lionlibrary.util.Constants
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import retrofit2.HttpException
 
 /** Movie-folder files always use the movie endpoint, including anime films. */
@@ -109,19 +110,6 @@ class TmdbMatcher(private val api: TmdbApiService) {
             null
         }
 
-    private suspend fun <T> retry(block: suspend () -> T): T {
-        var backoff = 2_000L
-        repeat(4) {
-            try {
-                return block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: HttpException) {
-                if (e.code() != 429 && e.code() < 500) throw e
-            } catch (_: IOException) {}
-            delay(backoff)
-            backoff *= 2
-        }
-        return block()
-    }
+    private suspend fun <T> retry(block: suspend () -> T): T =
+        retryTmdb(TmdbRetryPolicy.Matcher, block = block)
 }

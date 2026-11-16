@@ -2,6 +2,9 @@ package com.singam.lionlibrary.util
 
 object Constants {
 
+    /** Private list of artwork files that already decoded (size + modification time). */
+    const val ARTWORK_SIGNATURES_FILE = "artwork_signatures.tsv"
+
     // Video extensions.
     val SUPPORTED_VIDEO_EXTENSIONS = setOf("mkv", "mp4", "avi", "mov", "m4v", "webm")
 

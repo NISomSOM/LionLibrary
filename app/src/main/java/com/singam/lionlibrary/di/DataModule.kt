@@ -10,23 +10,32 @@ import com.singam.lionlibrary.data.remote.SkipDbDataSource
 import com.singam.lionlibrary.data.remote.TheIntroDbDataSource
 import com.singam.lionlibrary.data.remote.TmdbImdbIdDataSource
 import com.singam.lionlibrary.data.repository.DataStoreSettingsRepository
+import com.singam.lionlibrary.data.repository.DataStoreTrackPreferenceRepository
 import com.singam.lionlibrary.data.repository.OnlineSkipSegmentRepository
 import com.singam.lionlibrary.data.repository.RoomMediaRepository
 import com.singam.lionlibrary.data.repository.RoomPlaybackRepository
 import com.singam.lionlibrary.data.repository.RoomWatchProgressRepository
 import com.singam.lionlibrary.data.repository.SafMediaDeletionRepository
+import com.singam.lionlibrary.data.repository.TmdbMetadataRepository
 import com.singam.lionlibrary.data.repository.WebLetterboxdRepository
 import com.singam.lionlibrary.data.scanner.AndroidMediaScanner
 import com.singam.lionlibrary.data.scanner.AndroidScanCoordinator
 import com.singam.lionlibrary.data.scanner.FileNameParser
 import com.singam.lionlibrary.data.scanner.FolderScanner
 import com.singam.lionlibrary.data.scanner.ImageCacheManager
+import com.singam.lionlibrary.data.scanner.SafFolderLister
 import com.singam.lionlibrary.data.storage.*
+import com.singam.lionlibrary.data.storage.SafFolderAccessRepository
+import com.singam.lionlibrary.domain.repository.ArtworkRepository
+import com.singam.lionlibrary.domain.repository.FolderAccessRepository
 import com.singam.lionlibrary.domain.repository.LetterboxdRepository
 import com.singam.lionlibrary.domain.repository.MediaDeletionRepository
 import com.singam.lionlibrary.domain.repository.MediaRepository
+import com.singam.lionlibrary.domain.repository.MetadataRepository
+import com.singam.lionlibrary.domain.repository.PlaybackRepository
 import com.singam.lionlibrary.domain.repository.SettingsRepository
 import com.singam.lionlibrary.domain.repository.SkipSegmentRepository
+import com.singam.lionlibrary.domain.repository.TrackPreferenceRepository
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
 import com.singam.lionlibrary.domain.usecase.ScanCoordinator
@@ -40,37 +49,36 @@ import org.koin.dsl.module
 val dataModule = module {
     singleOf(::LibraryMutationGate)
     single { SafLibraryDocuments(androidContext()) } bind LibraryDocuments::class
+    single { SafFolderAccessRepository(androidContext()) } bind FolderAccessRepository::class
     singleOf(::LibraryReconciler)
     singleOf(::SafMediaDeletionRepository) bind MediaDeletionRepository::class
     single { PreferencesManager(androidContext()) }
 
     singleOf(::FileNameParser)
 
-    single { FolderScanner(androidContext(), get()) }
+    single { SafFolderLister(androidContext()) }
+    single { FolderScanner(get(), get()) }
 
-    single { ImageCacheManager(androidContext(), get()) } bind
-        com.singam.lionlibrary.domain.repository.ArtworkRepository::class
+    single { ImageCacheManager(androidContext(), get()) } bind ArtworkRepository::class
 
     single {
-        com.singam.lionlibrary.data.repository.TmdbMetadataRepository(
-            androidContext(),
+        TmdbMetadataRepository(
             get(),
             get(),
             get(),
             get(),
         )
-    } bind com.singam.lionlibrary.domain.repository.MetadataRepository::class
+    } bind MetadataRepository::class
 
-    singleOf(::RoomPlaybackRepository) bind
-        com.singam.lionlibrary.domain.repository.PlaybackRepository::class
+    singleOf(::RoomPlaybackRepository) bind PlaybackRepository::class
     singleOf(::RoomMediaRepository) bind MediaRepository::class
 
     singleOf(::RoomWatchProgressRepository) bind WatchProgressRepository::class
 
     singleOf(::DataStoreSettingsRepository) bind SettingsRepository::class
     single {
-        com.singam.lionlibrary.data.repository.DataStoreTrackPreferenceRepository(androidContext())
-    } bind com.singam.lionlibrary.domain.repository.TrackPreferenceRepository::class
+        DataStoreTrackPreferenceRepository(androidContext())
+    } bind TrackPreferenceRepository::class
 
     single {
         AndroidMediaScanner(

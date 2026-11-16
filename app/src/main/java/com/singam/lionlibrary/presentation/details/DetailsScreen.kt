@@ -1,16 +1,22 @@
 package com.singam.lionlibrary.presentation.details
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.content.res.Configuration
+import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,19 +45,18 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedIconButton
-import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -60,35 +65,77 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.Episode
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.isSingleFile
 import com.singam.lionlibrary.presentation.components.ArtworkTitle
+import com.singam.lionlibrary.presentation.components.DeletionDialog
+import com.singam.lionlibrary.presentation.components.DetailsSkeleton
 import com.singam.lionlibrary.presentation.components.EpisodeCard
+import com.singam.lionlibrary.presentation.components.ImdbBadge
+import com.singam.lionlibrary.presentation.components.ImdbYellow
+import com.singam.lionlibrary.presentation.components.LetterboxdGreen
+import com.singam.lionlibrary.presentation.components.LetterboxdMark
 import com.singam.lionlibrary.presentation.components.LocalArtwork
+import com.singam.lionlibrary.presentation.components.MediaOptionItem
+import com.singam.lionlibrary.presentation.components.PreviewFilm
+import com.singam.lionlibrary.presentation.components.rememberBackdropAlignment
+import com.singam.lionlibrary.presentation.navigation.rememberPosterZoom
+import com.singam.lionlibrary.ui.theme.LionAlpha
 import com.singam.lionlibrary.ui.theme.LionLayout
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import com.singam.lionlibrary.ui.theme.LionMotion
+import com.singam.lionlibrary.ui.theme.LionTheme
+import com.singam.lionlibrary.ui.theme.rememberSystemMotionEnabled
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -96,14 +143,14 @@ import org.koin.androidx.compose.koinViewModel
 fun DetailsRoot(
     snackbarHostState: SnackbarHostState,
     windowSizeClass: WindowSizeClass,
-    onNavigateToPlayer: (String, Long) -> Unit,
+    onNavigateToPlayer: (MediaType, Long) -> Unit,
     onBack: () -> Unit = {},
     viewModel: DetailsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val resources = androidx.compose.ui.platform.LocalResources.current
-    val snackbarScope = androidx.compose.runtime.rememberCoroutineScope()
+    val resources = LocalResources.current
+    val snackbarScope = rememberCoroutineScope()
     // Snackbars run in their own coroutine so a visible message never delays navigation.
     fun showSnackbar(message: String) {
         snackbarScope.launch { snackbarHostState.showSnackbar(message) }
@@ -122,25 +169,19 @@ fun DetailsRoot(
                     try {
                         context.startActivity(event.intent)
                     } catch (e: Exception) {
-                        showSnackbar(
-                            resources.getString(
-                                com.singam.lionlibrary.R.string.external_launch_error
-                            )
-                        )
+                        showSnackbar(resources.getString(R.string.external_launch_error))
                     }
                 }
                 is DetailsEvent.OpenUrl -> {
                     try {
                         context.startActivity(
-                            android.content.Intent(
-                                android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse(event.url),
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse(event.url),
                             )
                         )
-                    } catch (e: android.content.ActivityNotFoundException) {
-                        showSnackbar(
-                            resources.getString(com.singam.lionlibrary.R.string.error_not_found)
-                        )
+                    } catch (e: ActivityNotFoundException) {
+                        showSnackbar(resources.getString(R.string.error_not_found))
                     }
                 }
             }
@@ -155,7 +196,6 @@ fun DetailsRoot(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailsScreen(
     state: DetailsState,
@@ -164,18 +204,65 @@ fun DetailsScreen(
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
 ) {
+    // One opaque container for every state of the page (loading, error, loaded). When a poster
+    // was tapped, this is what zooms out of that card, so it must exist from the first frame.
+    var heroLoaded by remember { mutableStateOf(false) }
+    val pageReady = !state.isLoading && (state.media == null || heroLoaded)
+    val zoom = rememberPosterZoom(pageReady)
+    // The outer box only draws the still picture of the previous page behind an opening zoom.
+    Box(modifier.fillMaxSize().then(zoom?.backdropModifier ?: Modifier)) {
+        Box(
+            Modifier.fillMaxSize()
+                .then(zoom?.modifier ?: Modifier)
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            DetailsContent(
+                state,
+                windowSizeClass,
+                onAction,
+                onBack = onBack,
+                instantContent = zoom != null,
+                onHeroLoaded = { heroLoaded = true },
+            )
+            // Going back: the poster fades in over the shrinking page, framed exactly like the
+            // card it is heading for, so the page lands as that poster instead of fading away.
+            val posterPath = state.media?.posterPath
+            if (zoom != null && zoom.isClosing && posterPath != null) {
+                LocalArtwork(
+                    paths = listOf(posterPath),
+                    contentDescription = null,
+                    modifier =
+                        Modifier.fillMaxWidth().aspectRatio(2f / 3f).graphicsLayer {
+                            alpha = zoom.posterAlpha()
+                        },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DetailsContent(
+    state: DetailsState,
+    windowSizeClass: WindowSizeClass,
+    onAction: (DetailsAction) -> Unit,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
+    // The page zoom reveals the finished page itself, so the loaded-content fade is skipped.
+    instantContent: Boolean = false,
+    onHeroLoaded: () -> Unit = {},
+) {
     val selectedEpisodeForOptions = state.selectedEpisodeForOptions
     val sheetState = rememberModalBottomSheetState()
-    com.singam.lionlibrary.presentation.components.DeletionDialog(
+    DeletionDialog(
         state.deletion,
         { onAction(DetailsAction.ConfirmDelete) },
         { onAction(DetailsAction.DismissDelete) },
     )
 
     if (state.isLoading) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
+        DetailsSkeleton(modifier)
         return
     }
 
@@ -188,9 +275,7 @@ fun DetailsScreen(
                 ) {
                     Text(
                         state.error?.resolve(LocalContext.current)
-                            ?: androidx.compose.ui.res.stringResource(
-                                com.singam.lionlibrary.R.string.file_access_error
-                            ),
+                            ?: stringResource(R.string.file_access_error),
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -199,10 +284,10 @@ fun DetailsScreen(
     val listState = rememberLazyListState()
     // Start when real content arrives, even if the navigation fade ended during loading.
     // The remembered value stays opaque through scrolling, history updates and player return.
-    val contentAlpha = remember(media.id) { Animatable(0f) }
+    val contentAlpha = remember(media.id) { Animatable(if (instantContent) 1f else 0f) }
     LaunchedEffect(media.id) { contentAlpha.animateTo(1f, tween(240, easing = LionMotion.Easing)) }
 
-    var toolbarHeightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var toolbarHeightPx by remember { mutableIntStateOf(0) }
     var primaryActionAboveToolbar by remember(media.id) { mutableStateOf(false) }
     val showTopBarBackground by
         remember(media.id, listState) {
@@ -211,8 +296,19 @@ fun DetailsScreen(
     val onPrimaryActionBottomChanged: (Float) -> Unit = { bottom ->
         primaryActionAboveToolbar = toolbarHeightPx > 0 && bottom <= toolbarHeightPx
     }
-    val topBarColor =
-        if (showTopBarBackground) MaterialTheme.colorScheme.surface else Color.Transparent
+    // Same trigger as before; the surface now slides down a little as it fades in (and back out).
+    val toolbarProgress by
+        animateFloatAsState(
+            targetValue = if (showTopBarBackground) 1f else 0f,
+            animationSpec =
+                tween(
+                    LionMotion.Standard,
+                    easing =
+                        if (showTopBarBackground) LionMotion.EnterEasing else LionMotion.ExitEasing,
+                ),
+            label = "toolbarSurface",
+        )
+    val toolbarSurface = MaterialTheme.colorScheme.surface
     val logoAlpha by
         animateFloatAsState(
             targetValue = if (showTopBarBackground) 1f else 0f,
@@ -224,7 +320,7 @@ fun DetailsScreen(
         ModalBottomSheet(
             onDismissRequest = { onAction(DetailsAction.SelectOptions(null)) },
             sheetState = sheetState,
-            containerColor = Color(0xFF1E1E1E),
+            containerColor = LionTheme.colors.sheet,
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
                 Row(
@@ -247,47 +343,42 @@ fun DetailsScreen(
                             text = episode.title ?: "Episode ${episode.episodeNumber}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White,
+                            color = LionTheme.colors.onMedia,
                         )
                         Text(
-                            text = "Season ${episode.seasonNumber}",
+                            text =
+                                stringResource(
+                                    R.string.season_number,
+                                    episode.seasonNumber,
+                                ),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color.Gray,
+                            color = LionTheme.colors.textSecondary,
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                EpisodeOptionItem(
+                MediaOptionItem(
                     icon = Icons.Default.CheckCircle,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_mark_as_watched_upto_here
-                        ),
+                    text = stringResource(R.string.ui_mark_as_watched_upto_here),
                     onClick = {
                         onAction(DetailsAction.SelectOptions(null))
                         onAction(DetailsAction.OnMarkWatchedUpTo(episode))
                     },
                 )
-                EpisodeOptionItem(
+                MediaOptionItem(
                     icon = Icons.Default.PlayArrow,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.ui_play_in_external_player
-                        ),
+                    text = stringResource(R.string.ui_play_in_external_player),
                     onClick = {
                         onAction(DetailsAction.SelectOptions(null))
                         onAction(DetailsAction.OnPlayEpisodeExternal(episode))
                     },
-                    iconTint = Color(0xFFE5B13A),
+                    iconTint = LionTheme.colors.ratingStar,
                 )
-                EpisodeOptionItem(
-                    icon = androidx.compose.material.icons.Icons.Default.Delete,
-                    text =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.delete_from_device
-                        ),
+                MediaOptionItem(
+                    icon = Icons.Default.Delete,
+                    text = stringResource(R.string.delete_from_device),
                     onClick = { onAction(DetailsAction.RequestDeleteEpisode(episode.id)) },
                     iconTint = MaterialTheme.colorScheme.error,
                 )
@@ -295,21 +386,79 @@ fun DetailsScreen(
         }
     }
 
-    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val configuration = LocalConfiguration.current
     val isTablet = configuration.smallestScreenWidthDp >= 600
-    val isPortrait =
-        configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     val isLandscapeMode = !isPortrait
 
     val isTwoPane = isTablet && isLandscapeMode && !media.isSingleFile
     val isTabletPortrait = isTablet && isPortrait
     val isTabletPortraitMovie = isTabletPortrait && media.isSingleFile
 
+    val motionEnabled = rememberSystemMotionEnabled()
+    // Only the phone portrait hero has a fixed height that can stretch with a pull.
+    val stretchEnabled = motionEnabled && !isLandscapeMode && !isTabletPortraitMovie
+    // Hero parallax reads the list offset in draw; nothing recomposes while scrolling.
+    val heroScrollOffset = {
+        if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset.toFloat()
+        else 0f
+    }
+    // Rubber band at the top of the list: a pull makes the hero taller by this many pixels, so
+    // the page follows the finger with growing resistance while the backdrop stretches to fill
+    // the gap, and a spring returns it when the finger lifts. Read in layout only.
+    var heroPull by remember(media.id) { mutableFloatStateOf(0f) }
+    val pullConnection =
+        remember(stretchEnabled) {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (heroPull <= 0f || available.y >= 0f) return Offset.Zero
+                    val used = maxOf(available.y, -heroPull)
+                    heroPull += used
+                    return Offset(0f, used)
+                }
+
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset {
+                    if (!stretchEnabled || source != NestedScrollSource.UserInput) {
+                        return Offset.Zero
+                    }
+                    if (available.y <= 0f) return Offset.Zero
+                    // The further it is pulled, the less it gives.
+                    val give = HERO_PULL_RESISTANCE * (1f - heroPull / HERO_PULL_MAX_PX)
+                    heroPull = (heroPull + available.y * give).coerceAtMost(HERO_PULL_MAX_PX)
+                    return Offset(0f, available.y)
+                }
+
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    if (heroPull > 0f)
+                        animate(
+                            heroPull,
+                            0f,
+                            animationSpec = spring(dampingRatio = .82f, stiffness = 320f),
+                        ) { value, _ ->
+                            heroPull = value
+                        }
+                    return Velocity.Zero
+                }
+            }
+        }
+
+    val paneColor = LionTheme.colors.pane
     Box(modifier = modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha.value }) {
+        DetailsAmbientBackdrop(media.backdropPath ?: media.posterPath, Modifier.matchParentSize())
         if (isTwoPane) {
             Row(modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                    HeroHeaderSection(media, state, isLandscapeMode, onAction)
+                    HeroHeaderSection(
+                        media,
+                        state.playbackLabel(),
+                        isLandscapeMode,
+                        onAction,
+                        onArtworkLoaded = onHeroLoaded,
+                    )
                 }
 
                 LazyColumn(
@@ -323,13 +472,15 @@ fun DetailsScreen(
                         state,
                         onAction,
                         { onAction(DetailsAction.SelectOptions(it)) },
+                        seasonRowColor = paneColor,
                     )
                 }
             }
         } else {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().testTag("details-list"),
+                modifier =
+                    Modifier.fillMaxSize().nestedScroll(pullConnection).testTag("details-list"),
                 contentPadding = PaddingValues(bottom = 32.dp),
             ) {
                 item {
@@ -337,12 +488,16 @@ fun DetailsScreen(
                         if (isTabletPortraitMovie) Modifier.fillParentMaxHeight() else Modifier
                     HeroHeaderSection(
                         media,
-                        state,
+                        state.playbackLabel(),
                         isLandscapeMode,
                         onAction,
                         heroModifier,
                         isTabletPortraitMovie,
                         onPrimaryActionBottomChanged,
+                        scrollOffset = if (motionEnabled) heroScrollOffset else ({ 0f }),
+                        pullPx = { heroPull },
+                        motionEnabled = motionEnabled,
+                        onArtworkLoaded = onHeroLoaded,
                     )
                 }
                 seasonSelectorAndEpisodes(
@@ -355,63 +510,72 @@ fun DetailsScreen(
         }
 
         if (!isLandscapeMode) {
-            TopAppBar(
-                modifier =
-                    Modifier.onSizeChanged { toolbarHeightPx = it.height }
-                        .testTag(
-                            if (showTopBarBackground) "details-toolbar-visible"
-                            else "details-toolbar-hidden"
+            Box {
+                Box(
+                    Modifier.matchParentSize()
+                        .graphicsLayer {
+                            if (!isTwoPane) {
+                                alpha = toolbarProgress
+                                translationY = -(1f - toolbarProgress) * size.height * TOOLBAR_SLIDE
+                            }
+                        }
+                        .background(if (isTwoPane) LionTheme.colors.pane else toolbarSurface)
+                )
+                TopAppBar(
+                    modifier =
+                        Modifier.onSizeChanged { toolbarHeightPx = it.height }
+                            .testTag(
+                                if (showTopBarBackground) "details-toolbar-visible"
+                                else "details-toolbar-hidden"
+                            ),
+                    title = {
+                        Box(
+                            modifier =
+                                Modifier.fillMaxWidth()
+                                    .padding(end = 48.dp)
+                                    .then(
+                                        if (!showTopBarBackground) Modifier.clearAndSetSemantics {}
+                                        else Modifier
+                                    )
+                                    .graphicsLayer { alpha = if (isTwoPane) 1f else logoAlpha },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            ArtworkTitle(
+                                media.title,
+                                media.logoPath,
+                                Modifier.fillMaxWidth(0.8f).height(40.dp),
+                                compact = true,
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back),
+                                tint = LionTheme.colors.onMedia,
+                            )
+                        }
+                    },
+                    colors =
+                        TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            titleContentColor = LionTheme.colors.onMedia,
                         ),
-                title = {
-                    Box(
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .padding(end = 48.dp)
-                                .then(
-                                    if (!showTopBarBackground) Modifier.clearAndSetSemantics {}
-                                    else Modifier
-                                )
-                                .graphicsLayer { alpha = if (isTwoPane) 1f else logoAlpha },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        ArtworkTitle(
-                            media.title,
-                            media.logoPath,
-                            Modifier.fillMaxWidth(0.8f).height(40.dp),
-                            compact = true,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription =
-                                androidx.compose.ui.res.stringResource(
-                                    com.singam.lionlibrary.R.string.back
-                                ),
-                            tint = Color.White,
-                        )
-                    }
-                },
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = if (isTwoPane) Color(0xFF141414) else topBarColor,
-                        titleContentColor = Color.White,
-                    ),
-            )
+                )
+            }
         } else {
             IconButton(onClick = onBack, modifier = Modifier.padding(16.dp)) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription =
-                        androidx.compose.ui.res.stringResource(
-                            com.singam.lionlibrary.R.string.back
-                        ),
-                    tint = Color.White,
+                    contentDescription = stringResource(R.string.back),
+                    tint = LionTheme.colors.onMedia,
                     modifier =
                         Modifier.size(36.dp)
-                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+                            .background(
+                                LionTheme.colors.scrim.copy(alpha = LionAlpha.ScrimStrong),
+                                RoundedCornerShape(18.dp),
+                            )
                             .padding(6.dp),
                 )
             }
@@ -422,13 +586,18 @@ fun DetailsScreen(
 @Composable
 private fun HeroHeaderSection(
     media: MediaItem,
-    state: DetailsState,
+    @StringRes primaryActionLabel: Int,
     isLandscapeMode: Boolean,
     onAction: (DetailsAction) -> Unit,
     modifier: Modifier = Modifier,
     isTabletPortraitMovie: Boolean = false,
     onPrimaryActionBottomChanged: (Float) -> Unit = {},
+    scrollOffset: () -> Float = { 0f },
+    pullPx: () -> Float = { 0f },
+    motionEnabled: Boolean = false,
+    onArtworkLoaded: () -> Unit = {},
 ) {
+    val haptics = LocalHapticFeedback.current
     Column(modifier = modifier.fillMaxWidth()) {
         val imageModifier =
             if (isTabletPortraitMovie) {
@@ -437,33 +606,57 @@ private fun HeroHeaderSection(
                 if (isLandscapeMode) Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                 else
                     Modifier.fillMaxWidth()
-                        .height(
-                            (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
-                                    .dp * 1.33f)
-                                .coerceIn(420.dp, 760.dp)
+                        .stretchedHeight(
+                            (LocalConfiguration.current.screenWidthDp.dp * 1.33f).coerceIn(
+                                420.dp,
+                                760.dp,
+                            ),
+                            pullPx,
                         )
             }
-        Box(modifier = imageModifier) {
+        Box(modifier = imageModifier.clipToBounds()) {
+            // Portrait heroes crop a wide backdrop; landscape keeps the centred 16:9 frame.
+            val focus = rememberBackdropAlignment(media.backdropPath ?: media.posterPath)
             LocalArtwork(
                 paths = listOf(media.backdropPath, media.posterPath),
                 contentDescription = media.title,
+                alignment = if (isLandscapeMode) Alignment.Center else focus,
+                onLoaded = onArtworkLoaded,
                 modifier =
-                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                    Modifier.fillMaxSize()
+                        // The image itself fades out at the bottom, so it melts into the blurred
+                        // ambient page instead of ending in a visible band.
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(HeroFadeMask, blendMode = BlendMode.DstIn)
+                        }
+                        .graphicsLayer {
+                            if (!motionEnabled) return@graphicsLayer
+                            // Parallax: half scroll speed, with a slight over-scale so edges
+                            // never show. A pull stretches the hero box itself, not this layer.
+                            translationY = scrollOffset() * HERO_PARALLAX
+                            scaleX = HERO_OVERSCALE
+                            scaleY = HERO_OVERSCALE
+                            transformOrigin = TransformOrigin(.5f, 0f)
+                        }
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
             )
 
             Box(
                 modifier =
                     Modifier.fillMaxSize()
                         .background(
+                            // Multi-stop fade that ends in the ambient page tint, so the hero runs
+                            // into the blurred backdrop without a seam.
                             Brush.verticalGradient(
-                                colors =
-                                    listOf(
-                                        Color.Transparent,
-                                        Color.Black.copy(alpha = 0.4f),
-                                        MaterialTheme.colorScheme.background,
-                                    ),
-                                startY = 0f,
-                                endY = Float.POSITIVE_INFINITY,
+                                0f to Color.Transparent,
+                                .4f to Color.Transparent,
+                                .62f to LionTheme.colors.scrim.copy(alpha = .22f),
+                                .8f to LionTheme.colors.scrim.copy(alpha = LionAlpha.Scrim),
+                                // Ends clear: below the hero the page is the bare ambient layer,
+                                // so any tint left here would show as a step.
+                                1f to Color.Transparent,
                             )
                         )
             )
@@ -480,11 +673,7 @@ private fun HeroHeaderSection(
                         media.title,
                         media.logoPath,
                         Modifier.fillMaxWidth(.72f)
-                            .height(
-                                80.dp *
-                                    androidx.compose.ui.platform.LocalDensity.current.fontScale
-                                        .coerceIn(1f, 1.6f)
-                            ),
+                            .height(80.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.6f)),
                     )
 
                     if (!media.genres.isNullOrBlank()) {
@@ -499,7 +688,7 @@ private fun HeroHeaderSection(
                                 ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            textAlign = TextAlign.Center,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -540,13 +729,10 @@ private fun HeroHeaderSection(
                 ) {
                     Icon(
                         Icons.Default.PlayArrow,
-                        contentDescription =
-                            androidx.compose.ui.res.stringResource(
-                                com.singam.lionlibrary.R.string.play
-                            ),
+                        contentDescription = stringResource(R.string.play),
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    val buttonText = androidx.compose.ui.res.stringResource(state.playbackLabel())
+                    val buttonText = stringResource(primaryActionLabel)
                     Text(
                         buttonText,
                         style = MaterialTheme.typography.titleSmall,
@@ -555,10 +741,16 @@ private fun HeroHeaderSection(
                 }
 
                 OutlinedIconButton(
-                    onClick = { onAction(DetailsAction.ToggleWatchlist) },
+                    onClick = {
+                        haptics.performHapticFeedback(
+                            if (media.isWatchlisted) HapticFeedbackType.ToggleOff
+                            else HapticFeedbackType.ToggleOn
+                        )
+                        onAction(DetailsAction.ToggleWatchlist)
+                    },
                     modifier = Modifier.size(48.dp),
                     border =
-                        androidx.compose.foundation.BorderStroke(
+                        BorderStroke(
                             1.dp,
                             MaterialTheme.colorScheme.outline,
                         ),
@@ -568,10 +760,9 @@ private fun HeroHeaderSection(
                         else Icons.Outlined.BookmarkBorder,
                         modifier = Modifier.size(LionLayout.BookmarkGlyph),
                         contentDescription =
-                            androidx.compose.ui.res.stringResource(
-                                if (media.isWatchlisted)
-                                    com.singam.lionlibrary.R.string.remove_watchlist
-                                else com.singam.lionlibrary.R.string.add_watchlist
+                            stringResource(
+                                if (media.isWatchlisted) R.string.remove_watchlist
+                                else R.string.add_watchlist
                             ),
                         tint =
                             if (media.isWatchlisted) MaterialTheme.colorScheme.primary
@@ -582,10 +773,11 @@ private fun HeroHeaderSection(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            // One line, Nuvio-style: year and runtime, rating box, then the rating marks.
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 val yearText = media.year?.toString() ?: ""
                 val durationText =
@@ -597,7 +789,7 @@ private fun HeroHeaderSection(
 
                 val combinedText =
                     if (yearText.isNotEmpty() && durationText.isNotEmpty())
-                        "$yearText - $durationText"
+                        "$yearText • $durationText"
                     else if (yearText.isNotEmpty()) yearText else durationText
 
                 if (combinedText.isNotEmpty()) {
@@ -606,78 +798,78 @@ private fun HeroHeaderSection(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
                     )
                 }
 
                 if (!media.certification.isNullOrBlank()) {
                     Box(
                         modifier =
-                            Modifier.border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
+                            Modifier.border(
+                                    1.dp,
+                                    LionTheme.colors.textSecondary,
+                                    RoundedCornerShape(4.dp),
+                                )
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = media.certification,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
                         )
                     }
                 }
 
                 if (media.rating != null && media.rating > 0.0) {
-                    Row(
-                        modifier = Modifier.width(IntrinsicSize.Max),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text =
-                                androidx.compose.ui.res.stringResource(
-                                    com.singam.lionlibrary.R.string.tmdb_rating
-                                ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    val ratingDescription =
+                        stringResource(
+                            R.string.hero_score_description,
+                            media.rating,
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                    Row(
+                        modifier =
+                            Modifier.semantics(mergeDescendants = true) {
+                                contentDescription = ratingDescription
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        ImdbBadge()
                         Text(
                             text =
-                                androidx.compose.ui.res.stringResource(
-                                    com.singam.lionlibrary.R.string.rating_value,
+                                stringResource(
+                                    R.string.rating_value,
                                     media.rating,
                                 ),
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.Yellow,
+                            fontWeight = FontWeight.Bold,
+                            color = ImdbYellow,
+                            maxLines = 1,
                         )
                     }
                 }
 
                 if (media.isSingleFile && media.tmdbId != null) {
-                    androidx.compose.material3.TextButton(
+                    val letterboxdLabel = stringResource(R.string.ui_letterboxd)
+                    TextButton(
                         onClick = { onAction(DetailsAction.OnOpenLetterboxd) },
-                        modifier = Modifier.width(IntrinsicSize.Max),
+                        modifier = Modifier.semantics { contentDescription = letterboxdLabel },
                         contentPadding = PaddingValues(horizontal = 4.dp),
                     ) {
-                        Text(
-                            text =
-                                androidx.compose.ui.res.stringResource(
-                                    com.singam.lionlibrary.R.string.ui_letterboxd
-                                ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
+                        LetterboxdMark()
                         media.letterboxdRating?.let { lb ->
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text =
-                                    androidx.compose.ui.res.stringResource(
-                                        com.singam.lionlibrary.R.string.star_rating_value,
+                                    stringResource(
+                                        R.string.rating_value,
                                         lb,
                                     ),
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF00E054),
+                                fontWeight = FontWeight.Bold,
+                                color = LetterboxdGreen,
+                                maxLines = 1,
                             )
                         }
                     }
@@ -688,7 +880,7 @@ private fun HeroHeaderSection(
 
             if (!media.overview.isNullOrBlank()) {
                 var isExpanded by
-                    androidx.compose.runtime.saveable.rememberSaveable(media.id) {
+                    rememberSaveable(media.id) {
                         mutableStateOf(false)
                     }
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
@@ -700,14 +892,13 @@ private fun HeroHeaderSection(
                         overflow = TextOverflow.Ellipsis,
                     )
 
-                    androidx.compose.material3.TextButton(
+                    TextButton(
                         onClick = { isExpanded = !isExpanded },
                         contentPadding = PaddingValues(0.dp),
                     ) {
                         Text(
-                            androidx.compose.ui.res.stringResource(
-                                if (isExpanded) com.singam.lionlibrary.R.string.show_less
-                                else com.singam.lionlibrary.R.string.show_more
+                            stringResource(
+                                if (isExpanded) R.string.show_less else R.string.show_more
                             ),
                             style = MaterialTheme.typography.labelLarge,
                         )
@@ -725,6 +916,9 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
     state: DetailsState,
     onAction: (DetailsAction) -> Unit,
     onEpisodeLongClick: (Episode) -> Unit,
+    // Clear by default so the blurred backdrop continues behind the season tabs; the two-pane
+    // layout passes its fixed pane colour.
+    seasonRowColor: Color = Color.Transparent,
 ) {
     if (
         (media.mediaType == MediaType.TV_SHOW || media.mediaType == MediaType.ANIME) &&
@@ -736,19 +930,15 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
                 .coerceAtLeast(0)
 
         item {
-            Box(modifier = Modifier.background(Color(0xFF141414))) {
-                @Suppress("DEPRECATION")
-                ScrollableTabRow(
+            Box(modifier = Modifier.background(seasonRowColor)) {
+                SecondaryScrollableTabRow(
                     selectedTabIndex = selectedSeasonIndex,
                     edgePadding = 16.dp,
-                    indicator = { tabPositions ->
-                        if (selectedSeasonIndex < tabPositions.size) {
-                            TabRowDefaults.Indicator(
-                                modifier =
-                                    Modifier.tabIndicatorOffset(tabPositions[selectedSeasonIndex]),
-                                color = Color.White,
-                            )
-                        }
+                    indicator = {
+                        TabRowDefaults.SecondaryIndicator(
+                            modifier = Modifier.tabIndicatorOffset(selectedSeasonIndex),
+                            color = LionTheme.colors.onMedia,
+                        )
                     },
                     containerColor = Color.Transparent,
                     divider = {},
@@ -761,13 +951,18 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
                             },
                             text = {
                                 Text(
-                                    text = season.name ?: "Season ${season.seasonNumber}",
+                                    text =
+                                        season.name
+                                            ?: stringResource(
+                                                R.string.season_number,
+                                                season.seasonNumber,
+                                            ),
                                     fontWeight =
                                         if (index == selectedSeasonIndex) FontWeight.Bold
                                         else FontWeight.Normal,
                                     color =
-                                        if (index == selectedSeasonIndex) Color.White
-                                        else Color.Gray,
+                                        if (index == selectedSeasonIndex) LionTheme.colors.onMedia
+                                        else LionTheme.colors.textSecondary,
                                 )
                             },
                         )
@@ -803,48 +998,14 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
                 modifier = Modifier.fillMaxWidth().padding(32.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    androidx.compose.ui.res.stringResource(
-                        com.singam.lionlibrary.R.string.ui_no_episodes_found_for_this_season
-                    )
-                )
+                Text(stringResource(R.string.ui_no_episodes_found_for_this_season))
             }
         }
     }
 }
 
-@Composable
-private fun EpisodeOptionItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String,
-    onClick: () -> Unit,
-    iconTint: Color = Color.White,
-) {
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = text,
-            tint = iconTint,
-            modifier = Modifier.size(24.dp),
-        )
-        Spacer(modifier = Modifier.width(24.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White,
-        )
-    }
-}
-
 private val PreviewDetailsFilm =
-    com.singam.lionlibrary.presentation.components.PreviewFilm.copy(
+    PreviewFilm.copy(
         tmdbId = 7,
         isUnidentified = false,
         overview =
@@ -855,75 +1016,111 @@ private val PreviewDetailsFilm =
         letterboxdRating = 3.5f,
     )
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Movie details actions")
+@Preview(name = "Movie details actions")
 @Composable
 private fun MovieHeaderPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         HeroHeaderSection(
             PreviewDetailsFilm,
-            DetailsState(media = PreviewDetailsFilm, isLoading = false),
+            DetailsState(media = PreviewDetailsFilm, isLoading = false).playbackLabel(),
             false,
             {},
         )
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Resume and saved movie",
     fontScale = 2f,
     widthDp = 360,
 )
 @Composable
 private fun ResumeHeaderPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         val media = PreviewDetailsFilm.copy(isWatchlisted = true)
         HeroHeaderSection(
             media,
-            DetailsState(media = media, isLoading = false, moviePositionMs = 65000),
+            DetailsState(media = media, isLoading = false, moviePositionMs = 65000).playbackLabel(),
             false,
             {},
         )
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Watched movie")
+@Preview(name = "Watched movie")
 @Composable
 private fun WatchedHeaderPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         HeroHeaderSection(
             PreviewDetailsFilm,
-            DetailsState(media = PreviewDetailsFilm, isLoading = false, isMovieWatched = true),
+            DetailsState(media = PreviewDetailsFilm, isLoading = false, isMovieWatched = true)
+                .playbackLabel(),
             false,
             {},
         )
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Show header wide", widthDp = 840)
+@Preview(name = "Show header wide", widthDp = 840)
 @Composable
 private fun ShowHeaderPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         val media =
             PreviewDetailsFilm.copy(
                 mediaType = MediaType.TV_SHOW,
                 duration = null,
                 letterboxdRating = null,
             )
-        HeroHeaderSection(media, DetailsState(media = media, isLoading = false), true, {})
+        HeroHeaderSection(
+            media,
+            DetailsState(media = media, isLoading = false).playbackLabel(),
+            true,
+            {},
+        )
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Local file without metadata")
+@Preview(name = "Local file without metadata")
 @Composable
 private fun LocalHeaderPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         val media =
-            com.singam.lionlibrary.presentation.components.PreviewFilm.copy(
+            PreviewFilm.copy(
                 mediaType = MediaType.TV_SHOW,
                 filePath = "content://fixture/episode",
                 genres = null,
                 year = null,
             )
-        HeroHeaderSection(media, DetailsState(media = media, isLoading = false), false, {})
+        HeroHeaderSection(
+            media,
+            DetailsState(media = media, isLoading = false).playbackLabel(),
+            false,
+            {},
+        )
     }
 }
+
+/** Fraction of the toolbar height its surface travels while sliding in. */
+private const val TOOLBAR_SLIDE = .35f
+
+/** Opaque top, fading to transparent over the lower third of the hero image. */
+private val HeroFadeMask =
+    Brush.verticalGradient(0f to Color.Black, .62f to Color.Black, 1f to Color.Transparent)
+
+/** Hero image moves at this fraction of the scroll speed. */
+private const val HERO_PARALLAX = .5f
+
+/** Slight over-scale so parallax never reveals the image edge. */
+private const val HERO_OVERSCALE = 1.06f
+
+/** Pull distance kept per pixel dragged past the top (before it tightens), and its cap. */
+private const val HERO_PULL_RESISTANCE = .55f
+private const val HERO_PULL_MAX_PX = 420f
+
+/** Fixed hero height plus the current pull, applied in layout so a pull never recomposes. */
+private fun Modifier.stretchedHeight(base: Dp, pullPx: () -> Float): Modifier =
+    layout { measurable, constraints ->
+        val height = base.roundToPx() + pullPx().roundToInt()
+        val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }

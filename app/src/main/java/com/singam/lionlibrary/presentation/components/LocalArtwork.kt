@@ -1,5 +1,6 @@
 package com.singam.lionlibrary.presentation.components
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,9 +12,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import coil3.size.Size
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import java.io.File
 
@@ -28,6 +32,7 @@ fun LocalArtwork(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
     alignment: Alignment = Alignment.Center,
+    onLoaded: () -> Unit = {},
     fallback: @Composable () -> Unit = {},
 ) {
     val revision = LocalArtworkRevision.current
@@ -35,23 +40,14 @@ fun LocalArtwork(
     // A publication elsewhere must not reset a successful painter whose request is unchanged.
     val signatures =
         remember(candidates, revision) {
-            candidates.map { path ->
-                val file = File(path)
-                "$path:${file.lastModified()}:${file.length()}"
-            }
+            candidates.map(::artworkSignature)
         }
     var index by remember(signatures) { mutableIntStateOf(0) }
     val path = candidates.getOrNull(index)
     val context = LocalContext.current
     val request =
         remember(path, signatures, context) {
-            path?.let {
-                ImageRequest.Builder(context)
-                    .data(File(it))
-                    .memoryCacheKey(signatures[index])
-                    .diskCacheKey(signatures[index])
-                    .build()
-            }
+            path?.let { artworkRequest(context, it, signatures[index]) }
         }
     var loaded by remember(request) { mutableStateOf(false) }
     Box(modifier, contentAlignment = alignment) {
@@ -66,11 +62,42 @@ fun LocalArtwork(
                 contentScale = contentScale,
                 alignment = alignment,
                 modifier = Modifier.fillMaxSize(),
-                onSuccess = { loaded = true },
+                onSuccess = {
+                    loaded = true
+                    onLoaded()
+                },
                 onError = { index++ },
             )
         }
     }
+}
+
+private fun artworkSignature(path: String): String {
+    val file = File(path)
+    return "$path:${file.lastModified()}:${file.length()}"
+}
+
+private fun artworkRequest(context: Context, path: String, signature: String): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(File(path))
+        .memoryCacheKey(signature)
+        .diskCacheKey(signature)
+        .build()
+
+/**
+ * Starts decoding a local image into the shared memory cache under the same key [LocalArtwork]
+ * uses, so a screen that is about to show it finds it ready. Safe to call repeatedly: a cached
+ * image returns at once. Never uses a URL.
+ */
+fun prewarmArtwork(context: Context, path: String) {
+    val request =
+        ImageRequest.Builder(context)
+            .data(File(path))
+            .memoryCacheKey(artworkSignature(path))
+            .diskCacheKey(artworkSignature(path))
+            .size(Size.ORIGINAL)
+            .build()
+    SingletonImageLoader.get(context).enqueue(request)
 }
 
 @Composable
@@ -89,7 +116,7 @@ fun ArtworkTitle(
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center,
             maxLines = if (compact) 1 else 2,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

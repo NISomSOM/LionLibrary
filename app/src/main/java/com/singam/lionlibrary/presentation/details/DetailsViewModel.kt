@@ -11,24 +11,36 @@ import com.singam.lionlibrary.domain.model.Episode
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.Season
+import com.singam.lionlibrary.domain.model.WatchProgress
 import com.singam.lionlibrary.domain.model.WatchProgressPolicy
 import com.singam.lionlibrary.domain.model.isSingleFile
+import com.singam.lionlibrary.domain.repository.DeletionTarget
 import com.singam.lionlibrary.domain.repository.LetterboxdRepository
-import com.singam.lionlibrary.domain.usecase.GetMediaDetailsUseCase
+import com.singam.lionlibrary.domain.repository.MediaDeletionRepository
+import com.singam.lionlibrary.domain.repository.MediaRepository
+import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
-import com.singam.lionlibrary.domain.usecase.UpdateWatchProgressUseCase
+import com.singam.lionlibrary.presentation.common.DeletionPresenter
+import com.singam.lionlibrary.presentation.common.DeletionUiState
 import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.player.ExternalPlaybackRouter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -45,8 +57,7 @@ data class DetailsState(
     val watchedEpisodeIds: Set<Long> = emptySet(),
     val episodeProgressMap: Map<Long, Float> = emptyMap(),
     val selectedEpisodeForOptions: Episode? = null,
-    val deletion: com.singam.lionlibrary.presentation.common.DeletionUiState =
-        com.singam.lionlibrary.presentation.common.DeletionUiState(),
+    val deletion: DeletionUiState = DeletionUiState(),
     val isLoading: Boolean = true,
     val error: UiText? = null,
 )
@@ -86,7 +97,7 @@ sealed interface DetailsEvent {
 
     data class ShowMessage(val message: UiText) : DetailsEvent
 
-    data class NavigateToPlayer(val mediaType: String, val mediaId: Long) : DetailsEvent
+    data class NavigateToPlayer(val mediaType: MediaType, val mediaId: Long) : DetailsEvent
 
     data class ShowError(val message: UiText) : DetailsEvent
 
@@ -98,24 +109,23 @@ sealed interface DetailsEvent {
 @OptIn(ExperimentalCoroutinesApi::class)
 class DetailsViewModel(
     private val savedStateHandle: SavedStateHandle,
-    private val mediaRepository: com.singam.lionlibrary.domain.repository.MediaRepository,
-    private val getMediaDetailsUseCase: GetMediaDetailsUseCase,
-    private val updateWatchProgressUseCase: UpdateWatchProgressUseCase,
+    private val mediaRepository: MediaRepository,
+    private val watchProgressRepository: WatchProgressRepository,
     private val launchPlayerUseCase: LaunchPlayerUseCase,
     private val letterboxdRepository: LetterboxdRepository,
     private val externalPlaybackRouter: ExternalPlaybackRouter,
-    deletionRepository: com.singam.lionlibrary.domain.repository.MediaDeletionRepository,
+    deletionRepository: MediaDeletionRepository,
 ) : ViewModel() {
 
     private val mediaId: Long = savedStateHandle.get<Long>("mediaId") ?: 0L
 
-    private val _state = MutableStateFlow(DetailsState())
-    val state = _state.asStateFlow()
+    // Screen-local choices; library content below is merged in only while the screen collects.
+    private val local = MutableStateFlow(DetailsState())
 
     private val _events = Channel<DetailsEvent>()
     val events = _events.receiveAsFlow()
     private val deletion =
-        com.singam.lionlibrary.presentation.common.DeletionPresenter(
+        DeletionPresenter(
             deletionRepository,
             viewModelScope,
             { if (mediaId in it.removedMediaIds) _events.send(DetailsEvent.NavigateBack) },
@@ -124,130 +134,96 @@ class DetailsViewModel(
 
     private val selectedSeasonFlow = MutableStateFlow(savedStateHandle["season"] ?: 1)
 
+    /**
+     * Room flows run only while the UI collects (5 s grace for rotation), so playback on top of
+     * Details does not keep rebuilding it. The last value stays cached, so returning shows the
+     * previous content immediately: no loading state and no replayed loaded fade.
+     */
+    val state: StateFlow<DetailsState> =
+        combine(local, contentFlow()) { screen, content -> content.mergeInto(screen) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DetailsState())
+
     init {
         viewModelScope.launch {
-            deletion.state.collect { value -> _state.update { it.copy(deletion = value) } }
+            deletion.state.collect { value -> local.update { it.copy(deletion = value) } }
         }
-        loadMediaDetails()
+        refreshLetterboxdOnce()
     }
 
-    private fun loadMediaDetails() {
-        if (mediaId == 0L) {
-            _state.update {
-                it.copy(isLoading = false, error = UiText.Resource(R.string.file_access_error))
-            }
-            return
-        }
-
+    private fun refreshLetterboxdOnce() {
+        if (mediaId == 0L) return
         viewModelScope.launch {
-            try {
-                val details = getMediaDetailsUseCase(mediaId)
-                if (details == null) {
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            error = UiText.Resource(R.string.file_access_error),
-                        )
-                    }
-                    return@launch
-                }
-
-                _state.update { it.copy(media = details.media, isLoading = false) }
-
-                if (details.media.mediaType == MediaType.MOVIE && details.media.tmdbId != null) {
-                    launch {
-                        letterboxdRepository.refreshRating(mediaId)?.let { refreshed ->
-                            _state.update {
-                                it.copy(
-                                    media =
-                                        it.media?.copy(
-                                            letterboxdRating = refreshed.letterboxdRating
-                                        )
-                                )
-                            }
-                        }
-                    }
-                }
-
-                if (!details.media.isSingleFile) {
-                    launch {
-                        getMediaDetailsUseCase.getSeasons(mediaId).collect { seasons ->
-                            _state.update { it.copy(seasons = seasons) }
-                            if (
-                                seasons.isNotEmpty() &&
-                                    !seasons.any { it.seasonNumber == selectedSeasonFlow.value }
-                            ) {
-                                selectedSeasonFlow.value = seasons.first().seasonNumber
-                            }
-                        }
-                    }
-                    launch {
-                        combine(
-                                getMediaDetailsUseCase.getAllEpisodesForShow(mediaId),
-                                getMediaDetailsUseCase.getProgress(mediaId),
-                            ) { allEpisodes, progressList ->
-                                WatchProgressPolicy.resumeEpisode(allEpisodes, progressList)
-                            }
-                            .collect { nextEp ->
-                                _state.update { it.copy(nextEpisodeToWatch = nextEp) }
-                            }
-                    }
-                }
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (e: Exception) {
-                _state.update {
-                    it.copy(isLoading = false, error = UiText.Resource(R.string.error_unknown))
-                }
-            }
+            val media = mediaRepository.getById(mediaId) ?: return@launch
+            // The refreshed rating is written to Room and arrives through the observed media row.
+            if (media.mediaType == MediaType.MOVIE && media.tmdbId != null)
+                letterboxdRepository.refreshRating(mediaId)
         }
+    }
 
-        // Reactively monitor progress.
-        viewModelScope.launch {
-            getMediaDetailsUseCase.getProgress(mediaId).collect { progressList ->
-                val movieProgress = progressList.find { it.episodeId == 0L }
-                val completedEpisodeIds =
-                    progressList.filter { it.completed }.map { it.episodeId }.toSet()
-                _state.update {
-                    it.copy(
-                        isMovieWatched = movieProgress?.completed == true,
-                        moviePositionMs = movieProgress?.lastPositionMs ?: 0,
-                        resumeEpisodeIds =
-                            progressList
-                                .filter { !it.completed && it.lastPositionMs > 0 }
-                                .map { it.episodeId }
-                                .toSet(),
-                        watchedEpisodeIds = completedEpisodeIds,
-                        episodeProgressMap =
-                            progressList.associate { progress ->
-                                progress.episodeId to progress.progress
-                            },
-                    )
-                }
-            }
-        }
-
-        // Reactively monitor episodes.
-        viewModelScope.launch {
-            selectedSeasonFlow
-                .flatMapLatest { seasonNumber ->
-                    if (mediaId > 0L) {
-                        getMediaDetailsUseCase.getEpisodesForSeason(mediaId, seasonNumber)
-                    } else {
-                        flowOf(emptyList())
+    private fun contentFlow(): Flow<DetailsContent> {
+        if (mediaId == 0L) return flowOf(DetailsContent.missing())
+        val media = mediaRepository.observeById(mediaId)
+        // Watchlist/rating/artwork changes re-emit the row; only a change of shape (missing,
+        // single file, show) re-subscribes the history and episode flows.
+        val body =
+            media
+                .map { item ->
+                    when {
+                        item == null -> DetailsShape.MISSING
+                        item.isSingleFile -> DetailsShape.SINGLE_FILE
+                        else -> DetailsShape.SHOW
                     }
                 }
-                .catch { e ->
+                .distinctUntilChanged()
+                .flatMapLatest { shape ->
+                    when (shape) {
+                        DetailsShape.MISSING -> flowOf(DetailsContent.missing())
+                        DetailsShape.SINGLE_FILE ->
+                            watchProgressRepository.getProgressForMedia(mediaId).map {
+                                DetailsContent().withProgress(it)
+                            }
+                        DetailsShape.SHOW -> showContent()
+                    }
+                }
+        return combine(media, body) { item, content -> content.copy(media = item) }
+            .catch { emit(DetailsContent(error = UiText.Resource(R.string.error_unknown))) }
+    }
+
+    private fun showContent(): Flow<DetailsContent> {
+        val seasons =
+            mediaRepository.getSeasonsForShow(mediaId).onEach { seasons ->
+                if (
+                    seasons.isNotEmpty() &&
+                        seasons.none { it.seasonNumber == selectedSeasonFlow.value }
+                )
+                    selectedSeasonFlow.value = seasons.first().seasonNumber
+            }
+        val episodes = selectedSeasonFlow.flatMapLatest { seasonNumber ->
+            mediaRepository
+                .getEpisodesForSeason(mediaId, seasonNumber)
+                .map { seasonNumber to it }
+                .catch {
                     _events.send(DetailsEvent.ShowError(UiText.Resource(R.string.error_unknown)))
+                    emit(seasonNumber to emptyList())
                 }
-                .collect { episodes ->
-                    _state.update {
-                        it.copy(
-                            episodes = episodes,
-                            selectedSeasonNumber = selectedSeasonFlow.value,
-                        )
-                    }
-                }
+        }
+        val progress = watchProgressRepository.getProgressForMedia(mediaId)
+        val resume =
+            combine(mediaRepository.getAllEpisodesForShow(mediaId), progress) { all, history ->
+                WatchProgressPolicy.resumeEpisode(all, history)
+            }
+        return combine(seasons, episodes, progress, resume) {
+            seasonList,
+            (seasonNumber, episodeList),
+            history,
+            nextEp ->
+            DetailsContent(
+                    seasons = seasonList,
+                    selectedSeasonNumber = seasonNumber,
+                    episodes = episodeList,
+                    nextEpisodeToWatch = nextEp,
+                )
+                .withProgress(history)
         }
     }
 
@@ -257,16 +233,16 @@ class DetailsViewModel(
         if (external != null) {
             _events.send(DetailsEvent.LaunchPlayer(external))
         } else {
-            _events.send(DetailsEvent.NavigateToPlayer(mediaType.name, targetId))
+            _events.send(DetailsEvent.NavigateToPlayer(mediaType, targetId))
         }
     }
 
     fun onAction(action: DetailsAction) {
         when (action) {
             is DetailsAction.RequestDeleteEpisode -> {
-                _state.update { it.copy(selectedEpisodeForOptions = null) }
+                local.update { it.copy(selectedEpisodeForOptions = null) }
                 deletion.request(
-                    com.singam.lionlibrary.domain.repository.DeletionTarget(
+                    DeletionTarget(
                         mediaId,
                         action.episodeId,
                     )
@@ -275,28 +251,25 @@ class DetailsViewModel(
             DetailsAction.ConfirmDelete -> deletion.confirm()
             DetailsAction.DismissDelete -> deletion.dismiss()
             is DetailsAction.SelectOptions ->
-                _state.update { it.copy(selectedEpisodeForOptions = action.episode) }
+                local.update { it.copy(selectedEpisodeForOptions = action.episode) }
             DetailsAction.ToggleWatchlist ->
-                viewModelScope.launch {
-                    mediaRepository.toggleWatchlist(mediaId)
-                    val updated = mediaRepository.getById(mediaId)
-                    _state.update { it.copy(media = updated) }
-                }
+                // The observed media row carries the new flag; no re-read needed.
+                viewModelScope.launch { mediaRepository.toggleWatchlist(mediaId) }
             is DetailsAction.OnSeasonSelected -> {
                 savedStateHandle["season"] = action.seasonNumber
                 selectedSeasonFlow.value = action.seasonNumber
             }
             is DetailsAction.OnOpenLetterboxd -> {
-                val tmdbId = _state.value.media?.tmdbId ?: return
+                val tmdbId = state.value.media?.tmdbId ?: return
                 viewModelScope.launch {
                     _events.send(DetailsEvent.OpenUrl(letterboxdRepository.filmUrl(tmdbId)))
                 }
             }
             is DetailsAction.OnPlayMovie -> {
-                val media = _state.value.media
+                val media = state.value.media
                 if (media != null && media.filePath != null) {
                     viewModelScope.launch {
-                        updateWatchProgressUseCase.markAsStarted(mediaId, 0L)
+                        watchProgressRepository.markAsStarted(mediaId, 0L)
                         navigateToPlayer(MediaType.MOVIE, mediaId)
                     }
                 } else {
@@ -308,12 +281,12 @@ class DetailsViewModel(
                 }
             }
             is DetailsAction.OnResumeTvShow -> {
-                val nextEp = _state.value.nextEpisodeToWatch
+                val nextEp = state.value.nextEpisodeToWatch
                 if (nextEp != null) {
                     viewModelScope.launch {
-                        updateWatchProgressUseCase.markAsStarted(mediaId, nextEp.id)
+                        watchProgressRepository.markAsStarted(mediaId, nextEp.id)
                         navigateToPlayer(
-                            _state.value.media?.mediaType ?: MediaType.TV_SHOW,
+                            state.value.media?.mediaType ?: MediaType.TV_SHOW,
                             nextEp.id,
                         )
                     }
@@ -327,37 +300,37 @@ class DetailsViewModel(
             }
             is DetailsAction.OnPlayEpisode -> {
                 viewModelScope.launch {
-                    updateWatchProgressUseCase.markAsStarted(mediaId, action.episodeId)
+                    watchProgressRepository.markAsStarted(mediaId, action.episodeId)
                     navigateToPlayer(
-                        _state.value.media?.mediaType ?: MediaType.TV_SHOW,
+                        state.value.media?.mediaType ?: MediaType.TV_SHOW,
                         action.episodeId,
                     )
                 }
             }
             is DetailsAction.OnMarkMovieWatchedToggle -> {
                 viewModelScope.launch {
-                    if (_state.value.isMovieWatched) {
-                        updateWatchProgressUseCase.markAsUnwatched(mediaId, 0L)
+                    if (state.value.isMovieWatched) {
+                        watchProgressRepository.markAsUnwatched(mediaId, 0L)
                     } else {
-                        updateWatchProgressUseCase.markAsWatched(mediaId, 0L)
+                        watchProgressRepository.markAsWatched(mediaId, 0L)
                     }
                 }
             }
             is DetailsAction.OnMarkEpisodeWatchedToggle -> {
                 viewModelScope.launch {
-                    if (_state.value.watchedEpisodeIds.contains(action.episodeId)) {
-                        updateWatchProgressUseCase.markAsUnwatched(mediaId, action.episodeId)
+                    if (state.value.watchedEpisodeIds.contains(action.episodeId)) {
+                        watchProgressRepository.markAsUnwatched(mediaId, action.episodeId)
                     } else {
-                        updateWatchProgressUseCase.markAsWatched(mediaId, action.episodeId)
+                        watchProgressRepository.markAsWatched(mediaId, action.episodeId)
                     }
                 }
             }
             is DetailsAction.OnMarkWatchedUpTo -> {
                 viewModelScope.launch {
-                    val allEpisodesFlow = getMediaDetailsUseCase.getAllEpisodesForShow(mediaId)
+                    val allEpisodesFlow = mediaRepository.getAllEpisodesForShow(mediaId)
                     val allEpisodes = allEpisodesFlow.firstOrNull() ?: return@launch
 
-                    updateWatchProgressUseCase.markAllAsWatched(
+                    watchProgressRepository.markAllAsWatched(
                         mediaId,
                         allEpisodes.idsWatchedUpTo(action.episode),
                     )
@@ -370,7 +343,7 @@ class DetailsViewModel(
                         try {
                             val intent = launchPlayerUseCase(Uri.parse(path), 0L)
                             _events.send(DetailsEvent.LaunchPlayer(intent))
-                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (e: Exception) {
                             _events.send(
@@ -389,5 +362,61 @@ class DetailsViewModel(
                 }
             }
         }
+    }
+}
+
+private enum class DetailsShape {
+    MISSING,
+    SINGLE_FILE,
+    SHOW,
+}
+
+/** Library-derived part of [DetailsState]; `mergeInto` keeps the screen-local fields. */
+private data class DetailsContent(
+    val media: MediaItem? = null,
+    val seasons: List<Season> = emptyList(),
+    val selectedSeasonNumber: Int? = null,
+    val episodes: List<Episode> = emptyList(),
+    val nextEpisodeToWatch: Episode? = null,
+    val isMovieWatched: Boolean = false,
+    val moviePositionMs: Long = 0,
+    val resumeEpisodeIds: Set<Long> = emptySet(),
+    val watchedEpisodeIds: Set<Long> = emptySet(),
+    val episodeProgressMap: Map<Long, Float> = emptyMap(),
+    val error: UiText? = null,
+) {
+    fun withProgress(progressList: List<WatchProgress>): DetailsContent {
+        val movieProgress = progressList.find { it.episodeId == 0L }
+        return copy(
+            isMovieWatched = movieProgress?.completed == true,
+            moviePositionMs = movieProgress?.lastPositionMs ?: 0,
+            resumeEpisodeIds =
+                progressList
+                    .filter { !it.completed && it.lastPositionMs > 0 }
+                    .mapTo(HashSet()) { it.episodeId },
+            watchedEpisodeIds =
+                progressList.filter { it.completed }.mapTo(HashSet()) { it.episodeId },
+            episodeProgressMap = progressList.associate { it.episodeId to it.progress },
+        )
+    }
+
+    fun mergeInto(screen: DetailsState) =
+        screen.copy(
+            media = media,
+            seasons = seasons,
+            selectedSeasonNumber = selectedSeasonNumber ?: screen.selectedSeasonNumber,
+            episodes = episodes,
+            nextEpisodeToWatch = nextEpisodeToWatch,
+            isMovieWatched = isMovieWatched,
+            moviePositionMs = moviePositionMs,
+            resumeEpisodeIds = resumeEpisodeIds,
+            watchedEpisodeIds = watchedEpisodeIds,
+            episodeProgressMap = episodeProgressMap,
+            isLoading = false,
+            error = error,
+        )
+
+    companion object {
+        fun missing() = DetailsContent(error = UiText.Resource(R.string.file_access_error))
     }
 }

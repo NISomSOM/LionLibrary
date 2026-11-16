@@ -4,11 +4,13 @@ import android.app.Activity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.singam.lionlibrary.presentation.components.LocalArtworkRevision
 
 private val LionLibraryColorScheme =
     darkColorScheme(
@@ -23,10 +25,12 @@ private val LionLibraryColorScheme =
         background = DarkBackground,
         onBackground = TextPrimary,
         surface = DarkSurface,
-        onSurface = TextSecondary,
+        // Surface text keeps the primary value it always had; secondary is a separate token.
+        onSurface = TextPrimary,
         surfaceVariant = DarkSurfaceVariant,
         onSurfaceVariant = TextTertiary,
         outline = DarkSurfaceVariant,
+        outlineVariant = Hairline,
         error = ErrorRed,
         onError = Color.White,
     )
@@ -48,8 +52,9 @@ fun LionLibraryTheme(artworkRevision: Long = 0L, content: @Composable () -> Unit
         }
     }
 
-    androidx.compose.runtime.CompositionLocalProvider(
-        com.singam.lionlibrary.presentation.components.LocalArtworkRevision provides artworkRevision
+    CompositionLocalProvider(
+        LocalArtworkRevision provides artworkRevision,
+        LocalLionColors provides LionColors(),
     ) {
         MaterialTheme(
             colorScheme = LionLibraryColorScheme,

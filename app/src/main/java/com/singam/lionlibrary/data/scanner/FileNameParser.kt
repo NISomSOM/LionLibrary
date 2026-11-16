@@ -58,17 +58,27 @@ class FileNameParser {
     private val specialsPattern = Regex("""\bSpecials\b""", RegexOption.IGNORE_CASE)
     // Scene-style season token in dotted names (Show.Name.S01.1080p...).
     private val dottedSeasonPattern = Regex("""\.S(\d{1,2})(?=\.|$)""", RegexOption.IGNORE_CASE)
+    private val squareBracketPattern = Regex("""\[.*?\]""")
+    private val parenthesizedPartPattern = Regex("""\(Part.*?\)""", RegexOption.IGNORE_CASE)
+    private val extraReleaseNoisePattern =
+        Regex("""\b(10\s?bits?|NF|AMZN|WEB)\b""", RegexOption.IGNORE_CASE)
+    private val emptyParenthesesPattern = Regex("""\(\s*\)""")
+    private val trailingDashesPattern = Regex("""-+$""")
+    private val whitespaceRunPattern = Regex("""\s+""")
+    private val yearPattern = Regex("""(?:^|\s)\(?((?:19|20)\d{2})\)?(?:\s|$)""")
+    private val parenthesizedPattern = Regex("""\(.*?\)""")
+    private val versionSuffixPattern = Regex("""v\d+\b""", RegexOption.IGNORE_CASE)
 
     fun stripNoise(raw: String): String {
         var clean = raw
 
         // Remove bracketed content.
-        clean = clean.replace(Regex("""\[.*?\]"""), " ")
+        clean = clean.replace(squareBracketPattern, " ")
 
         clean = sitePrefixPattern.replace(clean, "")
 
         // Remove part markers.
-        clean = clean.replace(Regex("""\(Part.*?\)""", RegexOption.IGNORE_CASE), " ")
+        clean = clean.replace(parenthesizedPartPattern, " ")
 
         // Standardize separators.
         clean = clean.replace('.', ' ').replace('_', ' ')
@@ -84,12 +94,11 @@ class FileNameParser {
         clean = langPattern.replace(clean, "")
 
         // Remove noise words.
-        clean =
-            clean.replace(Regex("""\b(10\s?bits?|NF|AMZN|WEB)\b""", RegexOption.IGNORE_CASE), "")
+        clean = clean.replace(extraReleaseNoisePattern, "")
 
         // Clean up punctuation.
-        clean = clean.replace(Regex("""\(\s*\)"""), "")
-        clean = clean.replace(Regex("""-+$"""), "")
+        clean = clean.replace(emptyParenthesesPattern, "")
+        clean = clean.replace(trailingDashesPattern, "")
 
         clean = clean.trim()
         clean = clean.replace(trailingGroupPattern, "")
@@ -97,13 +106,12 @@ class FileNameParser {
         // Final cleanup.
         clean = clean.replace('-', ' ')
 
-        return clean.replace(Regex("""\s+"""), " ").trim()
+        return clean.replace(whitespaceRunPattern, " ").trim()
     }
 
     fun parseMovieTitle(raw: String): Pair<String, Int?> {
         val clean = stripNoise(raw)
-        val yearRegex = Regex("""(?:^|\s)\(?((?:19|20)\d{2})\)?(?:\s|$)""")
-        val matches = yearRegex.findAll(clean).toList()
+        val matches = yearPattern.findAll(clean).toList()
 
         var year: Int? = null
         var title = clean
@@ -114,7 +122,7 @@ class FileNameParser {
             title = clean.removeRange(lastMatch.range)
         }
 
-        title = title.replace(Regex("""\(.*?\)"""), "").replace(Regex("""\s+"""), " ").trim()
+        title = title.replace(parenthesizedPattern, "").replace(whitespaceRunPattern, " ").trim()
         return Pair(title, year)
     }
 
@@ -160,10 +168,10 @@ class FileNameParser {
                 clean = clean.removeRange(it.range)
             }
 
-        clean = clean.replace(Regex("""\(.*?\)"""), "")
-        clean = clean.replace(Regex("""\(\s*\)"""), "")
-        clean = clean.replace(Regex("""-+$"""), "")
-        clean = clean.replace(Regex("""\s+"""), " ").trim()
+        clean = clean.replace(parenthesizedPattern, "")
+        clean = clean.replace(emptyParenthesesPattern, "")
+        clean = clean.replace(trailingDashesPattern, "")
+        clean = clean.replace(whitespaceRunPattern, " ").trim()
 
         return Pair(season ?: dottedSeason, clean)
     }
@@ -180,13 +188,13 @@ class FileNameParser {
         ) {
             title = title.substring(showIdentity.length).trimStart(' ', '-', '.', '_')
         }
-        title = title.replace(Regex("""\s+"""), " ").trim()
+        title = title.replace(whitespaceRunPattern, " ").trim()
         return title.ifBlank { raw }
     }
 
     fun parseSeasonAndEpisodeNumbers(filename: String): Pair<Int?, List<Int>> {
         // Remove version markers.
-        val sanitized = filename.replace(Regex("""v\d+\b""", RegexOption.IGNORE_CASE), "")
+        val sanitized = filename.replace(versionSuffixPattern, "")
 
         standardEpisodePattern.find(sanitized)?.let { match ->
             val seasonStr = match.groupValues[1]
@@ -213,7 +221,7 @@ class FileNameParser {
         }
 
         // Remove brackets.
-        val strippedBracket = filename.replace(Regex("""\[.*?\]"""), "").trim()
+        val strippedBracket = filename.replace(squareBracketPattern, "").trim()
         absoluteDashPattern.find(strippedBracket)?.let { match ->
             return Pair(null, listOf(match.groupValues[1].toInt()))
         }

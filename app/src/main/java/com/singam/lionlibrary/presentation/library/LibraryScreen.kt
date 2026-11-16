@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,8 +17,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.*
+import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.components.LibraryFilterChip
 import com.singam.lionlibrary.presentation.components.LibrarySearchField
+import com.singam.lionlibrary.presentation.components.LibrarySkeleton
 import com.singam.lionlibrary.presentation.components.MediaCard
 import com.singam.lionlibrary.presentation.components.PageHeading
 import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
@@ -89,7 +92,7 @@ fun LibraryScreen(
             Column(
                 Modifier.weight(1f, fill = false)
                     .heightIn(max = 240.dp)
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                    .verticalScroll(rememberScrollState())
             ) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(LibrarySort.entries) { sort ->
@@ -148,7 +151,10 @@ fun LibraryScreen(
         state.error?.let {
             Text(it.resolve(LocalContext.current), color = MaterialTheme.colorScheme.error)
         }
-        if (state.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        // Placeholders only when there is nothing to show yet; a new query over existing results
+        // keeps them visible under a thin progress line.
+        if (state.isLoading && state.items.isEmpty())
+            LibrarySkeleton(minimumCardWidth, Modifier.weight(1f))
         else if (state.items.isEmpty()) {
             val filtered =
                 state.query.text.isNotBlank() ||
@@ -166,7 +172,7 @@ fun LibraryScreen(
                 else R.string.library_empty_help
             Column(
                 Modifier.weight(1f)
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                    .verticalScroll(rememberScrollState())
                     .padding(top = 16.dp, bottom = bottomInset + 16.dp)
             ) {
                 Text(stringResource(title), style = MaterialTheme.typography.titleLarge)
@@ -180,7 +186,8 @@ fun LibraryScreen(
                         Text(stringResource(R.string.open_settings))
                     }
             }
-        } else
+        } else {
+            if (state.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             LazyVerticalGrid(
                 modifier = Modifier.weight(1f),
                 columns = GridCells.Adaptive(minimumCardWidth),
@@ -192,13 +199,15 @@ fun LibraryScreen(
                     MediaCard(
                         item,
                         { onMediaClick(item.id, item.mediaType) },
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().animateItem(fadeInSpec = null, fadeOutSpec = null),
                         onToggleWatchlist = {
                             onAction(LibraryAction.ToggleItemWatchlist(item.id))
                         },
+                        sharedShelf = "library",
                     )
                 }
             }
+        }
     }
 }
 
@@ -268,10 +277,7 @@ private fun ErrorPreview() {
         LibraryScreen(
             LibraryState(
                 isLoading = false,
-                error =
-                    com.singam.lionlibrary.presentation.common.UiText.Resource(
-                        R.string.error_unknown
-                    ),
+                error = UiText.Resource(R.string.error_unknown),
             ),
             {},
             { _, _ -> },

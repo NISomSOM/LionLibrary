@@ -1,6 +1,7 @@
 package com.singam.lionlibrary.di
 
 import androidx.room.Room
+import com.singam.lionlibrary.data.local.db.DatabaseMigrations
 import com.singam.lionlibrary.data.local.db.MediaDatabase
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
@@ -12,7 +13,7 @@ val databaseModule = module {
                 MediaDatabase::class.java,
                 MediaDatabase.DATABASE_NAME,
             )
-            .addMigrations(*com.singam.lionlibrary.data.local.db.DatabaseMigrations.all)
+            .addMigrations(*DatabaseMigrations.all)
             .build()
     }
 

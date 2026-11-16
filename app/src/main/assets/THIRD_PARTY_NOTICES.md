@@ -13,7 +13,7 @@ SIL Open Font License 1.1. Full text: licenses/Inter-OFL.txt.
 UI inspiration: NuvioMobile (https://github.com/NuvioMedia/NuvioMobile).
 The LionLibrary implementation is independent; no Nuvio GPL source or font assets are bundled.
 
-AndroidX / Jetpack (including Compose, Room, Media3, DataStore, Navigation), Kotlin,
+AndroidX / Jetpack (including Compose, Room, Media3, DataStore, Navigation, ProfileInstaller), Kotlin,
 kotlinx.coroutines, kotlinx.serialization, Koin, Retrofit and OkHttp: Apache License 2.0.
 Full text: licenses/Apache-2.0.txt.
 Coil: Apache License 2.0. https://github.com/coil-kt/coil

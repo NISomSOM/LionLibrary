@@ -1,6 +1,9 @@
 package com.singam.lionlibrary.di
 
+import android.util.Log
+import com.singam.lionlibrary.BuildConfig
 import com.singam.lionlibrary.data.remote.TmdbRateLimitInterceptor
+import com.singam.lionlibrary.data.remote.TmdbRateLimiter
 import com.singam.lionlibrary.data.remote.UserAgentInterceptor
 import com.singam.lionlibrary.data.remote.api.SkipDbApiService
 import com.singam.lionlibrary.data.remote.api.TheIntroDbApiService
@@ -23,25 +26,25 @@ private val TheIntroDbRetrofit = named("theIntroDbRetrofit")
 private val SkipDbRetrofit = named("skipDbRetrofit")
 
 val networkModule = module {
-    single { com.singam.lionlibrary.data.remote.TmdbRateLimiter() }
+    single { TmdbRateLimiter() }
     singleOf(::TmdbRateLimitInterceptor)
 
     single {
         val logging = HttpLoggingInterceptor { message ->
             // Hide API key in logs.
             val redacted = message.replace(Regex("api_key=[^&\\s]+"), "api_key=***")
-            android.util.Log.d("OkHttp", redacted)
+            Log.d("OkHttp", redacted)
         }
             .apply {
                 level =
-                    if (com.singam.lionlibrary.BuildConfig.DEBUG) {
+                    if (BuildConfig.DEBUG) {
                         HttpLoggingInterceptor.Level.BASIC
                     } else {
                         HttpLoggingInterceptor.Level.NONE
                     }
             }
         OkHttpClient.Builder()
-            .addInterceptor(get<com.singam.lionlibrary.data.remote.TmdbRateLimitInterceptor>())
+            .addInterceptor(get<TmdbRateLimitInterceptor>())
             .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -75,7 +78,7 @@ val networkModule = module {
     single(SkipTimesClient) {
         skipTimesClient(
             get(),
-            "LionLibrary/${com.singam.lionlibrary.BuildConfig.VERSION_NAME} Android",
+            "LionLibrary/${BuildConfig.VERSION_NAME} Android",
         )
     }
 

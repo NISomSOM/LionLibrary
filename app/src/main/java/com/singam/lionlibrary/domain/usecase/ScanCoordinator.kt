@@ -1,6 +1,7 @@
 package com.singam.lionlibrary.domain.usecase
 
 import com.singam.lionlibrary.domain.model.ScanProgress
+import com.singam.lionlibrary.domain.model.ScanSummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -13,8 +14,7 @@ data class ScanRunState(
     val isScanning: Boolean = false,
     val progress: ScanProgress? = null,
     val trigger: ScanTrigger? = null,
-    val summary: com.singam.lionlibrary.domain.model.ScanSummary =
-        com.singam.lionlibrary.domain.model.ScanSummary(),
+    val summary: ScanSummary = ScanSummary(),
 )
 
 sealed interface ScanEvent {

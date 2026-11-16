@@ -15,8 +15,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 
 /** Back, in the top-left corner. */
 @Composable
@@ -60,7 +62,10 @@ internal fun PlayerTopActions(
     }
 }
 
-/** Rewind, play/pause and forward in the middle of the video. */
+/**
+ * Rewind, play/pause and forward in the middle of the video: large bare glyphs with no backing
+ * disc, so the picture shows through and the play button reads as the focus.
+ */
 @Composable
 internal fun PlayerCenterControls(
     isPlaying: Boolean,
@@ -72,36 +77,40 @@ internal fun PlayerCenterControls(
     Row(
         modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(40.dp),
+        horizontalArrangement = Arrangement.spacedBy(56.dp),
     ) {
-        IconButton(onClick = onRewindClick, colors = onVideoIconColors()) {
+        IconButton(
+            onClick = onRewindClick,
+            colors = onVideoIconColors(),
+            modifier = Modifier.size(64.dp),
+        ) {
             Icon(
                 Icons.Rounded.Replay10,
                 contentDescription = stringResource(R.string.ui_rewind_10s),
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(48.dp),
             )
         }
-        FilledTonalIconButton(
+        IconButton(
             onClick = onPlayPauseClick,
-            modifier = Modifier.size(64.dp),
-            colors =
-                IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.scrim.copy(alpha = .45f),
-                    contentColor = MaterialTheme.colorScheme.onBackground,
-                ),
+            colors = onVideoIconColors(),
+            modifier = Modifier.size(88.dp),
         ) {
             Icon(
                 imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                 contentDescription =
                     stringResource(if (isPlaying) R.string.ui_pause else R.string.play),
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(80.dp),
             )
         }
-        IconButton(onClick = onForwardClick, colors = onVideoIconColors()) {
+        IconButton(
+            onClick = onForwardClick,
+            colors = onVideoIconColors(),
+            modifier = Modifier.size(64.dp),
+        ) {
             Icon(
                 Icons.Rounded.Forward10,
                 contentDescription = stringResource(R.string.ui_forward_10s),
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(48.dp),
             )
         }
     }
@@ -147,44 +156,44 @@ private fun PlayerTonalIconButton(
 private fun onVideoIconColors() =
     IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onBackground)
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Top actions")
+@Preview(name = "Top actions")
 @Composable
 private fun TopActionsPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerTopActions(false, {}, {}) }
+    LionLibraryTheme { PlayerTopActions(false, {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Top actions, opening external")
+@Preview(name = "Top actions, opening external")
 @Composable
 private fun TopActionsLoadingPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerTopActions(true, {}, {}) }
+    LionLibraryTheme { PlayerTopActions(true, {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Back")
+@Preview(name = "Back")
 @Composable
 private fun BackButtonPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerBackButton({}) }
+    LionLibraryTheme { PlayerBackButton({}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Center, playing")
+@Preview(name = "Center, playing")
 @Composable
 private fun CenterPlayingPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerCenterControls(true, {}, {}, {}) }
+    LionLibraryTheme { PlayerCenterControls(true, {}, {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Center, paused")
+@Preview(name = "Center, paused")
 @Composable
 private fun CenterPausedPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerCenterControls(false, {}, {}, {}) }
+    LionLibraryTheme { PlayerCenterControls(false, {}, {}, {}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Unlock")
+@Preview(name = "Unlock")
 @Composable
 private fun UnlockPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerUnlockButton({}) }
+    LionLibraryTheme { PlayerUnlockButton({}) }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(name = "Unlock, large font", fontScale = 2f)
+@Preview(name = "Unlock, large font", fontScale = 2f)
 @Composable
 private fun UnlockLargeFontPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme { PlayerUnlockButton({}) }
+    LionLibraryTheme { PlayerUnlockButton({}) }
 }

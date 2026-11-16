@@ -48,7 +48,7 @@ class ReleaseUiTest {
                         PlayerBottomControls(
                             title = "Example title",
                             subtitle = "S1 E2",
-                            currentPositionMs = position,
+                            currentPositionMs = { position },
                             durationMs = 5_400_000,
                             isEpisode = true,
                             hasPrevious = true,
@@ -339,6 +339,7 @@ class ReleaseUiTest {
             LionLibraryTheme {
                 PlayerScreen(
                     PlayerState(failure = UiText.Resource(R.string.playback_failure)),
+                    { 0L },
                     {},
                     { action = it },
                     {},

@@ -4,6 +4,9 @@ import assertk.assertThat
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNotEmpty
 import com.singam.lionlibrary.data.scanner.FileNameParser
+import com.singam.lionlibrary.data.scanner.FolderClassifier
+import com.singam.lionlibrary.data.scanner.FolderEntry
+import com.singam.lionlibrary.data.scanner.ScannedCandidate
 import java.io.File
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
@@ -12,8 +15,8 @@ import org.junit.jupiter.api.Test
  * Old-vs-new parity for the folder traversal rewrite. Both scanners get the same tree and must
  * produce identical candidate lists, in the same order, down to every URI and subtitle match.
  *
- * Until the rewrite lands, [candidate] is the legacy scanner itself, so this suite pins the
- * fixtures and writes the "before" snapshots. The rewrite swaps [candidate] for the new code.
+ * [candidate] is the production [FolderClassifier]; the reference is the frozen pre-rewrite copy.
+ * The real-layout test also writes the reference output to build/scanner-parity for review.
  *
  * Break vectors: subtitle ties (.srt vs .ass with one basename), uppercase extensions, files with
  * no extension, blank parsed titles, collection folders at and past the depth limit, the Shows
@@ -31,13 +34,47 @@ class ScannerParityTest {
         fun shows(root: ScanNode): List<ParityCandidate>
     }
 
-    // Replace with the rewritten scanner when it exists.
+    // The production classifier, fed the same in-memory tree through its lister interface.
+    private val classifier =
+        FolderClassifier<String>(parser) { parent ->
+            nodes.getValue(parent.uri).children.map(::entry)
+        }
+    private val nodes = mutableMapOf<String, ScanNode>()
+
+    private fun entry(node: ScanNode): FolderEntry<String> {
+        nodes[node.uri] = node
+        return FolderEntry(node.name, node.isDirectory, node.isFile, node.uri, node.documentKey)
+    }
+
     private val candidate: Scanner =
         object : Scanner {
             override fun movies(root: ScanNode, excludeKey: String?) =
-                legacy.scanMoviesFolder(root, excludeKey)
+                classifier.scanMovies(entry(root), excludeKey).map { it.toParity() }
 
-            override fun shows(root: ScanNode) = legacy.scanShowsFolder(root)
+            override fun shows(root: ScanNode) =
+                classifier.scanShows(entry(root)).map { it.toParity() }
+        }
+
+    private fun ScannedCandidate<String>.toParity(): ParityCandidate =
+        when (this) {
+            is ScannedCandidate.Movie -> ParityCandidate.Movie(sourceUri, title, year, subtitleUri)
+            is ScannedCandidate.Unknown ->
+                ParityCandidate.Unknown(sourceUri, rawName, reason, expectedType)
+            is ScannedCandidate.Show ->
+                ParityCandidate.Show(
+                    title,
+                    seasons.mapValues { (_, episodes) ->
+                        episodes.map {
+                            ParityEpisode(
+                                it.uri,
+                                it.episodeNumber,
+                                it.subtitleUri,
+                                it.episodeEndNumber,
+                                it.extraTitle,
+                            )
+                        }
+                    },
+                )
         }
 
     private fun assertMoviesMatch(tree: ScanTreeBuilder, excludeKey: String? = null): String {

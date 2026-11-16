@@ -4,15 +4,13 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import com.singam.lionlibrary.domain.repository.ArtworkRepository
 import com.singam.lionlibrary.util.Constants
+import com.singam.lionlibrary.util.KeyedMutex
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -21,10 +19,34 @@ class ImageCacheManager(private val context: Context, private val client: OkHttp
     private val mutableRevision = MutableStateFlow(0L)
     override val revision = mutableRevision.asStateFlow()
 
+    private val signatures by lazy {
+        ArtworkSignatures(File(context.filesDir, Constants.ARTWORK_SIGNATURES_FILE))
+    }
+
+    /**
+     * Whether [path] is a decodable image. A file that already decoded with the same size and
+     * modification time is trusted without decoding again; anything else gets the full check and,
+     * when it passes, is recorded.
+     */
     fun isUsable(path: String?): Boolean {
         if (path == null) return false
         val file = File(path)
-        if (!file.isFile || file.length() == 0L) return false
+        if (!file.isFile) return false
+        val signature = ArtworkSignature(file.length(), file.lastModified())
+        if (signature.length == 0L) return false
+        if (signatures.matches(file.absolutePath, signature)) return true
+        if (!decodes(path)) {
+            signatures.forget(file.absolutePath)
+            return false
+        }
+        signatures.record(file.absolutePath, signature)
+        return true
+    }
+
+    /** Writes recorded signatures; called once after an artwork pass, not per file. */
+    fun persistValidation() = signatures.persist()
+
+    private fun decodes(path: String): Boolean {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
@@ -38,7 +60,8 @@ class ImageCacheManager(private val context: Context, private val client: OkHttp
     private val directory by lazy {
         File(context.filesDir, Constants.IMAGE_CACHE_DIR).also { it.mkdirs() }
     }
-    private val locks = ConcurrentHashMap<String, Mutex>()
+    // Per-filename lock; entries disappear when released, so nothing accumulates across scans.
+    private val locks = KeyedMutex<String>()
 
     suspend fun cachePoster(path: String, name: String) =
         download("${Constants.TMDB_IMAGE_BASE_URL_W500}$path", name)
@@ -55,48 +78,50 @@ class ImageCacheManager(private val context: Context, private val client: OkHttp
 
     private suspend fun download(url: String, name: String): String? =
         withContext(Dispatchers.IO) {
-            locks
-                .getOrPut(name) { Mutex() }
-                .withLock {
-                    require(File(name).name == name) { "Artwork name must be a basename" }
-                    val destination = File(directory, name)
-                    if (isUsable(destination.absolutePath)) return@withLock destination.absolutePath
-                    var temporary: File? = null
-                    try {
-                        client.newCall(Request.Builder().url(url).build()).execute().use { response
-                            ->
-                            if (!response.isSuccessful) return@withLock null
-                            val body = response.body ?: return@withLock null
-                            val staging = File.createTempFile("art_", ".tmp", directory)
-                            temporary = staging
-                            body.byteStream().use { input ->
-                                staging.outputStream().use { output ->
-                                    val buffer = ByteArray(16 * 1024)
-                                    while (true) {
-                                        currentCoroutineContext().ensureActive()
-                                        val count = input.read(buffer)
-                                        if (count < 0) break
-                                        output.write(buffer, 0, count)
-                                    }
+            locks.withLock(name) {
+                require(File(name).name == name) { "Artwork name must be a basename" }
+                val destination = File(directory, name)
+                if (isUsable(destination.absolutePath)) return@withLock destination.absolutePath
+                var temporary: File? = null
+                try {
+                    client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                        if (!response.isSuccessful) return@withLock null
+                        val body = response.body ?: return@withLock null
+                        val staging = File.createTempFile("art_", ".tmp", directory)
+                        temporary = staging
+                        body.byteStream().use { input ->
+                            staging.outputStream().use { output ->
+                                val buffer = ByteArray(16 * 1024)
+                                while (true) {
+                                    currentCoroutineContext().ensureActive()
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    output.write(buffer, 0, count)
                                 }
                             }
-                            currentCoroutineContext().ensureActive()
-                            if (!isUsable(staging.absolutePath)) return@withLock null
-                            if (staging.renameTo(destination)) {
-                                mutableRevision.update { it + 1 }
-                                destination.absolutePath
-                            } else null
                         }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: IOException) {
-                        null
-                    } catch (_: SecurityException) {
-                        null
-                    } finally {
-                        temporary?.delete()
+                        currentCoroutineContext().ensureActive()
+                        if (!decodes(staging.absolutePath)) return@withLock null
+                        if (staging.renameTo(destination)) {
+                            // Just decoded as the staging file; same bytes after the rename.
+                            signatures.record(
+                                destination.absolutePath,
+                                ArtworkSignature(destination.length(), destination.lastModified()),
+                            )
+                            mutableRevision.update { it + 1 }
+                            destination.absolutePath
+                        } else null
                     }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: IOException) {
+                    null
+                } catch (_: SecurityException) {
+                    null
+                } finally {
+                    temporary?.delete()
                 }
+            }
         }
 
     /** Grace period prevents deleting newly downloaded art before its transaction commits. */
@@ -108,8 +133,9 @@ class ImageCacheManager(private val context: Context, private val client: OkHttp
                     file.isFile &&
                         file.absolutePath !in referenced &&
                         now - file.lastModified() > 48 * 60 * 60 * 1000L
-                )
-                    file.delete()
+                ) {
+                    if (file.delete()) signatures.forget(file.absolutePath)
+                }
             }
         }
 }

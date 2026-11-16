@@ -39,7 +39,7 @@ class AndroidScanCoordinator(
                 val previous = settingsRepository.scanSummary.first()
                 val summary =
                     if (previous.wasRunning)
-                        previous.copy(wasRunning = false, outcome = "INTERRUPTED")
+                        previous.copy(wasRunning = false, outcome = ScanOutcome.INTERRUPTED)
                     else previous
                 mutableState.update { it.copy(summary = summary) }
                 if (previous.wasRunning) settingsRepository.setScanSummary(summary)
@@ -47,7 +47,7 @@ class AndroidScanCoordinator(
                 throw cancelled
             } catch (_: Exception) {
                 mutableState.update {
-                    it.copy(summary = ScanSummary(failed = 1, outcome = "ERROR"))
+                    it.copy(summary = ScanSummary(failed = 1, outcome = ScanOutcome.ERROR))
                 }
             } finally {
                 ready.complete(Unit)
@@ -87,8 +87,9 @@ class AndroidScanCoordinator(
                                 ScanStatus.ERROR -> summary.copy(failed = summary.failed + 1)
                                 else -> summary
                             }
-                        if (progress.status in terminalStatuses)
-                            summary = summary.copy(outcome = progress.status.name)
+                        ScanOutcome.of(progress.status)?.let {
+                            summary = summary.copy(outcome = it)
+                        }
                         mutableState.update { it.copy(progress = progress, summary = summary) }
                         mutableEvents.tryEmit(ScanEvent.Progress(trigger, progress))
                         val finished =
@@ -103,10 +104,10 @@ class AndroidScanCoordinator(
                             settingsRepository.setScanSummary(summary)
                     }
                 } catch (cancelled: CancellationException) {
-                    summary = summary.copy(outcome = "CANCELLED")
+                    summary = summary.copy(outcome = ScanOutcome.CANCELLED)
                     throw cancelled
                 } catch (_: Exception) {
-                    summary = summary.copy(failed = summary.failed + 1, outcome = "ERROR")
+                    summary = summary.copy(failed = summary.failed + 1, outcome = ScanOutcome.ERROR)
                     mutableEvents.tryEmit(ScanEvent.Failed(trigger, null))
                 } finally {
                     withContext(NonCancellable) {
@@ -119,7 +120,11 @@ class AndroidScanCoordinator(
                         try {
                             settingsRepository.setScanSummary(summary)
                         } catch (_: Exception) {
-                            summary = summary.copy(failed = summary.failed + 1, outcome = "ERROR")
+                            summary =
+                                summary.copy(
+                                    failed = summary.failed + 1,
+                                    outcome = ScanOutcome.ERROR,
+                                )
                             mutableEvents.tryEmit(ScanEvent.Failed(trigger, null))
                         } finally {
                             synchronized(this@AndroidScanCoordinator) {

@@ -1,7 +1,9 @@
 package com.singam.lionlibrary.presentation.player.engine
 
 import android.content.Context
+import android.os.Process
 import android.system.Os
+import android.util.Log
 import java.io.File
 import org.videolan.libvlc.LibVLC
 
@@ -77,12 +79,12 @@ object LibVlcProvider {
             Os.setenv("FONTCONFIG_PATH", fontsDir.absolutePath, true)
             fontconfigInitialized = true
 
-            android.util.Log.i(
+            Log.i(
                 "LibVlcProvider",
                 "Fontconfig env set: FONTCONFIG_FILE=${fontsConf.absolutePath}",
             )
         } catch (e: Exception) {
-            android.util.Log.e("LibVlcProvider", "Failed to init fontconfig", e)
+            Log.e("LibVlcProvider", "Failed to init fontconfig", e)
         }
     }
 
@@ -91,13 +93,13 @@ object LibVlcProvider {
         val appContext = context.applicationContext
 
         Thread {
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
             try {
-                android.util.Log.i("LibVlcProvider", "Starting LibVLC singleton prewarm")
+                Log.i("LibVlcProvider", "Starting LibVLC singleton prewarm")
                 getSharedInstance(appContext)
-                android.util.Log.i("LibVlcProvider", "LibVLC singleton prewarm complete")
+                Log.i("LibVlcProvider", "LibVLC singleton prewarm complete")
             } catch (e: Exception) {
-                android.util.Log.e("LibVlcProvider", "LibVLC singleton prewarm failed", e)
+                Log.e("LibVlcProvider", "LibVLC singleton prewarm failed", e)
             }
         }
             .start()

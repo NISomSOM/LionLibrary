@@ -1,43 +1,45 @@
 package com.singam.lionlibrary.presentation.player
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Typeface
 import android.media.AudioManager
-import android.provider.Settings
+import android.util.TypedValue
+import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BrightnessMedium
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -47,16 +49,20 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.singam.lionlibrary.R
+import com.singam.lionlibrary.domain.model.EngineType
+import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.player.engine.AspectMode
 import com.singam.lionlibrary.presentation.player.engine.EnginePlaybackState
-import com.singam.lionlibrary.presentation.player.engine.EngineType
-import com.singam.lionlibrary.presentation.player.engine.LionPlayerEngine
-import kotlin.math.roundToInt
+import com.singam.lionlibrary.ui.theme.LionLibraryTheme
+import com.singam.lionlibrary.ui.theme.LionTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import org.videolan.libvlc.util.VLCVideoLayout
 
 private const val PAUSE_CARD_DELAY_MS = 5_000L
 
@@ -70,12 +76,14 @@ fun Context.findActivity(): Activity? =
 @Composable
 fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // Read only inside the lambda below, so ticks recompose just the seek bar and time labels.
+    val position by viewModel.positionMs.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = context.findActivity()
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val view = androidx.compose.ui.platform.LocalView.current
+    val view = LocalView.current
 
     DisposableEffect(view, state.isPlaying) {
         val previous = view.keepScreenOn
@@ -123,8 +131,13 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) {
-                viewModel.onAction(PlayerAction.Pause)
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> viewModel.onAction(PlayerAction.Pause)
+                Lifecycle.Event.ON_STOP ->
+                    viewModel.onAction(PlayerAction.OnHostVisibilityChanged(false))
+                Lifecycle.Event.ON_START ->
+                    viewModel.onAction(PlayerAction.OnHostVisibilityChanged(true))
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -143,7 +156,7 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
                     try {
                         context.startActivity(event.intent)
                         viewModel.onAction(PlayerAction.ExternalLaunchResult(true))
-                    } catch (_: android.content.ActivityNotFoundException) {
+                    } catch (_: ActivityNotFoundException) {
                         viewModel.onAction(PlayerAction.ExternalLaunchResult(false))
                     } catch (_: SecurityException) {
                         viewModel.onAction(PlayerAction.ExternalLaunchResult(false))
@@ -161,16 +174,26 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
         }
     }
 
+    // Platform brightness/volume work lives here, not in the Screen.
+    val levels =
+        remember(activity) {
+            AndroidPlayerLevelController(
+                activity,
+                context.getSystemService(Context.AUDIO_SERVICE) as AudioManager,
+            )
+        }
     PlayerScreen(
         state = state,
+        positionMs = { position },
         videoSurface = {
-            androidx.compose.runtime.key(state.session) {
-                PlayerVideoSurface(viewModel.engine, state.engineType)
+            key(state.session) {
+                PlayerVideoSurface(state.engineType, onAttach = viewModel::attachVideoSurface)
             }
         },
         onAction = viewModel::onAction,
         onBack = onBack,
         snackbarHostState = snackbarHostState,
+        levels = levels,
     )
 }
 
@@ -178,22 +201,27 @@ fun PlayerRoot(onBack: () -> Unit, viewModel: PlayerViewModel = koinViewModel())
 @Composable
 fun PlayerScreen(
     state: PlayerState,
+    positionMs: () -> Long,
     videoSurface: @Composable () -> Unit,
     onAction: (PlayerAction) -> Unit,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    levels: PlayerLevelController = remember { InMemoryPlayerLevelController() },
 ) {
     val context = LocalContext.current
-    val activity = context.findActivity()
-    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     val showControls = state.showControls
     val currentState by rememberUpdatedState(state)
-    var showLeftSeekFeedback by remember { mutableStateOf(false) }
+    val currentOnAction by rememberUpdatedState(onAction)
+    val currentPosition by rememberUpdatedState(positionMs)
+    // Compose-internal gesture feedback; the values they show come from the engine/controller.
     var brightnessLevel by remember { mutableStateOf<Float?>(null) }
     var brightnessDragging by remember { mutableStateOf(false) }
     var volumeLevel by remember { mutableStateOf<Float?>(null) }
     var volumeDragging by remember { mutableStateOf(false) }
+    var seekDrag by remember { mutableStateOf<SeekDragFeedback?>(null) }
+    var doubleTapZone by remember { mutableStateOf<GestureZone?>(null) }
+    var doubleTapCount by remember { mutableIntStateOf(0) }
 
     // Keep each level pill up briefly after the finger lifts.
     LaunchedEffect(brightnessDragging) {
@@ -208,19 +236,99 @@ fun PlayerScreen(
             volumeLevel = null
         }
     }
-    var showRightSeekFeedback by remember { mutableStateOf(false) }
-
-    LaunchedEffect(showLeftSeekFeedback) {
-        if (showLeftSeekFeedback) {
-            delay(500)
-            showLeftSeekFeedback = false
+    // Each double tap restarts the short "-10 s / +10 s" label.
+    LaunchedEffect(doubleTapCount) {
+        if (doubleTapCount > 0) {
+            delay(600)
+            doubleTapZone = null
         }
     }
-    LaunchedEffect(showRightSeekFeedback) {
-        if (showRightSeekFeedback) {
-            delay(500)
-            showRightSeekFeedback = false
+
+    val haptics = LocalHapticFeedback.current
+    val gestureHandler =
+        remember(levels, haptics) {
+            object : PlayerGestureHandler {
+                private var seekStartMs = 0L
+                private var dragVolume = 0f
+                private var dragBrightness = 0f
+
+                override fun onTap() =
+                    currentOnAction(
+                        PlayerAction.OnControlsVisibilityChanged(!currentState.showControls)
+                    )
+
+                override fun onDoubleTap(zone: GestureZone) {
+                    currentOnAction(
+                        if (zone == GestureZone.LEFT) PlayerAction.OnSeekBackward
+                        else PlayerAction.OnSeekForward
+                    )
+                    haptics.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                    doubleTapZone = zone
+                    doubleTapCount++
+                }
+
+                override fun onHoldStart() {
+                    // Only a playing, unlocked player speeds up; feedback follows that state.
+                    if (currentState.isPlaying && !currentState.isLocked)
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    currentOnAction(PlayerAction.OnHoldSpeedChange(true))
+                }
+
+                override fun onHoldEnd() = currentOnAction(PlayerAction.OnHoldSpeedChange(false))
+
+                override fun onSeekDragStart() {
+                    seekStartMs = currentPosition()
+                    currentOnAction(PlayerAction.OnControlsVisibilityChanged(true))
+                }
+
+                override fun onSeekDrag(totalDxPx: Float, widthPx: Float) {
+                    val duration = currentState.durationMs
+                    val offset = PlayerGestureMath.seekOffsetMs(totalDxPx, widthPx, duration)
+                    val target = PlayerGestureMath.seekTarget(seekStartMs, offset, duration)
+                    currentOnAction(PlayerAction.OnScrub(target))
+                    seekDrag = SeekDragFeedback(target - seekStartMs, target)
+                }
+
+                override fun onSeekDragEnd() {
+                    currentOnAction(PlayerAction.OnScrubEnd)
+                    seekDrag = null
+                }
+
+                override fun onLevelDrag(zone: GestureZone, deltaLevel: Float) {
+                    if (zone == GestureZone.LEFT) {
+                        if (!volumeDragging) dragVolume = levels.volume()
+                        volumeDragging = true
+                        // Fractional target so slow drags still accumulate between volume steps.
+                        dragVolume = (dragVolume + deltaLevel).coerceIn(0f, 1f)
+                        levels.setVolume(dragVolume)
+                        volumeLevel = dragVolume
+                    } else {
+                        if (!brightnessDragging) dragBrightness = levels.brightness()
+                        brightnessDragging = true
+                        dragBrightness = (dragBrightness + deltaLevel).coerceIn(0f, 1f)
+                        levels.setBrightness(dragBrightness)
+                        brightnessLevel = dragBrightness
+                    }
+                }
+
+                override fun onLevelDragEnd(zone: GestureZone) {
+                    if (zone == GestureZone.LEFT) volumeDragging = false
+                    else brightnessDragging = false
+                }
+            }
         }
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val systemGestures = WindowInsets.systemGestures
+    val exclusion = {
+        // At least 24 dp at each edge: back gestures and transient system bars live there.
+        val minimum = with(density) { 24.dp.toPx() }
+        GestureExclusion(
+            leftPx = maxOf(systemGestures.getLeft(density, layoutDirection).toFloat(), minimum),
+            rightPx = maxOf(systemGestures.getRight(density, layoutDirection).toFloat(), minimum),
+            topPx = maxOf(systemGestures.getTop(density).toFloat(), minimum),
+            bottomPx = maxOf(systemGestures.getBottom(density).toFloat(), minimum),
+        )
     }
 
     // Auto-hide controls; an open panel keeps them up. Locked, the unlock button always fades.
@@ -241,7 +349,7 @@ fun PlayerScreen(
         state.playbackState,
         state.panel,
         state.isLocked,
-        state.currentPositionMs,
+        state.seekRevision,
     ) {
         if (
             showControls &&
@@ -257,232 +365,23 @@ fun PlayerScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(modifier = Modifier.fillMaxSize().background(LionTheme.colors.playerBackground)) {
         videoSurface()
 
-        Row(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier =
-                    Modifier.weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(state.isLocked) {
-                            if (state.isLocked) return@pointerInput
-                            var initialBrightness = 0f
-                            detectVerticalDragGestures(
-                                onDragStart = {
-                                    val window = activity?.window
-                                    initialBrightness = window?.attributes?.screenBrightness ?: 0.5f
-                                    if (initialBrightness < 0f) {
-                                        try {
-                                            val sysBrightness =
-                                                Settings.System.getInt(
-                                                    context.contentResolver,
-                                                    Settings.System.SCREEN_BRIGHTNESS,
-                                                )
-                                            initialBrightness = sysBrightness / 255f
-                                        } catch (e: Exception) {
-                                            initialBrightness = 0.5f
-                                        }
-                                    }
-                                    brightnessDragging = true
-                                    brightnessLevel = initialBrightness
-                                },
-                                onDragEnd = { brightnessDragging = false },
-                                onDragCancel = { brightnessDragging = false },
-                                onVerticalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val dragDelta = -dragAmount / size.height
-                                    val newBrightness =
-                                        (initialBrightness + dragDelta * 2).coerceIn(0f, 1f)
-                                    activity?.window?.attributes =
-                                        activity?.window?.attributes?.apply {
-                                            screenBrightness = newBrightness
-                                        }
-                                    initialBrightness = newBrightness
-                                    brightnessLevel = newBrightness
-                                },
-                            )
-                        }
-                        .pointerInput(state.isLocked) {
-                            if (state.isLocked) return@pointerInput
-                            var initialPosition = 0L
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    initialPosition = currentState.currentPositionMs
-                                    onAction(PlayerAction.OnControlsVisibilityChanged(true))
-                                },
-                                onHorizontalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val fullWidth = size.width * 3f
-                                    val dragDeltaMs =
-                                        (dragAmount / fullWidth) * currentState.durationMs * 0.5f
-                                    val newPosition =
-                                        (initialPosition + dragDeltaMs.toLong()).coerceIn(
-                                            0L,
-                                            currentState.durationMs.coerceAtLeast(0),
-                                        )
-                                    onAction(PlayerAction.OnScrub(newPosition))
-                                    initialPosition = newPosition
-                                },
-                                onDragEnd = { onAction(PlayerAction.OnScrubEnd) },
-                                onDragCancel = { onAction(PlayerAction.OnScrubEnd) },
-                            )
-                        }
-                        .pointerInput(state.isLocked) {
-                            val locked = state.isLocked
-                            detectTapGestures(
-                                onDoubleTap = { _: Offset ->
-                                        showLeftSeekFeedback = true
-                                        onAction(PlayerAction.OnSeekBackward)
-                                    }
-                                        .takeUnless { locked },
-                                onTap = {
-                                    onAction(
-                                        PlayerAction.OnControlsVisibilityChanged(
-                                            !currentState.showControls
-                                        )
-                                    )
-                                },
-                            )
-                        },
-                contentAlignment = Alignment.Center,
-            ) {
-                SeekFeedback(visible = showLeftSeekFeedback, isForward = false)
-            }
+        Box(
+            Modifier.fillMaxSize()
+                .testTag("player-gestures")
+                .playerGestures(state.isLocked, exclusion, gestureHandler)
+        )
 
-            Box(
-                modifier =
-                    Modifier.weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(state.isLocked) {
-                            if (state.isLocked) return@pointerInput
-                            var initialPosition = 0L
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    initialPosition = currentState.currentPositionMs
-                                    onAction(PlayerAction.OnControlsVisibilityChanged(true))
-                                },
-                                onHorizontalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val fullWidth = size.width * 3f
-                                    val dragDeltaMs =
-                                        (dragAmount / fullWidth) * currentState.durationMs * 0.5f
-                                    val newPosition =
-                                        (initialPosition + dragDeltaMs.toLong()).coerceIn(
-                                            0L,
-                                            currentState.durationMs.coerceAtLeast(0),
-                                        )
-                                    onAction(PlayerAction.OnScrub(newPosition))
-                                    initialPosition = newPosition
-                                },
-                                onDragEnd = { onAction(PlayerAction.OnScrubEnd) },
-                                onDragCancel = { onAction(PlayerAction.OnScrubEnd) },
-                            )
-                        }
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = {
-                                    onAction(
-                                        PlayerAction.OnControlsVisibilityChanged(
-                                            !currentState.showControls
-                                        )
-                                    )
-                                }
-                            )
-                        }
-            )
-
-            Box(
-                modifier =
-                    Modifier.weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(state.isLocked) {
-                            if (state.isLocked) return@pointerInput
-                            val maxVolume =
-                                audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                            // Fractional so slow drags still accumulate between volume steps.
-                            var dragVolume = 0f
-                            detectVerticalDragGestures(
-                                onDragStart = {
-                                    dragVolume =
-                                        audioManager
-                                            .getStreamVolume(AudioManager.STREAM_MUSIC)
-                                            .toFloat()
-                                    volumeDragging = true
-                                    volumeLevel = if (maxVolume > 0) dragVolume / maxVolume else 0f
-                                },
-                                onDragEnd = { volumeDragging = false },
-                                onDragCancel = { volumeDragging = false },
-                                onVerticalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val dragDelta = -dragAmount / size.height
-                                    dragVolume =
-                                        (dragVolume + dragDelta * maxVolume * 2).coerceIn(
-                                            0f,
-                                            maxVolume.toFloat(),
-                                        )
-                                    val newVolume = dragVolume.roundToInt()
-                                    if (
-                                        newVolume !=
-                                            audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                    ) {
-                                        audioManager.setStreamVolume(
-                                            AudioManager.STREAM_MUSIC,
-                                            newVolume,
-                                            0,
-                                        )
-                                    }
-                                    volumeLevel = if (maxVolume > 0) dragVolume / maxVolume else 0f
-                                },
-                            )
-                        }
-                        .pointerInput(state.isLocked) {
-                            if (state.isLocked) return@pointerInput
-                            var initialPosition = 0L
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    initialPosition = currentState.currentPositionMs
-                                    onAction(PlayerAction.OnControlsVisibilityChanged(true))
-                                },
-                                onHorizontalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val fullWidth = size.width * 3f
-                                    val dragDeltaMs =
-                                        (dragAmount / fullWidth) * currentState.durationMs * 0.5f
-                                    val newPosition =
-                                        (initialPosition + dragDeltaMs.toLong()).coerceIn(
-                                            0L,
-                                            currentState.durationMs.coerceAtLeast(0),
-                                        )
-                                    onAction(PlayerAction.OnScrub(newPosition))
-                                    initialPosition = newPosition
-                                },
-                                onDragEnd = { onAction(PlayerAction.OnScrubEnd) },
-                                onDragCancel = { onAction(PlayerAction.OnScrubEnd) },
-                            )
-                        }
-                        .pointerInput(state.isLocked) {
-                            val locked = state.isLocked
-                            detectTapGestures(
-                                onDoubleTap = { _: Offset ->
-                                        showRightSeekFeedback = true
-                                        onAction(PlayerAction.OnSeekForward)
-                                    }
-                                        .takeUnless { locked },
-                                onTap = {
-                                    onAction(
-                                        PlayerAction.OnControlsVisibilityChanged(
-                                            !currentState.showControls
-                                        )
-                                    )
-                                },
-                            )
-                        },
-                contentAlignment = Alignment.Center,
-            ) {
-                SeekFeedback(visible = showRightSeekFeedback, isForward = true)
-            }
-        }
+        // Seek and speed feedback: shadowed text near the top, clear of the picture's centre.
+        PlayerGestureFeedback(
+            seekDrag = seekDrag,
+            doubleTapZone = doubleTapZone,
+            isHoldSpeedActive = state.isHoldSpeedActive,
+            modifier =
+                Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 56.dp),
+        )
 
         val unlocked = !state.isLocked
         AnimatedVisibility(
@@ -501,7 +400,12 @@ fun PlayerScreen(
         }
 
         AnimatedVisibility(
-            visible = showControls && unlocked && state.panel != PlayerPanel.INFO,
+            visible =
+                showControls &&
+                    unlocked &&
+                    state.panel != PlayerPanel.INFO &&
+                    state.panel != PlayerPanel.SUBTITLES &&
+                    state.panel != PlayerPanel.AUDIO,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize(),
@@ -560,7 +464,7 @@ fun PlayerScreen(
                 PlayerBottomControls(
                     title = state.title,
                     subtitle = state.subtitle,
-                    currentPositionMs = state.currentPositionMs,
+                    currentPositionMs = positionMs,
                     durationMs = state.durationMs,
                     isEpisode = state.isEpisode,
                     hasPrevious = state.hasPrevious,
@@ -571,8 +475,7 @@ fun PlayerScreen(
                     onScrubEnd = { onAction(PlayerAction.OnScrubEnd) },
                     onPreviousClick = { onAction(PlayerAction.OnPlayPrevious) },
                     onSeekForward90Click = {
-                        val target =
-                            (state.currentPositionMs + 90_000).coerceAtMost(state.durationMs)
+                        val target = (positionMs() + 90_000).coerceAtMost(state.durationMs)
                         onAction(PlayerAction.OnSeek(target))
                     },
                     onSubtitleClick = {
@@ -583,10 +486,11 @@ fun PlayerScreen(
                     onAspectClick = { onAction(PlayerAction.OnAspectCycle) },
                     onInfoClick = { onAction(PlayerAction.OnPanelChange(PlayerPanel.INFO)) },
                     onNextClick = { onAction(PlayerAction.OnPlayNext) },
+                    chapters = state.chapters,
                     modifier =
                         Modifier.align(Alignment.BottomCenter)
                             .safeDrawingPadding()
-                            .padding(start = 24.dp, end = 24.dp, bottom = 20.dp),
+                            .padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
                 )
             }
         }
@@ -605,7 +509,7 @@ fun PlayerScreen(
             modifier =
                 Modifier.align(Alignment.BottomEnd)
                     .safeDrawingPadding()
-                    .padding(end = 24.dp, bottom = if (showControls) 140.dp else 32.dp),
+                    .padding(end = 24.dp, bottom = if (showControls) 128.dp else 32.dp),
         ) {
             // Keep the last label while fading out after the segment ends.
             var shown by remember { mutableStateOf(skipButton) }
@@ -634,28 +538,29 @@ fun PlayerScreen(
             PlayerPanelHost(state = state, onAction = onAction)
         }
 
-        GestureLevelPill(
+        // Slim bars at the edge opposite the finger, so the hand never covers the value.
+        PlayerLevelBar(
             level = brightnessLevel,
             icon = Icons.Default.BrightnessMedium,
             contentDescription = stringResource(R.string.ui_brightness),
             modifier =
-                Modifier.align(Alignment.CenterStart).safeDrawingPadding().padding(start = 32.dp),
+                Modifier.align(Alignment.CenterStart).safeDrawingPadding().padding(start = 20.dp),
         )
-        GestureLevelPill(
+        PlayerLevelBar(
             level = volumeLevel,
             icon =
                 if ((volumeLevel ?: 1f) <= 0f) Icons.AutoMirrored.Filled.VolumeOff
                 else Icons.AutoMirrored.Filled.VolumeUp,
             contentDescription = stringResource(R.string.ui_volume),
             modifier =
-                Modifier.align(Alignment.CenterEnd).safeDrawingPadding().padding(end = 32.dp),
+                Modifier.align(Alignment.CenterEnd).safeDrawingPadding().padding(end = 20.dp),
         )
 
         state.failure?.let { failure ->
             Card(Modifier.align(Alignment.Center).safeDrawingPadding().padding(24.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text(failure.resolve(context), style = MaterialTheme.typography.bodyLarge)
-                    androidx.compose.foundation.layout.FlowRow {
+                    FlowRow {
                         TextButton(onClick = { onAction(PlayerAction.Retry) }) {
                             Text(stringResource(R.string.retry))
                         }
@@ -673,9 +578,9 @@ fun PlayerScreen(
         ) { snackbarData ->
             Snackbar(
                 snackbarData = snackbarHostState.currentSnackbarData ?: snackbarData,
-                containerColor = Color(0xFF2D2D2D),
-                contentColor = Color.White,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                containerColor = LionTheme.colors.snackbar,
+                contentColor = LionTheme.colors.onMedia,
+                shape = RoundedCornerShape(12.dp),
             )
         }
     }
@@ -685,12 +590,24 @@ fun PlayerScreen(
 @Composable
 private fun PlayerPanelHost(state: PlayerState, onAction: (PlayerAction) -> Unit) {
     val dismiss = { onAction(PlayerAction.OnPanelChange(PlayerPanel.NONE)) }
+    val scrim = MaterialTheme.colorScheme.scrim
+    val isSideSheet = state.panel == PlayerPanel.SUBTITLES || state.panel == PlayerPanel.AUDIO
     Box(
         Modifier.fillMaxSize()
-            .background(
-                MaterialTheme.colorScheme.scrim.copy(
-                    alpha = if (state.panel == PlayerPanel.INFO) .8f else .4f
-                )
+            .then(
+                // Side sheets darken toward their edge only, leaving the video clear on the left.
+                if (isSideSheet)
+                    Modifier.background(
+                        Brush.horizontalGradient(
+                            0f to Color.Transparent,
+                            .45f to scrim.copy(alpha = .35f),
+                            1f to scrim.copy(alpha = .8f),
+                        )
+                    )
+                else
+                    Modifier.background(
+                        scrim.copy(alpha = if (state.panel == PlayerPanel.INFO) .8f else .4f)
+                    )
             )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -722,24 +639,14 @@ private fun PlayerPanelHost(state: PlayerState, onAction: (PlayerAction) -> Unit
                     onDelayReset = { onAction(PlayerAction.OnSubtitleDelayReset) },
                     onScaleChange = { onAction(PlayerAction.OnSubtitleScaleChange(it)) },
                     onDismiss = dismiss,
-                    modifier =
-                        panelModifier
-                            .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .fillMaxWidth(.82f)
-                            .widthIn(max = 880.dp),
+                    modifier = panelModifier.align(Alignment.CenterEnd).sideSheet(),
                 )
             PlayerPanel.AUDIO ->
                 AudioPanel(
                     tracks = state.audioTracks,
                     onTrackSelect = { onAction(PlayerAction.SelectAudio(it)) },
                     onDismiss = dismiss,
-                    modifier =
-                        panelModifier
-                            .align(Alignment.BottomStart)
-                            .widthIn(max = 380.dp)
-                            .fillMaxWidth(.5f)
-                            .fillMaxHeight(.85f),
+                    modifier = panelModifier.align(Alignment.CenterEnd).sideSheet(),
                 )
             PlayerPanel.SPEED ->
                 SpeedPanel(
@@ -760,6 +667,12 @@ private fun PlayerPanelHost(state: PlayerState, onAction: (PlayerAction) -> Unit
         }
     }
 }
+
+/**
+ * MX-style side sheet for audio and subtitles: full height on the right edge and at most 400dp
+ * wide, so on a landscape phone the video stays visible beside it.
+ */
+private fun Modifier.sideSheet(): Modifier = fillMaxHeight().widthIn(max = 400.dp).fillMaxWidth()
 
 /** Names the new aspect mode briefly after it changes; silent on first composition. */
 @Composable
@@ -795,134 +708,9 @@ private fun AspectFeedback(mode: AspectMode, modifier: Modifier = Modifier) {
     }
 }
 
-/** Vertical level indicator shown while a brightness or volume swipe is in progress. */
 @Composable
-private fun GestureLevelPill(
-    level: Float?,
-    icon: ImageVector,
-    contentDescription: String,
-    modifier: Modifier = Modifier,
-) {
-    // Compose-internal: keeps the last fill while the pill fades out.
-    var lastLevel by remember { mutableFloatStateOf(0f) }
-    if (level != null) lastLevel = level.coerceIn(0f, 1f)
-    androidx.compose.animation.AnimatedVisibility(
-        visible = level != null,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = modifier,
-    ) {
-        GestureLevelIndicator(lastLevel, icon, contentDescription)
-    }
-}
-
-@Composable
-private fun GestureLevelIndicator(
-    level: Float,
-    icon: ImageVector,
-    contentDescription: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.width(44.dp),
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.scrim.copy(alpha = .6f),
-        contentColor = MaterialTheme.colorScheme.onBackground,
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = stringResource(R.string.ui_level_percent, (level * 100).roundToInt()),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
-            Spacer(Modifier.height(8.dp))
-            Box(
-                modifier =
-                    Modifier.width(6.dp)
-                        .height(120.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(MaterialTheme.colorScheme.onBackground.copy(alpha = .25f)),
-                contentAlignment = Alignment.BottomCenter,
-            ) {
-                Box(
-                    Modifier.fillMaxWidth()
-                        .fillMaxHeight(level.coerceIn(0f, 1f))
-                        .background(MaterialTheme.colorScheme.primary)
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(20.dp),
-            )
-        }
-    }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(name = "Brightness level")
-@Composable
-private fun BrightnessLevelPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
-        GestureLevelIndicator(.6f, Icons.Default.BrightnessMedium, "Brightness")
-    }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(name = "Volume full")
-@Composable
-private fun VolumeFullPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
-        GestureLevelIndicator(1f, Icons.AutoMirrored.Filled.VolumeUp, "Volume")
-    }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(name = "Volume muted")
-@Composable
-private fun VolumeMutedPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
-        GestureLevelIndicator(0f, Icons.AutoMirrored.Filled.VolumeOff, "Volume")
-    }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(name = "Level, large font", fontScale = 2f)
-@Composable
-private fun LevelLargeFontPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
-        GestureLevelIndicator(1f, Icons.Default.BrightnessMedium, "Brightness")
-    }
-}
-
-@Composable
-private fun SeekFeedback(visible: Boolean, isForward: Boolean) {
-    androidx.compose.animation.AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector =
-                    if (isForward) Icons.Default.FastForward else Icons.Default.FastRewind,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(48.dp),
-            )
-            Text(
-                text = if (isForward) "+10s" else "-10s",
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-            )
-        }
-    }
-}
-
-@Composable
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-private fun PlayerVideoSurface(engine: LionPlayerEngine?, engineType: EngineType) {
+@androidx.annotation.OptIn(UnstableApi::class)
+private fun PlayerVideoSurface(engineType: EngineType, onAttach: (ViewGroup) -> Unit) {
     // Pick video surface by engine.
     when (engineType) {
         EngineType.EXOPLAYER -> {
@@ -933,49 +721,49 @@ private fun PlayerVideoSurface(engine: LionPlayerEngine?, engineType: EngineType
                         // VLC-style subtitles.
                         subtitleView?.apply {
                             setStyle(
-                                androidx.media3.ui.CaptionStyleCompat(
+                                CaptionStyleCompat(
                                     android.graphics.Color.WHITE,
                                     android.graphics.Color.TRANSPARENT,
                                     android.graphics.Color.TRANSPARENT,
-                                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                                    CaptionStyleCompat.EDGE_TYPE_OUTLINE,
                                     android.graphics.Color.BLACK,
-                                    android.graphics.Typeface.DEFAULT,
+                                    Typeface.DEFAULT,
                                 )
                             )
                             setBottomPaddingFraction(0.04f)
                             setApplyEmbeddedFontSizes(false)
-                            setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
+                            setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                         }
                         layoutParams =
-                            android.view.ViewGroup.LayoutParams(
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
                             )
                     }
                 },
-                update = { view -> engine?.attachToView(view as android.view.ViewGroup) },
+                update = { view -> onAttach(view as ViewGroup) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
         EngineType.LIBVLC -> {
             AndroidView(
                 factory = { ctx ->
-                    org.videolan.libvlc.util.VLCVideoLayout(ctx).apply {
+                    VLCVideoLayout(ctx).apply {
                         layoutParams =
-                            android.view.ViewGroup.LayoutParams(
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
                             )
                     }
                 },
-                update = { view -> engine?.attachToView(view as android.view.ViewGroup) },
+                update = { view -> onAttach(view as ViewGroup) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(
+@Preview(
     name = "Player unavailable",
     widthDp = 760,
     heightDp = 360,
@@ -983,14 +771,10 @@ private fun PlayerVideoSurface(engine: LionPlayerEngine?, engineType: EngineType
 )
 @Composable
 private fun PlayerErrorPreview() {
-    com.singam.lionlibrary.ui.theme.LionLibraryTheme {
+    LionLibraryTheme {
         PlayerScreen(
-            PlayerState(
-                failure =
-                    com.singam.lionlibrary.presentation.common.UiText.Resource(
-                        com.singam.lionlibrary.R.string.file_access_error
-                    )
-            ),
+            PlayerState(failure = UiText.Resource(R.string.file_access_error)),
+            { 0L },
             {},
             {},
             {},

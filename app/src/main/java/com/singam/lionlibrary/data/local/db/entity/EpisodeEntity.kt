@@ -16,7 +16,13 @@ import androidx.room.PrimaryKey
                 onDelete = ForeignKey.CASCADE,
             )
         ],
-    indices = [Index(value = ["showId"]), Index(value = ["filePath"], unique = true)],
+    indices =
+        [
+            Index(value = ["showId"]),
+            Index(value = ["filePath"], unique = true),
+            // Schema 15: season/episode ordering queries (next, previous, season lists, next up).
+            Index(value = ["showId", "seasonNumber", "episodeNumber"]),
+        ],
 )
 data class EpisodeEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

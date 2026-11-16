@@ -2,6 +2,7 @@ package com.singam.lionlibrary.presentation.player
 
 import android.content.Intent
 import android.net.Uri
+import android.view.ViewGroup
 import androidx.core.net.toUri
 import androidx.lifecycle.*
 import com.singam.lionlibrary.R
@@ -23,7 +24,8 @@ data class PlayerState(
     val subtitle: String = "",
     val isPlaying: Boolean = false,
     val playbackState: EnginePlaybackState = EnginePlaybackState.IDLE,
-    val currentPositionMs: Long = 0,
+    /** Bumped by every user seek/scrub, so position-dependent UI timers restart on a seek. */
+    val seekRevision: Int = 0,
     val durationMs: Long = 0,
     val showControls: Boolean = true,
     val isExternalFallbackLoading: Boolean = false,
@@ -50,6 +52,10 @@ data class PlayerState(
     val overview: String? = null,
     /** Skip button for the segment the position is inside; shown even while controls are hidden. */
     val skipButton: SkipSegmentType? = null,
+    /** Chapters of the current file, drawn on the seek bar; empty when it has none. */
+    val chapters: List<PlaybackChapter> = emptyList(),
+    /** Press-and-hold on the video is playing at 2x; release restores [playbackSpeed]. */
+    val isHoldSpeedActive: Boolean = false,
 ) {
     /** The paused "You're watching" card: subtitles and the skip button step aside for it. */
     val isPauseCardVisible: Boolean
@@ -121,6 +127,8 @@ sealed interface PlayerAction {
 
     data object OnAspectCycle : PlayerAction
 
+    data class OnHostVisibilityChanged(val isVisible: Boolean) : PlayerAction
+
     data class OnSubtitleDelayChange(val deltaMs: Long) : PlayerAction
 
     data object OnSubtitleDelayReset : PlayerAction
@@ -130,6 +138,9 @@ sealed interface PlayerAction {
     data class OnSubtitleLanguageFilter(val language: String?) : PlayerAction
 
     data object OnSkipSegment : PlayerAction
+
+    /** Finger held on the video (true) or released (false). Ignored while locked or failed. */
+    data class OnHoldSpeedChange(val isHeld: Boolean) : PlayerAction
 }
 
 sealed interface PlayerEvent {
@@ -151,28 +162,33 @@ class PlayerViewModel(
     skipSegments: SkipSegmentRepository,
 ) : ViewModel() {
     private val mediaType =
-        MediaType.valueOf(checkNotNull(savedStateHandle.get<String>("mediaType")))
+        // Typed route arguments arrive as the enum; restored/legacy state may hold its name.
+        when (val stored = checkNotNull(savedStateHandle.get<Any>("mediaType"))) {
+            is MediaType -> stored
+            else -> MediaType.valueOf(stored.toString())
+        }
     private val mediaId = checkNotNull(savedStateHandle.get<Long>("mediaId"))
     private val mutableState = MutableStateFlow(PlayerState())
     val state = mutableState.asStateFlow()
+
+    // Kept out of [state]: it ticks twice a second, and only the seek bar and time labels read it.
+    private val mutablePosition = MutableStateFlow(0L)
+    val positionMs: StateFlow<Long> = mutablePosition.asStateFlow()
     private val mutableEvents = Channel<PlayerEvent>(Channel.BUFFERED)
     val events = mutableEvents.receiveAsFlow()
-    var engine: LionPlayerEngine? = null
-        private set
+    // Owned here only; the screen reaches it through [attachVideoSurface].
+    private var engine: LionPlayerEngine? = null
 
     private var target: PlaybackTarget? = null
     private var observer: Job? = null
     private var ticker: Job? = null
     private var scrubbing = false
-    private var audioDefaultApplied = false
-    private var subtitleDefaultApplied = false
+    private val trackDefaults = PlayerTrackDefaults()
     private var trackRevision = -1L
     private var recovered = false
     private var ended = false
     private var transitioning = false
     private var pausedByLifecycle = false
-    /** Remembered choice for the current title; null until loaded or when there is none. */
-    private var trackPreference: TrackPreference? = null
     private val transition = Mutex()
     private val skipSession = SkipSegmentSession(skipSegments, viewModelScope)
     private var engineSeekable = false
@@ -211,6 +227,11 @@ class PlayerViewModel(
         }
     }
 
+    /** Binds the current engine's video output to the surface the screen created for it. */
+    fun attachVideoSurface(view: ViewGroup) {
+        engine?.attachToView(view)
+    }
+
     private suspend fun open(next: PlaybackTarget) {
         transitioning = true
         try {
@@ -223,12 +244,10 @@ class PlayerViewModel(
             target = next
             ended = false
             recovered = false
-            audioDefaultApplied = false
-            subtitleDefaultApplied = false
             trackRevision = -1L
             engineSeekable = false
             skipSession.start(next.skipLookupKey())
-            trackPreference = trackPreferences.get(next.mediaId)
+            trackDefaults.reset(trackPreferences.get(next.mediaId))
             val preferred =
                 if (settings.forceLibVlc.first()) EngineType.LIBVLC
                 else
@@ -261,6 +280,7 @@ class PlayerViewModel(
                     supportsSubtitleDelay = selected.supportsSubtitleDelay,
                     supportsSubtitleScale = selected.supportsSubtitleScale,
                 )
+            mutablePosition.value = 0L
             if (next.episodeId != 0L) {
                 val hasNext = repository.adjacent(next, true) != null
                 val hasPrevious = repository.adjacent(next, false) != null
@@ -277,7 +297,7 @@ class PlayerViewModel(
             selected.setMedia(Uri.parse(path), next.subtitlePath?.let(Uri::parse))
             if (progress != null && !progress.completed && progress.lastPositionMs > 0) {
                 selected.seekTo(progress.lastPositionMs)
-                mutableState.update { it.copy(currentPositionMs = progress.lastPositionMs) }
+                mutablePosition.value = progress.lastPositionMs
             }
             observe(selected)
             ticker = viewModelScope.launch {
@@ -285,9 +305,7 @@ class PlayerViewModel(
                 while (isActive) {
                     delay(500)
                     if (!scrubbing) {
-                        mutableState.update {
-                            it.copy(currentPositionMs = selected.currentPositionMs.coerceAtLeast(0))
-                        }
+                        mutablePosition.value = selected.currentPositionMs.coerceAtLeast(0)
                         refreshSkipButton()
                     }
                     if (state.value.isPlaying && ++ticks % 16 == 0)
@@ -315,6 +333,7 @@ class PlayerViewModel(
                         isPlaying = value.isPlaying,
                         playbackState = value.playbackState,
                         durationMs = value.durationMs.coerceAtLeast(0),
+                        chapters = value.chapters,
                     )
                 }
                 engineSeekable = value.isSeekable
@@ -387,14 +406,14 @@ class PlayerViewModel(
     private fun refreshSkipButton() {
         val current = state.value
         val type =
-            if (!engineSeekable || ended || transitioning) null
-            else
-                SkipSegmentPolicy.active(
-                        skipSession.segments.value,
-                        current.currentPositionMs,
-                        current.durationMs,
-                    )
-                    ?.type
+            PlayerProgressPolicy.skipButton(
+                skipSession.segments.value,
+                mutablePosition.value,
+                current.durationMs,
+                engineSeekable,
+                ended,
+                transitioning,
+            )
         if (type != current.skipButton) mutableState.update { it.copy(skipButton = type) }
     }
 
@@ -404,7 +423,7 @@ class PlayerViewModel(
         val segment =
             SkipSegmentPolicy.active(
                 skipSession.segments.value,
-                current.currentPositionMs,
+                mutablePosition.value,
                 current.durationMs,
             ) ?: return
         val end = segment.endMs
@@ -432,45 +451,11 @@ class PlayerViewModel(
     }
 
     private fun applyDefaults() {
-        val saved = trackPreference
-        val audioTracks = engine?.getAudioTracks().orEmpty()
-        if (!audioDefaultApplied)
-            saved
-                ?.audio
-                ?.let { SavedTrackMatcher.find(audioTracks, it) }
-                ?.let {
-                    engine?.selectAudioTrack(it.id)
-                    audioDefaultApplied = true
-                }
-        val subtitleTracks = engine?.getSubtitleTracks().orEmpty()
-        if (!subtitleDefaultApplied && saved?.subtitlesOff == true && subtitleTracks.isNotEmpty()) {
-            engine?.selectSubtitleTrack(null)
-            subtitleDefaultApplied = true
-        }
-        if (!subtitleDefaultApplied)
-            saved
-                ?.subtitle
-                ?.let { SavedTrackMatcher.find(subtitleTracks, it) }
-                ?.let {
-                    engine?.selectSubtitleTrack(it.id)
-                    subtitleDefaultApplied = true
-                }
-        // Without a remembered match, fall back to the language defaults.
-        if (!audioDefaultApplied)
-            TrackLanguageMatcher.findBestAudioTrack(
-                    engine?.getAudioTracks().orEmpty(),
-                    if (target?.preferJapaneseAudio == true) MediaType.ANIME
-                    else target?.type ?: mediaType,
-                )
-                ?.let {
-                    engine?.selectAudioTrack(it.id)
-                    audioDefaultApplied = true
-                }
-        if (!subtitleDefaultApplied)
-            TrackLanguageMatcher.findBestSubtitleTrack(engine?.getSubtitleTracks().orEmpty())?.let {
-                engine?.selectSubtitleTrack(it.id)
-                subtitleDefaultApplied = true
-            }
+        val selected = engine ?: return
+        trackDefaults.apply(
+            selected,
+            if (target?.preferJapaneseAudio == true) MediaType.ANIME else target?.type ?: mediaType,
+        )
     }
 
     private fun refreshTracks() {
@@ -495,18 +480,18 @@ class PlayerViewModel(
                 }
             }
             PlayerAction.Pause -> pause()
+            is PlayerAction.OnHostVisibilityChanged -> engine?.setHostVisible(action.isVisible)
             is PlayerAction.OnSeek -> seek(action.positionMs)
-            PlayerAction.OnSeekForward -> seek(state.value.currentPositionMs + 10_000)
-            PlayerAction.OnSeekBackward -> seek(state.value.currentPositionMs - 10_000)
+            PlayerAction.OnSeekForward -> seek(mutablePosition.value + 10_000)
+            PlayerAction.OnSeekBackward -> seek(mutablePosition.value - 10_000)
             is PlayerAction.OnScrub -> {
                 scrubbing = true
-                mutableState.update {
-                    it.copy(currentPositionMs = action.positionMs.coerceAtLeast(0))
-                }
+                mutablePosition.value = action.positionMs.coerceAtLeast(0)
+                mutableState.update { it.copy(seekRevision = it.seekRevision + 1) }
             }
             PlayerAction.OnScrubEnd -> {
                 scrubbing = false
-                seek(state.value.currentPositionMs)
+                seek(mutablePosition.value)
             }
             is PlayerAction.OnControlsVisibilityChanged ->
                 mutableState.update { it.copy(showControls = action.isVisible) }
@@ -522,24 +507,16 @@ class PlayerViewModel(
                         )
                 }
             is PlayerAction.SelectAudio -> {
-                audioDefaultApplied = true
                 val chosen = state.value.audioTracks.firstOrNull { it.id == action.id }
                 engine?.selectAudioTrack(action.id)
                 refreshTracks()
-                chosen?.let { rememberTracks { copy(audio = SavedTrackMatcher.toSaved(it)) } }
+                trackDefaults.audioChosen(chosen)?.let(::rememberTracks)
             }
             is PlayerAction.SelectSubtitle -> {
-                subtitleDefaultApplied = true
                 val chosen = state.value.subtitleTracks.firstOrNull { it.id == action.id }
                 engine?.selectSubtitleTrack(action.id)
                 refreshTracks()
-                if (action.id == null) rememberTracks { copy(subtitlesOff = true) }
-                else
-                    chosen?.let {
-                        rememberTracks {
-                            copy(subtitle = SavedTrackMatcher.toSaved(it), subtitlesOff = false)
-                        }
-                    }
+                trackDefaults.subtitleChosen(action.id, chosen)?.let(::rememberTracks)
             }
             PlayerAction.RefreshTracks -> refreshTracks()
             is PlayerAction.OnLockChange ->
@@ -553,9 +530,10 @@ class PlayerViewModel(
             is PlayerAction.OnPanelChange -> openPanel(action.panel)
             is PlayerAction.OnSpeedSelect -> {
                 val speed = action.speed.coerceIn(MIN_SPEED, MAX_SPEED)
-                engine?.setPlaybackSpeed(speed)
+                if (!state.value.isHoldSpeedActive) engine?.setPlaybackSpeed(speed)
                 mutableState.update { it.copy(playbackSpeed = speed) }
             }
+            is PlayerAction.OnHoldSpeedChange -> setHoldSpeed(action.isHeld)
             PlayerAction.OnAspectCycle -> {
                 val next =
                     AspectMode.entries[
@@ -591,11 +569,26 @@ class PlayerViewModel(
         }
     }
 
+    /**
+     * Temporary 2x while a finger is held on the video. The chosen speed stays in state and is
+     * restored on release; nothing is saved. Not while locked, failed or not playing.
+     */
+    private fun setHoldSpeed(held: Boolean) {
+        val current = state.value
+        if (held) {
+            if (current.isHoldSpeedActive || current.isLocked || current.failure != null) return
+            if (!current.isPlaying) return
+            engine?.setPlaybackSpeed(HOLD_SPEED)
+            mutableState.update { it.copy(isHoldSpeedActive = true) }
+        } else if (current.isHoldSpeedActive) {
+            engine?.setPlaybackSpeed(current.playbackSpeed)
+            mutableState.update { it.copy(isHoldSpeedActive = false) }
+        }
+    }
+
     /** Saves the viewer's track choice for the whole movie or show. */
-    private fun rememberTracks(change: TrackPreference.() -> TrackPreference) {
+    private fun rememberTracks(updated: TrackPreference) {
         val mediaId = target?.mediaId ?: return
-        val updated = (trackPreference ?: TrackPreference()).change()
-        trackPreference = updated
         viewModelScope.launch { trackPreferences.save(mediaId, updated) }
     }
 
@@ -638,7 +631,8 @@ class PlayerViewModel(
         val bounded =
             if (duration > 0) position.coerceIn(0, duration) else position.coerceAtLeast(0)
         engine?.seekTo(bounded)
-        mutableState.update { it.copy(currentPositionMs = bounded) }
+        mutablePosition.value = bounded
+        mutableState.update { it.copy(seekRevision = it.seekRevision + 1) }
         refreshSkipButton()
     }
 
@@ -690,7 +684,7 @@ class PlayerViewModel(
             try {
                 mutableEvents.send(
                     PlayerEvent.LaunchExternalPlayer(
-                        launchPlayerUseCase(Uri.parse(path), state.value.currentPositionMs)
+                        launchPlayerUseCase(Uri.parse(path), mutablePosition.value)
                     )
                 )
             } catch (cancelled: CancellationException) {
@@ -706,19 +700,17 @@ class PlayerViewModel(
     }
 
     private fun save(completed: Boolean = ended): Deferred<OperationResult<Unit, DataError>>? {
-        val current = target ?: return null
-        val position = (engine?.currentPositionMs ?: state.value.currentPositionMs).coerceAtLeast(0)
-        if (position == 0L && !completed) return null
-        return repository.save(
-            PlaybackSnapshot(
-                current.mediaId,
-                current.episodeId,
-                position,
-                engine?.durationMs ?: state.value.durationMs,
+        val snapshot =
+            PlayerProgressPolicy.snapshot(
+                target,
+                engine?.currentPositionMs,
+                mutablePosition.value,
+                engine?.durationMs,
+                state.value.durationMs,
                 completed,
                 System.currentTimeMillis(),
-            )
-        )
+            ) ?: return null
+        return repository.save(snapshot)
     }
 
     private suspend fun checkSave(result: OperationResult<Unit, DataError>) {
@@ -732,6 +724,7 @@ class PlayerViewModel(
         const val MIN_SUBTITLE_SCALE = 0.5f
         const val MAX_SUBTITLE_SCALE = 2f
         const val MAX_SUBTITLE_DELAY_MS = 60_000L
+        const val HOLD_SPEED = 2f
     }
 
     override fun onCleared() {

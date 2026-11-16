@@ -1,9 +1,14 @@
 package com.singam.lionlibrary
 
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -19,18 +24,24 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -40,7 +51,9 @@ import com.singam.lionlibrary.presentation.navigation.*
 import com.singam.lionlibrary.presentation.navigation.BottomNavBar
 import com.singam.lionlibrary.presentation.navigation.LionLibraryNavHost
 import com.singam.lionlibrary.presentation.navigation.NavigationRailBar
+import com.singam.lionlibrary.presentation.navigation.NavigationScrollConnection
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
+import com.singam.lionlibrary.ui.theme.LionMotion
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.sample
@@ -94,50 +107,52 @@ class MainActivity : ComponentActivity() {
                     } == true
                 // A phone's forced landscape player can have a wide window. Orientation
                 // policy must use its smallest width, independent of that temporary window.
-                val isTablet =
-                    androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >=
-                        600
+                val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
                 val useNavigationRail =
                     windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
 
-                androidx.compose.runtime.DisposableEffect(navController, isTablet) {
-                    val listener =
-                        androidx.navigation.NavController.OnDestinationChangedListener {
-                            _,
-                            destination,
-                            _ ->
-                            val isPlayer = destination.hasRoute<PlayerRoute>()
-                            requestedOrientation =
-                                if (isPlayer) {
-                                    android.content.pm.ActivityInfo
-                                        .SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                DisposableEffect(navController, isTablet) {
+                    val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
+                        val isPlayer = destination.hasRoute<PlayerRoute>()
+                        requestedOrientation =
+                            if (isPlayer) {
+                                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            } else {
+                                if (isTablet) {
+                                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                                 } else {
-                                    if (isTablet) {
-                                        android.content.pm.ActivityInfo
-                                            .SCREEN_ORIENTATION_UNSPECIFIED
-                                    } else {
-                                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                    }
+                                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                                 }
-                        }
+                            }
+                    }
                     navController.addOnDestinationChangedListener(listener)
 
                     // Initial orientation.
                     val isPlayer = navController.currentDestination?.hasRoute<PlayerRoute>() == true
                     requestedOrientation =
                         if (isPlayer) {
-                            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                         } else {
                             if (isTablet) {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                             } else {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                             }
                         }
 
                     onDispose { navController.removeOnDestinationChangedListener(listener) }
                 }
 
+                // Floating bar compacts while content scrolls down, restores on scroll up / at top.
+                var navCompact by remember { mutableStateOf(false) }
+                val navScrollConnection = remember {
+                    NavigationScrollConnection { compact -> navCompact = compact }
+                }
+                val navEntry by navController.currentBackStackEntryAsState()
+                LaunchedEffect(navEntry?.destination?.id) {
+                    navScrollConnection.reset()
+                    navCompact = false
+                }
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -170,7 +185,7 @@ class MainActivity : ComponentActivity() {
                                 .padding(innerPadding)
                                 .consumeWindowInsets(innerPadding)
                         ) {
-                            Row(Modifier.fillMaxSize()) {
+                            Row(Modifier.fillMaxSize().nestedScroll(navScrollConnection)) {
                                 if (showNavElements && useNavigationRail) {
                                     NavigationRailBar(navController)
                                 }
@@ -181,12 +196,23 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.weight(1f),
                                 )
                             }
-                            if (floating) {
+                            // Fades with the page it belongs to instead of cutting in over a
+                            // Details or player transition.
+                            AnimatedVisibility(
+                                visible = floating,
+                                modifier = Modifier.align(Alignment.BottomCenter),
+                                enter =
+                                    fadeIn(tween(LionMotion.Medium, easing = LionMotion.Easing)),
+                                exit = fadeOut(tween(LionMotion.Fast, easing = LionMotion.Easing)),
+                            ) {
                                 BottomNavBar(
                                     navController,
-                                    Modifier.align(Alignment.BottomCenter).onSizeChanged {
-                                        floatingBarHeightPx = it.height
+                                    Modifier.onSizeChanged {
+                                        // Keep the full-size inset while compact, so lists do not
+                                        // shift as the bar narrows during scrolling.
+                                        if (!navCompact) floatingBarHeightPx = it.height
                                     },
+                                    compact = navCompact,
                                 )
                             }
                         }

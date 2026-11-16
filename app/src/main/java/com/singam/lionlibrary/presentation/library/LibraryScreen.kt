@@ -20,6 +20,7 @@ import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.components.LibraryFilterChip
 import com.singam.lionlibrary.presentation.components.LibrarySearchField
+import com.singam.lionlibrary.presentation.components.LibrarySkeleton
 import com.singam.lionlibrary.presentation.components.MediaCard
 import com.singam.lionlibrary.presentation.components.PageHeading
 import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
@@ -150,7 +151,10 @@ fun LibraryScreen(
         state.error?.let {
             Text(it.resolve(LocalContext.current), color = MaterialTheme.colorScheme.error)
         }
-        if (state.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        // Placeholders only when there is nothing to show yet; a new query over existing results
+        // keeps them visible under a thin progress line.
+        if (state.isLoading && state.items.isEmpty())
+            LibrarySkeleton(minimumCardWidth, Modifier.weight(1f))
         else if (state.items.isEmpty()) {
             val filtered =
                 state.query.text.isNotBlank() ||
@@ -182,7 +186,8 @@ fun LibraryScreen(
                         Text(stringResource(R.string.open_settings))
                     }
             }
-        } else
+        } else {
+            if (state.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             LazyVerticalGrid(
                 modifier = Modifier.weight(1f),
                 columns = GridCells.Adaptive(minimumCardWidth),
@@ -194,13 +199,14 @@ fun LibraryScreen(
                     MediaCard(
                         item,
                         { onMediaClick(item.id, item.mediaType) },
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().animateItem(fadeInSpec = null, fadeOutSpec = null),
                         onToggleWatchlist = {
                             onAction(LibraryAction.ToggleItemWatchlist(item.id))
                         },
                     )
                 }
             }
+        }
     }
 }
 

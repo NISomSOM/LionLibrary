@@ -6,7 +6,9 @@ import android.content.res.Configuration
 import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -43,7 +45,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,6 +65,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,10 +75,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -95,6 +103,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.singam.lionlibrary.R
@@ -104,6 +113,7 @@ import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.isSingleFile
 import com.singam.lionlibrary.presentation.components.ArtworkTitle
 import com.singam.lionlibrary.presentation.components.DeletionDialog
+import com.singam.lionlibrary.presentation.components.DetailsSkeleton
 import com.singam.lionlibrary.presentation.components.EpisodeCard
 import com.singam.lionlibrary.presentation.components.ImdbBadge
 import com.singam.lionlibrary.presentation.components.ImdbYellow
@@ -112,11 +122,14 @@ import com.singam.lionlibrary.presentation.components.LetterboxdMark
 import com.singam.lionlibrary.presentation.components.LocalArtwork
 import com.singam.lionlibrary.presentation.components.MediaOptionItem
 import com.singam.lionlibrary.presentation.components.PreviewFilm
+import com.singam.lionlibrary.presentation.components.rememberBackdropAlignment
+import com.singam.lionlibrary.presentation.navigation.sharedTitleArtwork
 import com.singam.lionlibrary.ui.theme.LionAlpha
 import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import com.singam.lionlibrary.ui.theme.LionMotion
 import com.singam.lionlibrary.ui.theme.LionTheme
+import com.singam.lionlibrary.ui.theme.rememberSystemMotionEnabled
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -195,9 +208,7 @@ fun DetailsScreen(
     )
 
     if (state.isLoading) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
+        DetailsSkeleton(modifier)
         return
     }
 
@@ -231,8 +242,19 @@ fun DetailsScreen(
     val onPrimaryActionBottomChanged: (Float) -> Unit = { bottom ->
         primaryActionAboveToolbar = toolbarHeightPx > 0 && bottom <= toolbarHeightPx
     }
-    val topBarColor =
-        if (showTopBarBackground) MaterialTheme.colorScheme.surface else Color.Transparent
+    // Same trigger as before; the surface now slides down a little as it fades in (and back out).
+    val toolbarProgress by
+        animateFloatAsState(
+            targetValue = if (showTopBarBackground) 1f else 0f,
+            animationSpec =
+                tween(
+                    LionMotion.Standard,
+                    easing =
+                        if (showTopBarBackground) LionMotion.EnterEasing else LionMotion.ExitEasing,
+                ),
+            label = "toolbarSurface",
+        )
+    val toolbarSurface = MaterialTheme.colorScheme.surface
     val logoAlpha by
         animateFloatAsState(
             targetValue = if (showTopBarBackground) 1f else 0f,
@@ -319,7 +341,55 @@ fun DetailsScreen(
     val isTabletPortrait = isTablet && isPortrait
     val isTabletPortraitMovie = isTabletPortrait && media.isSingleFile
 
+    val motionEnabled = rememberSystemMotionEnabled()
+    // Hero parallax reads the list offset in draw; nothing recomposes while scrolling.
+    val heroScrollOffset = {
+        if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset.toFloat()
+        else 0f
+    }
+    // Pull-down stretch at the top of the list: stored here, applied to the hero in draw, and
+    // released with a spring when the finger lifts.
+    var heroPull by remember(media.id) { mutableFloatStateOf(0f) }
+    val pullConnection =
+        remember(motionEnabled) {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (heroPull <= 0f || available.y >= 0f) return Offset.Zero
+                    val used = maxOf(available.y, -heroPull)
+                    heroPull += used
+                    return Offset(0f, used)
+                }
+
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset {
+                    if (!motionEnabled || source != NestedScrollSource.UserInput) return Offset.Zero
+                    if (available.y <= 0f) return Offset.Zero
+                    heroPull =
+                        (heroPull + available.y * HERO_PULL_RESISTANCE).coerceAtMost(
+                            HERO_PULL_MAX_PX
+                        )
+                    return Offset(0f, available.y)
+                }
+
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    if (heroPull > 0f)
+                        animate(
+                            heroPull,
+                            0f,
+                            animationSpec = spring(dampingRatio = .7f, stiffness = 380f),
+                        ) { value, _ ->
+                            heroPull = value
+                        }
+                    return Velocity.Zero
+                }
+            }
+        }
+
     Box(modifier = modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha.value }) {
+        DetailsAmbientBackdrop(media.backdropPath ?: media.posterPath, Modifier.matchParentSize())
         if (isTwoPane) {
             Row(modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
@@ -343,7 +413,8 @@ fun DetailsScreen(
         } else {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().testTag("details-list"),
+                modifier =
+                    Modifier.fillMaxSize().nestedScroll(pullConnection).testTag("details-list"),
                 contentPadding = PaddingValues(bottom = 32.dp),
             ) {
                 item {
@@ -357,6 +428,9 @@ fun DetailsScreen(
                         heroModifier,
                         isTabletPortraitMovie,
                         onPrimaryActionBottomChanged,
+                        scrollOffset = if (motionEnabled) heroScrollOffset else ({ 0f }),
+                        pullPx = { heroPull },
+                        motionEnabled = motionEnabled,
                     )
                 }
                 seasonSelectorAndEpisodes(
@@ -369,48 +443,60 @@ fun DetailsScreen(
         }
 
         if (!isLandscapeMode) {
-            TopAppBar(
-                modifier =
-                    Modifier.onSizeChanged { toolbarHeightPx = it.height }
-                        .testTag(
-                            if (showTopBarBackground) "details-toolbar-visible"
-                            else "details-toolbar-hidden"
+            Box {
+                Box(
+                    Modifier.matchParentSize()
+                        .graphicsLayer {
+                            if (!isTwoPane) {
+                                alpha = toolbarProgress
+                                translationY = -(1f - toolbarProgress) * size.height * TOOLBAR_SLIDE
+                            }
+                        }
+                        .background(if (isTwoPane) LionTheme.colors.pane else toolbarSurface)
+                )
+                TopAppBar(
+                    modifier =
+                        Modifier.onSizeChanged { toolbarHeightPx = it.height }
+                            .testTag(
+                                if (showTopBarBackground) "details-toolbar-visible"
+                                else "details-toolbar-hidden"
+                            ),
+                    title = {
+                        Box(
+                            modifier =
+                                Modifier.fillMaxWidth()
+                                    .padding(end = 48.dp)
+                                    .then(
+                                        if (!showTopBarBackground) Modifier.clearAndSetSemantics {}
+                                        else Modifier
+                                    )
+                                    .graphicsLayer { alpha = if (isTwoPane) 1f else logoAlpha },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            ArtworkTitle(
+                                media.title,
+                                media.logoPath,
+                                Modifier.fillMaxWidth(0.8f).height(40.dp),
+                                compact = true,
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back),
+                                tint = LionTheme.colors.onMedia,
+                            )
+                        }
+                    },
+                    colors =
+                        TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            titleContentColor = LionTheme.colors.onMedia,
                         ),
-                title = {
-                    Box(
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .padding(end = 48.dp)
-                                .then(
-                                    if (!showTopBarBackground) Modifier.clearAndSetSemantics {}
-                                    else Modifier
-                                )
-                                .graphicsLayer { alpha = if (isTwoPane) 1f else logoAlpha },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        ArtworkTitle(
-                            media.title,
-                            media.logoPath,
-                            Modifier.fillMaxWidth(0.8f).height(40.dp),
-                            compact = true,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back),
-                            tint = LionTheme.colors.onMedia,
-                        )
-                    }
-                },
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = if (isTwoPane) LionTheme.colors.pane else topBarColor,
-                        titleContentColor = LionTheme.colors.onMedia,
-                    ),
-            )
+                )
+            }
         } else {
             IconButton(onClick = onBack, modifier = Modifier.padding(16.dp)) {
                 Icon(
@@ -439,6 +525,9 @@ private fun HeroHeaderSection(
     modifier: Modifier = Modifier,
     isTabletPortraitMovie: Boolean = false,
     onPrimaryActionBottomChanged: (Float) -> Unit = {},
+    scrollOffset: () -> Float = { 0f },
+    pullPx: () -> Float = { 0f },
+    motionEnabled: Boolean = false,
 ) {
     val haptics = LocalHapticFeedback.current
     Column(modifier = modifier.fillMaxWidth()) {
@@ -456,27 +545,47 @@ private fun HeroHeaderSection(
                             )
                         )
             }
-        Box(modifier = imageModifier) {
+        Box(modifier = imageModifier.sharedTitleArtwork(media.id).clipToBounds()) {
+            // Portrait heroes crop a wide backdrop; landscape keeps the centred 16:9 frame.
+            val focus = rememberBackdropAlignment(media.backdropPath ?: media.posterPath)
             LocalArtwork(
                 paths = listOf(media.backdropPath, media.posterPath),
                 contentDescription = media.title,
+                alignment = if (isLandscapeMode) Alignment.Center else focus,
                 modifier =
-                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                    Modifier.fillMaxSize()
+                        .graphicsLayer {
+                            if (!motionEnabled) return@graphicsLayer
+                            // Half scroll speed, a slight over-scale so edges never show, and a
+                            // pull-down stretch anchored at the top.
+                            translationY = scrollOffset() * HERO_PARALLAX
+                            val scale = HERO_OVERSCALE + pullPx() / size.height.coerceAtLeast(1f)
+                            scaleX = scale
+                            scaleY = scale
+                            transformOrigin = TransformOrigin(.5f, 0f)
+                        }
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
             )
 
             Box(
                 modifier =
                     Modifier.fillMaxSize()
                         .background(
+                            // Multi-stop fade that ends in the ambient page tint, so the hero runs
+                            // into the blurred backdrop without a seam.
                             Brush.verticalGradient(
-                                colors =
-                                    listOf(
-                                        Color.Transparent,
-                                        LionTheme.colors.scrim.copy(alpha = LionAlpha.Scrim),
-                                        MaterialTheme.colorScheme.background,
+                                0f to Color.Transparent,
+                                .35f to Color.Transparent,
+                                .55f to LionTheme.colors.scrim.copy(alpha = .22f),
+                                .72f to LionTheme.colors.scrim.copy(alpha = LionAlpha.Scrim),
+                                .88f to
+                                    MaterialTheme.colorScheme.background.copy(
+                                        alpha = AMBIENT_TINT_ALPHA
                                     ),
-                                startY = 0f,
-                                endY = Float.POSITIVE_INFINITY,
+                                1f to
+                                    MaterialTheme.colorScheme.background.copy(
+                                        alpha = AMBIENT_TINT_ALPHA
+                                    ),
                             )
                         )
             )
@@ -916,3 +1025,16 @@ private fun LocalHeaderPreview() {
         )
     }
 }
+
+/** Fraction of the toolbar height its surface travels while sliding in. */
+private const val TOOLBAR_SLIDE = .35f
+
+/** Hero image moves at this fraction of the scroll speed. */
+private const val HERO_PARALLAX = .5f
+
+/** Slight over-scale so parallax never reveals the image edge. */
+private const val HERO_OVERSCALE = 1.06f
+
+/** Pull distance kept per pixel dragged past the top, and its cap. */
+private const val HERO_PULL_RESISTANCE = .5f
+private const val HERO_PULL_MAX_PX = 480f

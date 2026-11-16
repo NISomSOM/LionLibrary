@@ -21,13 +21,16 @@ import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -44,6 +47,7 @@ import com.singam.lionlibrary.presentation.navigation.*
 import com.singam.lionlibrary.presentation.navigation.BottomNavBar
 import com.singam.lionlibrary.presentation.navigation.LionLibraryNavHost
 import com.singam.lionlibrary.presentation.navigation.NavigationRailBar
+import com.singam.lionlibrary.presentation.navigation.NavigationScrollConnection
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.SharingStarted
@@ -134,6 +138,16 @@ class MainActivity : ComponentActivity() {
                     onDispose { navController.removeOnDestinationChangedListener(listener) }
                 }
 
+                // Floating bar compacts while content scrolls down, restores on scroll up / at top.
+                var navCompact by remember { mutableStateOf(false) }
+                val navScrollConnection = remember {
+                    NavigationScrollConnection { compact -> navCompact = compact }
+                }
+                val navEntry by navController.currentBackStackEntryAsState()
+                LaunchedEffect(navEntry?.destination?.id) {
+                    navScrollConnection.reset()
+                    navCompact = false
+                }
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -166,7 +180,7 @@ class MainActivity : ComponentActivity() {
                                 .padding(innerPadding)
                                 .consumeWindowInsets(innerPadding)
                         ) {
-                            Row(Modifier.fillMaxSize()) {
+                            Row(Modifier.fillMaxSize().nestedScroll(navScrollConnection)) {
                                 if (showNavElements && useNavigationRail) {
                                     NavigationRailBar(navController)
                                 }
@@ -181,8 +195,11 @@ class MainActivity : ComponentActivity() {
                                 BottomNavBar(
                                     navController,
                                     Modifier.align(Alignment.BottomCenter).onSizeChanged {
-                                        floatingBarHeightPx = it.height
+                                        // Keep the full-size inset while compact, so lists do not
+                                        // shift as the bar narrows during scrolling.
+                                        if (!navCompact) floatingBarHeightPx = it.height
                                     },
+                                    compact = navCompact,
                                 )
                             }
                         }

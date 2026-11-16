@@ -1,6 +1,9 @@
 package com.singam.lionlibrary.presentation.navigation
 
 import androidx.annotation.StringRes
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +26,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
+import com.singam.lionlibrary.ui.theme.LionMotion
 
 internal data class TopLevelDestination(
     val route: Any,
@@ -55,8 +59,16 @@ internal fun NavHostController.openTopLevel(route: Any) {
     }
 }
 
+/**
+ * [compact] (while the page scrolls down) hides labels and narrows the bar; scrolling up or
+ * reaching the top restores it. Above 140% text scale the bar never compacts: labels stay visible.
+ */
 @Composable
-fun BottomNavBar(navController: NavHostController, modifier: Modifier = Modifier) {
+fun BottomNavBar(
+    navController: NavHostController,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
     val entry by navController.currentBackStackEntryAsState()
     val selectedIndex = topLevelDestinations.indexOfFirst {
         entry?.destination?.hasRoute(it.route::class) == true
@@ -65,6 +77,7 @@ fun BottomNavBar(navController: NavHostController, modifier: Modifier = Modifier
         selectedIndex,
         { navController.openTopLevel(topLevelDestinations[it].route) },
         modifier,
+        compact,
     )
 }
 
@@ -73,8 +86,16 @@ internal fun BottomNavBarContent(
     selectedIndex: Int,
     onDestinationClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     val enlargedText = LocalDensity.current.fontScale > 1.4f
+    val collapsed = compact && !enlargedText
+    val maxWidth by
+        animateDpAsState(
+            if (enlargedText) 600.dp else if (collapsed) 208.dp else 280.dp,
+            tween(LionMotion.Medium, easing = LionMotion.Easing),
+            label = "navWidth",
+        )
     Box(
         modifier
             .fillMaxWidth()
@@ -84,8 +105,9 @@ internal fun BottomNavBarContent(
         Surface(
             modifier =
                 Modifier.align(Alignment.Center)
-                    .widthIn(max = if (enlargedText) 600.dp else 280.dp)
-                    .fillMaxWidth(),
+                    .widthIn(max = maxWidth)
+                    .fillMaxWidth()
+                    .animateContentSize(tween(LionMotion.Medium, easing = LionMotion.Easing)),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface.copy(alpha = .96f),
             border = BorderStroke(.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .16f)),
@@ -102,6 +124,7 @@ internal fun BottomNavBarContent(
                     topLevelDestinations.indices.toList(),
                     selectedIndex,
                     onDestinationClick,
+                    showLabels = !collapsed,
                 )
             }
         }
@@ -113,9 +136,17 @@ private fun DestinationBar(
     indices: List<Int>,
     selectedIndex: Int,
     onDestinationClick: (Int) -> Unit,
+    showLabels: Boolean = true,
 ) {
     NavigationBar(
-        modifier = Modifier.height(if (LocalDensity.current.fontScale > 1.4f) 80.dp else 64.dp),
+        modifier =
+            Modifier.height(
+                when {
+                    LocalDensity.current.fontScale > 1.4f -> 80.dp
+                    showLabels -> 64.dp
+                    else -> 52.dp
+                }
+            ),
         containerColor = Color.Transparent,
         tonalElevation = 0.dp,
         windowInsets = WindowInsets(0, 0, 0, 0),
@@ -126,16 +157,24 @@ private fun DestinationBar(
                 selected = selectedIndex == index,
                 onClick = { onDestinationClick(index) },
                 icon = {
-                    Icon(item.icon, contentDescription = null, modifier = Modifier.size(22.dp))
-                },
-                label = {
-                    Text(
-                        stringResource(item.label),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelMedium,
+                    Icon(
+                        item.icon,
+                        contentDescription = if (showLabels) null else stringResource(item.label),
+                        modifier = Modifier.size(22.dp),
                     )
                 },
+                // Hidden labels stay available to accessibility through the icon description.
+                label =
+                    if (showLabels) {
+                        {
+                            Text(
+                                stringResource(item.label),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                    } else null,
                 alwaysShowLabel = true,
                 colors =
                     NavigationBarItemDefaults.colors(
@@ -168,4 +207,16 @@ private fun LibraryNavigationPreview() {
 @Composable
 private fun SettingsNavigationPreview() {
     LionLibraryTheme { BottomNavBarContent(2, {}) }
+}
+
+@Preview(name = "Compact while scrolling")
+@Composable
+private fun CompactNavigationPreview() {
+    LionLibraryTheme { BottomNavBarContent(0, {}, compact = true) }
+}
+
+@Preview(name = "Compact request ignored at large text", fontScale = 2f, widthDp = 360)
+@Composable
+private fun CompactLargeTextNavigationPreview() {
+    LionLibraryTheme { BottomNavBarContent(1, {}, compact = true) }
 }

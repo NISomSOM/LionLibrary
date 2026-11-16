@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.MediaItem
+import com.singam.lionlibrary.presentation.navigation.sharedTitleArtwork
 import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionTheme
 import com.singam.lionlibrary.ui.theme.cardEdge
@@ -49,6 +50,7 @@ fun MediaCard(
             Box(
                 Modifier.fillMaxWidth()
                     .aspectRatio(2f / 3f)
+                    .sharedTitleArtwork(mediaItem.id)
                     .clip(RoundedCornerShape(LionLayout.CardRadius))
                     .cardEdge(LionLayout.CardRadius, LionTheme.colors)
                     .background(MaterialTheme.colorScheme.surfaceVariant)

@@ -3,6 +3,9 @@ package com.singam.lionlibrary.presentation.home
 import android.content.Context
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -42,7 +45,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -86,6 +88,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -97,12 +100,15 @@ import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.presentation.components.ArtworkTitle
 import com.singam.lionlibrary.presentation.components.DeletionDialog
+import com.singam.lionlibrary.presentation.components.HomeSkeleton
 import com.singam.lionlibrary.presentation.components.JumpBackInCard
 import com.singam.lionlibrary.presentation.components.LocalArtwork
 import com.singam.lionlibrary.presentation.components.MediaCard
 import com.singam.lionlibrary.presentation.components.MediaOptionItem
+import com.singam.lionlibrary.presentation.components.PosterPreview
 import com.singam.lionlibrary.presentation.components.PreviewFilm
 import com.singam.lionlibrary.presentation.components.ShelfHeading
+import com.singam.lionlibrary.presentation.components.rememberBackdropAlignment
 import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
 import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
@@ -184,31 +190,27 @@ fun HomeScreen(
         { onAction(HomeAction.ConfirmDelete) },
         { onAction(HomeAction.DismissDelete) },
     )
+    // Poster long press: lifted preview over a blurred/dimmed page, same actions as before.
     state.selectedMediaForOptions?.let { media ->
-        ModalBottomSheet(
-            onDismissRequest = { onAction(HomeAction.MediaOptions(null)) },
-            containerColor = MaterialTheme.colorScheme.surface,
+        PosterPreview(
+            media = media,
+            onOpen = {
+                onAction(HomeAction.MediaOptions(null))
+                onMediaClick(media.id, media.mediaType)
+            },
+            onDismiss = { onAction(HomeAction.MediaOptions(null)) },
         ) {
-            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                Text(
-                    media.title,
-                    Modifier.padding(24.dp),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                MediaOptionItem(
-                    Icons.Default.Delete,
-                    stringResource(R.string.delete_from_device),
-                    { onAction(HomeAction.RequestDelete(media.id)) },
-                    iconTint = MaterialTheme.colorScheme.error,
-                )
-            }
+            MediaOptionItem(
+                Icons.Default.Delete,
+                stringResource(R.string.delete_from_device),
+                { onAction(HomeAction.RequestDelete(media.id)) },
+                iconTint = MaterialTheme.colorScheme.error,
+            )
         }
     }
 
     if (state.isLoading) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
+        HomeSkeleton()
         return
     }
 
@@ -577,19 +579,25 @@ internal fun HeroBannerCarousel(
             visiblePages.forEach { page ->
                 key(mediaItems[page].id) {
                     val media = mediaItems[page]
+                    // Tall hero over a wide backdrop: bias the crop toward the subject.
+                    val focus = rememberBackdropAlignment(media.backdropPath ?: media.posterPath)
                     LocalArtwork(
                         listOf(media.backdropPath, media.posterPath),
                         null,
-                        Modifier.fillMaxSize().graphicsLayer {
-                            val offset =
-                                (pagerState.currentPage - page) +
-                                    pagerState.currentPageOffsetFraction
-                            alpha = (1f - abs(offset)).coerceIn(0f, 1f)
-                            translationX = if (motionEnabled) -offset * size.width * .055f else 0f
-                            translationY = if (motionEnabled) verticalScrollOffset() * .22f else 0f
-                            scaleX = if (motionEnabled) 1.14f else 1f
-                            scaleY = if (motionEnabled) 1.14f else 1f
-                        },
+                        alignment = focus,
+                        modifier =
+                            Modifier.fillMaxSize().graphicsLayer {
+                                val offset =
+                                    (pagerState.currentPage - page) +
+                                        pagerState.currentPageOffsetFraction
+                                alpha = (1f - abs(offset)).coerceIn(0f, 1f)
+                                translationX =
+                                    if (motionEnabled) -offset * size.width * .055f else 0f
+                                translationY =
+                                    if (motionEnabled) verticalScrollOffset() * .22f else 0f
+                                scaleX = if (motionEnabled) 1.14f else 1f
+                                scaleY = if (motionEnabled) 1.14f else 1f
+                            },
                     )
                 }
             }
@@ -713,6 +721,7 @@ fun MediaRow(
                     mediaItem = item,
                     onClick = { onItemClick(item) },
                     onLongClick = { onItemLongClick(item) },
+                    modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
                 )
             }
         }
@@ -736,11 +745,24 @@ fun JumpBackInRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(items, key = { "${it.mediaId}-${it.episodeId}" }) { item ->
+            // One card per title, keyed by title: a title moving to the front (just watched) or its
+            // next-up episode changing animates as a move/update instead of remove + add.
+            items(items, key = { it.mediaId }) { item ->
                 JumpBackInCard(
                     item = item,
                     onClick = { onItemClick(item) },
                     onLongClick = { onItemLongClick(item) },
+                    modifier =
+                        Modifier.animateItem(
+                            fadeInSpec =
+                                tween(LionMotion.Standard, easing = LionMotion.EnterEasing),
+                            placementSpec =
+                                spring(
+                                    stiffness = Spring.StiffnessMediumLow,
+                                    visibilityThreshold = IntOffset.VisibilityThreshold,
+                                ),
+                            fadeOutSpec = tween(LionMotion.Fast, easing = LionMotion.ExitEasing),
+                        ),
                 )
             }
         }

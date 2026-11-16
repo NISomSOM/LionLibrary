@@ -12,7 +12,7 @@ python scripts/check_android_patterns.py
 python scripts/verify_release_apk.py
 ```
 
-The release variant is minified/resource-shrunk and includes ARM32 and ARM64 in one APK.
+The release variant is minified/resource-shrunk and, since 2026-11-15, ships only ARM64 (`arm64-v8a`, the owner's phone); it does not install on 32-bit ARM or x86 devices. It packages a hand-written baseline profile (a generated profile is still pending a device).
 The debug variant keeps x86_64 so emulator checks can run. Check R8 mapping output,
 APK ZIP and ELF alignment (16 KB), and a clean install/upgrade of the signed release.
 Host SQLite validation supplements, and does not replace, Android Room migration tests.
@@ -29,7 +29,7 @@ SHA-256, mapping.txt, source revision, dependency inventory and test evidence.
 
 ## Device/beta gate
 
-- Android 7/API 24 ARM32 and modern ARM64 phone/tablet, including a 16 KB device.
+- Modern ARM64 phone/tablet, including a 16 KB device (ARM32 is no longer shipped; restoring `armeabi-v7a` in `abiFilters` and `verify_release_apk.py` would be needed to support it). An Android 7/API 24 ARM64 device remains worth checking for minSdk 24.
 - Compact/expanded widths, font scale 2.0, TalkBack, keyboard/IME, cutouts and system Back.
 - TMDB valid/invalid/offline key, provider revoked grants and SD-card removal/reconnection.
 - Migration from each shipped schema; watchlist, completed history, subtitle and engine preservation.

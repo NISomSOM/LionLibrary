@@ -45,6 +45,7 @@ independent application and is not affiliated with or endorsed by VideoLAN.
 **Koin** (dependency injection) — Apache License 2.0
 **Room** (database) — Apache License 2.0, Google LLC
 **DataStore** (preferences) — Apache License 2.0, Google LLC
+**ProfileInstaller** (baseline profile installation) — Apache License 2.0, Google LLC
 
 ## Networking & Data
 

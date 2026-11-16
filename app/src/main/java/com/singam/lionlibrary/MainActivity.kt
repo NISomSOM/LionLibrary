@@ -5,6 +5,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -49,6 +53,7 @@ import com.singam.lionlibrary.presentation.navigation.LionLibraryNavHost
 import com.singam.lionlibrary.presentation.navigation.NavigationRailBar
 import com.singam.lionlibrary.presentation.navigation.NavigationScrollConnection
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
+import com.singam.lionlibrary.ui.theme.LionMotion
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.sample
@@ -191,10 +196,18 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.weight(1f),
                                 )
                             }
-                            if (floating) {
+                            // Fades with the page it belongs to instead of cutting in over a
+                            // Details or player transition.
+                            AnimatedVisibility(
+                                visible = floating,
+                                modifier = Modifier.align(Alignment.BottomCenter),
+                                enter =
+                                    fadeIn(tween(LionMotion.Medium, easing = LionMotion.Easing)),
+                                exit = fadeOut(tween(LionMotion.Fast, easing = LionMotion.Easing)),
+                            ) {
                                 BottomNavBar(
                                     navController,
-                                    Modifier.align(Alignment.BottomCenter).onSizeChanged {
+                                    Modifier.onSizeChanged {
                                         // Keep the full-size inset while compact, so lists do not
                                         // shift as the bar narrows during scrolling.
                                         if (!navCompact) floatingBarHeightPx = it.height

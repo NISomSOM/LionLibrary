@@ -17,6 +17,7 @@ import com.singam.lionlibrary.domain.model.TrackPreference
 import com.singam.lionlibrary.presentation.player.PlayerProgressPolicy
 import com.singam.lionlibrary.presentation.player.PlayerTrackDefaults
 import com.singam.lionlibrary.presentation.player.chapterAt
+import com.singam.lionlibrary.presentation.player.chapterLabelAt
 import com.singam.lionlibrary.presentation.player.chapterMarkFractions
 import com.singam.lionlibrary.presentation.player.engine.EngineState
 import com.singam.lionlibrary.presentation.player.engine.EngineTrackInfo
@@ -44,6 +45,15 @@ class PlayerCollaboratorsTest {
         assertThat(chapterAt(chapters, 90_000)?.title).isEqualTo("Part A")
         assertThat(chapterAt(chapters, 89_999)?.title).isEqualTo("Opening")
         assertThat(chapterAt(listOf(PlaybackChapter(5_000, null, "Late")), 0)).isNull()
+    }
+
+    @Test
+    fun `chapter label trims padding from file titles and hides blank ones`() {
+        assertThat(chapterLabelAt(listOf(PlaybackChapter(0, null, " Prologue	")), 10))
+            .isEqualTo("Prologue")
+        assertThat(chapterLabelAt(listOf(PlaybackChapter(0, null, "  ")), 10)).isNull()
+        assertThat(chapterLabelAt(listOf(PlaybackChapter(0, null, null)), 10)).isNull()
+        assertThat(chapterLabelAt(emptyList(), 10)).isNull()
     }
 
     @Test

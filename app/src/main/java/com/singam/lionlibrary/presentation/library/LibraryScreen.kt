@@ -203,6 +203,7 @@ fun LibraryScreen(
                         onToggleWatchlist = {
                             onAction(LibraryAction.ToggleItemWatchlist(item.id))
                         },
+                        sharedShelf = "library",
                     )
                 }
             }

@@ -43,6 +43,10 @@ import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 internal fun chapterAt(chapters: List<PlaybackChapter>, positionMs: Long): PlaybackChapter? =
     chapters.filter { it.startMs <= positionMs }.maxByOrNull { it.startMs }
 
+/** Display label for the chapter at [positionMs]: trimmed, null when blank or absent. */
+internal fun chapterLabelAt(chapters: List<PlaybackChapter>, positionMs: Long): String? =
+    chapterAt(chapters, positionMs)?.title?.trim()?.takeIf { it.isNotEmpty() }
+
 /** Chapter starts drawn as marks: inside the file, after its first frame, each once. */
 internal fun chapterMarkFractions(chapters: List<PlaybackChapter>, durationMs: Long): List<Float> =
     if (durationMs <= 0) emptyList()
@@ -79,7 +83,7 @@ internal fun PlayerSeekBar(
     val marks = remember(chapters, durationMs) { chapterMarkFractions(chapters, durationMs) }
     val chapterTitle by
         remember(chapters) {
-            derivedStateOf { chapterAt(chapters, positionMs())?.title?.takeIf { it.isNotBlank() } }
+            derivedStateOf { chapterLabelAt(chapters, positionMs()) }
         }
     // Whole percent only, so semantics change at most a hundred times per file.
     val percent by

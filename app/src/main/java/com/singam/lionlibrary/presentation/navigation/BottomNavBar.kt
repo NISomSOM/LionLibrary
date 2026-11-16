@@ -1,11 +1,16 @@
 package com.singam.lionlibrary.presentation.navigation
 
 import androidx.annotation.StringRes
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,19 +19,26 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import com.singam.lionlibrary.ui.theme.LionMotion
+import kotlin.math.roundToInt
 
 internal data class TopLevelDestination(
     val route: Any,
@@ -60,8 +72,9 @@ internal fun NavHostController.openTopLevel(route: Any) {
 }
 
 /**
- * [compact] (while the page scrolls down) hides labels and narrows the bar; scrolling up or
- * reaching the top restores it. Above 140% text scale the bar never compacts: labels stay visible.
+ * Two states only: full (labels, 280 x 64 dp) and [compact] (icons, 208 x 52 dp) while the page
+ * scrolls down. One progress value drives width, height and the labels together, so the bar can
+ * never rest between the two. Above 140% text scale the bar never compacts: labels stay visible.
  */
 @Composable
 fun BottomNavBar(
@@ -89,42 +102,74 @@ internal fun BottomNavBarContent(
     compact: Boolean = false,
 ) {
     val enlargedText = LocalDensity.current.fontScale > 1.4f
-    val collapsed = compact && !enlargedText
-    val maxWidth by
-        animateDpAsState(
-            if (enlargedText) 600.dp else if (collapsed) 208.dp else 280.dp,
-            tween(LionMotion.Medium, easing = LionMotion.Easing),
-            label = "navWidth",
-        )
     Box(
         modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            modifier =
-                Modifier.align(Alignment.Center)
-                    .widthIn(max = maxWidth)
-                    .fillMaxWidth()
-                    .animateContentSize(tween(LionMotion.Medium, easing = LionMotion.Easing)),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = .96f),
-            border = BorderStroke(.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .16f)),
-        ) {
+        if (enlargedText) {
             // At large text sizes, preserve whole labels and all three destinations.
             // Shrinking text or hiding labels would defeat the user's accessibility setting.
-            if (enlargedText) {
+            FloatingBarSurface(Modifier.widthIn(max = 600.dp).fillMaxWidth()) {
                 Column {
-                    DestinationBar(listOf(0, 1), selectedIndex, onDestinationClick)
-                    DestinationBar(listOf(2), selectedIndex, onDestinationClick)
+                    LargeTextDestinationBar(listOf(0, 1), selectedIndex, onDestinationClick)
+                    LargeTextDestinationBar(listOf(2), selectedIndex, onDestinationClick)
                 }
-            } else {
-                DestinationBar(
-                    topLevelDestinations.indices.toList(),
-                    selectedIndex,
-                    onDestinationClick,
-                    showLabels = !collapsed,
+            }
+        } else {
+            CollapsingDestinationBar(selectedIndex, onDestinationClick, compact)
+        }
+    }
+}
+
+@Composable
+private fun FloatingBarSurface(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = .96f),
+        border = BorderStroke(.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .16f)),
+        content = content,
+    )
+}
+
+@Composable
+private fun CollapsingDestinationBar(
+    selectedIndex: Int,
+    onDestinationClick: (Int) -> Unit,
+    compact: Boolean,
+) {
+    // 0 = full, 1 = compact. Read in layout and draw only, so the animation never recomposes.
+    val collapse =
+        animateFloatAsState(
+            if (compact) 1f else 0f,
+            tween(LionMotion.Medium, easing = LionMotion.Easing),
+            label = "navCollapse",
+        )
+    // Labels leave the tree only once fully hidden; their names then move to the icons.
+    val labelsVisible by remember { derivedStateOf { collapse.value < 1f } }
+    FloatingBarSurface(
+        Modifier.layout { measurable, constraints ->
+            val progress = collapse.value
+            val width = lerp(BarWidth, CompactBarWidth, progress).roundToPx()
+            val height = lerp(BarHeight, CompactBarHeight, progress).roundToPx()
+            val placeable =
+                measurable.measure(
+                    Constraints.fixed(width.coerceAtMost(constraints.maxWidth), height)
+                )
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        }
+    ) {
+        Row(Modifier.fillMaxSize().selectableGroup()) {
+            topLevelDestinations.forEachIndexed { index, item ->
+                CollapsingDestination(
+                    item = item,
+                    selected = selectedIndex == index,
+                    labelVisible = labelsVisible,
+                    collapse = { collapse.value },
+                    onClick = { onDestinationClick(index) },
                 )
             }
         }
@@ -132,21 +177,89 @@ internal fun BottomNavBarContent(
 }
 
 @Composable
-private fun DestinationBar(
+private fun RowScope.CollapsingDestination(
+    item: TopLevelDestination,
+    selected: Boolean,
+    labelVisible: Boolean,
+    collapse: () -> Float,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val label = stringResource(item.label)
+    val tint by
+        animateColorAsState(
+            if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            tween(LionMotion.Fast),
+            label = "navTint",
+        )
+    val indicator by
+        animateColorAsState(
+            if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+            tween(LionMotion.Fast),
+            label = "navIndicator",
+        )
+    Column(
+        Modifier.weight(1f)
+            .fillMaxHeight()
+            .selectable(
+                selected = selected,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Tab,
+                onClick = onClick,
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            Modifier.size(IndicatorWidth, IndicatorHeight)
+                .clip(CircleShape)
+                .drawBehind { drawRect(indicator) }
+                .indication(interaction, ripple()),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                item.icon,
+                // Hidden labels stay available to accessibility through the icon description.
+                contentDescription = if (labelVisible) null else label,
+                modifier = Modifier.size(22.dp),
+                tint = tint,
+            )
+        }
+        if (labelVisible) {
+            Text(
+                label,
+                // The label gives up its height and fades as the bar collapses, so the icon
+                // glides to the centre instead of the text being cut by the shrinking bar.
+                Modifier.layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        val progress = collapse()
+                        val height = (placeable.height * (1f - progress)).roundToInt()
+                        layout(placeable.width, height) {
+                            placeable.placeWithLayer(0, 0) {
+                                alpha = (1f - progress * 2f).coerceIn(0f, 1f)
+                            }
+                        }
+                    }
+                    .padding(top = 4.dp),
+                color = tint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LargeTextDestinationBar(
     indices: List<Int>,
     selectedIndex: Int,
     onDestinationClick: (Int) -> Unit,
-    showLabels: Boolean = true,
 ) {
     NavigationBar(
-        modifier =
-            Modifier.height(
-                when {
-                    LocalDensity.current.fontScale > 1.4f -> 80.dp
-                    showLabels -> 64.dp
-                    else -> 52.dp
-                }
-            ),
+        modifier = Modifier.height(80.dp),
         containerColor = Color.Transparent,
         tonalElevation = 0.dp,
         windowInsets = WindowInsets(0, 0, 0, 0),
@@ -157,24 +270,16 @@ private fun DestinationBar(
                 selected = selectedIndex == index,
                 onClick = { onDestinationClick(index) },
                 icon = {
-                    Icon(
-                        item.icon,
-                        contentDescription = if (showLabels) null else stringResource(item.label),
-                        modifier = Modifier.size(22.dp),
+                    Icon(item.icon, contentDescription = null, modifier = Modifier.size(22.dp))
+                },
+                label = {
+                    Text(
+                        stringResource(item.label),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium,
                     )
                 },
-                // Hidden labels stay available to accessibility through the icon description.
-                label =
-                    if (showLabels) {
-                        {
-                            Text(
-                                stringResource(item.label),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                    } else null,
                 alwaysShowLabel = true,
                 colors =
                     NavigationBarItemDefaults.colors(
@@ -186,6 +291,13 @@ private fun DestinationBar(
         }
     }
 }
+
+private val BarWidth = 280.dp
+private val CompactBarWidth = 208.dp
+private val BarHeight = 64.dp
+private val CompactBarHeight = 52.dp
+private val IndicatorWidth = 56.dp
+private val IndicatorHeight = 32.dp
 
 @Preview(name = "Home selected")
 @Composable

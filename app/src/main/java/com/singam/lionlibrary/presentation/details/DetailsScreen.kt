@@ -76,9 +76,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -87,6 +90,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
@@ -103,6 +107,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -123,13 +128,14 @@ import com.singam.lionlibrary.presentation.components.LocalArtwork
 import com.singam.lionlibrary.presentation.components.MediaOptionItem
 import com.singam.lionlibrary.presentation.components.PreviewFilm
 import com.singam.lionlibrary.presentation.components.rememberBackdropAlignment
-import com.singam.lionlibrary.presentation.navigation.sharedTitleArtwork
+import com.singam.lionlibrary.presentation.navigation.rememberPosterZoom
 import com.singam.lionlibrary.ui.theme.LionAlpha
 import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import com.singam.lionlibrary.ui.theme.LionMotion
 import com.singam.lionlibrary.ui.theme.LionTheme
 import com.singam.lionlibrary.ui.theme.rememberSystemMotionEnabled
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -190,7 +196,6 @@ fun DetailsRoot(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailsScreen(
     state: DetailsState,
@@ -198,6 +203,55 @@ fun DetailsScreen(
     onAction: (DetailsAction) -> Unit,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
+) {
+    // One opaque container for every state of the page (loading, error, loaded). When a poster
+    // was tapped, this is what zooms out of that card, so it must exist from the first frame.
+    var heroLoaded by remember { mutableStateOf(false) }
+    val pageReady = !state.isLoading && (state.media == null || heroLoaded)
+    val zoom = rememberPosterZoom(pageReady)
+    // The outer box only draws the still picture of the previous page behind an opening zoom.
+    Box(modifier.fillMaxSize().then(zoom?.backdropModifier ?: Modifier)) {
+        Box(
+            Modifier.fillMaxSize()
+                .then(zoom?.modifier ?: Modifier)
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            DetailsContent(
+                state,
+                windowSizeClass,
+                onAction,
+                onBack = onBack,
+                instantContent = zoom != null,
+                onHeroLoaded = { heroLoaded = true },
+            )
+            // Going back: the poster fades in over the shrinking page, framed exactly like the
+            // card it is heading for, so the page lands as that poster instead of fading away.
+            val posterPath = state.media?.posterPath
+            if (zoom != null && zoom.isClosing && posterPath != null) {
+                LocalArtwork(
+                    paths = listOf(posterPath),
+                    contentDescription = null,
+                    modifier =
+                        Modifier.fillMaxWidth().aspectRatio(2f / 3f).graphicsLayer {
+                            alpha = zoom.posterAlpha()
+                        },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DetailsContent(
+    state: DetailsState,
+    windowSizeClass: WindowSizeClass,
+    onAction: (DetailsAction) -> Unit,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
+    // The page zoom reveals the finished page itself, so the loaded-content fade is skipped.
+    instantContent: Boolean = false,
+    onHeroLoaded: () -> Unit = {},
 ) {
     val selectedEpisodeForOptions = state.selectedEpisodeForOptions
     val sheetState = rememberModalBottomSheetState()
@@ -230,7 +284,7 @@ fun DetailsScreen(
     val listState = rememberLazyListState()
     // Start when real content arrives, even if the navigation fade ended during loading.
     // The remembered value stays opaque through scrolling, history updates and player return.
-    val contentAlpha = remember(media.id) { Animatable(0f) }
+    val contentAlpha = remember(media.id) { Animatable(if (instantContent) 1f else 0f) }
     LaunchedEffect(media.id) { contentAlpha.animateTo(1f, tween(240, easing = LionMotion.Easing)) }
 
     var toolbarHeightPx by remember { mutableIntStateOf(0) }
@@ -342,16 +396,19 @@ fun DetailsScreen(
     val isTabletPortraitMovie = isTabletPortrait && media.isSingleFile
 
     val motionEnabled = rememberSystemMotionEnabled()
+    // Only the phone portrait hero has a fixed height that can stretch with a pull.
+    val stretchEnabled = motionEnabled && !isLandscapeMode && !isTabletPortraitMovie
     // Hero parallax reads the list offset in draw; nothing recomposes while scrolling.
     val heroScrollOffset = {
         if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset.toFloat()
         else 0f
     }
-    // Pull-down stretch at the top of the list: stored here, applied to the hero in draw, and
-    // released with a spring when the finger lifts.
+    // Rubber band at the top of the list: a pull makes the hero taller by this many pixels, so
+    // the page follows the finger with growing resistance while the backdrop stretches to fill
+    // the gap, and a spring returns it when the finger lifts. Read in layout only.
     var heroPull by remember(media.id) { mutableFloatStateOf(0f) }
     val pullConnection =
-        remember(motionEnabled) {
+        remember(stretchEnabled) {
             object : NestedScrollConnection {
                 override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                     if (heroPull <= 0f || available.y >= 0f) return Offset.Zero
@@ -365,12 +422,13 @@ fun DetailsScreen(
                     available: Offset,
                     source: NestedScrollSource,
                 ): Offset {
-                    if (!motionEnabled || source != NestedScrollSource.UserInput) return Offset.Zero
+                    if (!stretchEnabled || source != NestedScrollSource.UserInput) {
+                        return Offset.Zero
+                    }
                     if (available.y <= 0f) return Offset.Zero
-                    heroPull =
-                        (heroPull + available.y * HERO_PULL_RESISTANCE).coerceAtMost(
-                            HERO_PULL_MAX_PX
-                        )
+                    // The further it is pulled, the less it gives.
+                    val give = HERO_PULL_RESISTANCE * (1f - heroPull / HERO_PULL_MAX_PX)
+                    heroPull = (heroPull + available.y * give).coerceAtMost(HERO_PULL_MAX_PX)
                     return Offset(0f, available.y)
                 }
 
@@ -379,7 +437,7 @@ fun DetailsScreen(
                         animate(
                             heroPull,
                             0f,
-                            animationSpec = spring(dampingRatio = .7f, stiffness = 380f),
+                            animationSpec = spring(dampingRatio = .82f, stiffness = 320f),
                         ) { value, _ ->
                             heroPull = value
                         }
@@ -388,12 +446,19 @@ fun DetailsScreen(
             }
         }
 
+    val paneColor = LionTheme.colors.pane
     Box(modifier = modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha.value }) {
         DetailsAmbientBackdrop(media.backdropPath ?: media.posterPath, Modifier.matchParentSize())
         if (isTwoPane) {
             Row(modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                    HeroHeaderSection(media, state.playbackLabel(), isLandscapeMode, onAction)
+                    HeroHeaderSection(
+                        media,
+                        state.playbackLabel(),
+                        isLandscapeMode,
+                        onAction,
+                        onArtworkLoaded = onHeroLoaded,
+                    )
                 }
 
                 LazyColumn(
@@ -407,6 +472,7 @@ fun DetailsScreen(
                         state,
                         onAction,
                         { onAction(DetailsAction.SelectOptions(it)) },
+                        seasonRowColor = paneColor,
                     )
                 }
             }
@@ -431,6 +497,7 @@ fun DetailsScreen(
                         scrollOffset = if (motionEnabled) heroScrollOffset else ({ 0f }),
                         pullPx = { heroPull },
                         motionEnabled = motionEnabled,
+                        onArtworkLoaded = onHeroLoaded,
                     )
                 }
                 seasonSelectorAndEpisodes(
@@ -528,6 +595,7 @@ private fun HeroHeaderSection(
     scrollOffset: () -> Float = { 0f },
     pullPx: () -> Float = { 0f },
     motionEnabled: Boolean = false,
+    onArtworkLoaded: () -> Unit = {},
 ) {
     val haptics = LocalHapticFeedback.current
     Column(modifier = modifier.fillMaxWidth()) {
@@ -538,30 +606,38 @@ private fun HeroHeaderSection(
                 if (isLandscapeMode) Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                 else
                     Modifier.fillMaxWidth()
-                        .height(
+                        .stretchedHeight(
                             (LocalConfiguration.current.screenWidthDp.dp * 1.33f).coerceIn(
                                 420.dp,
                                 760.dp,
-                            )
+                            ),
+                            pullPx,
                         )
             }
-        Box(modifier = imageModifier.sharedTitleArtwork(media.id).clipToBounds()) {
+        Box(modifier = imageModifier.clipToBounds()) {
             // Portrait heroes crop a wide backdrop; landscape keeps the centred 16:9 frame.
             val focus = rememberBackdropAlignment(media.backdropPath ?: media.posterPath)
             LocalArtwork(
                 paths = listOf(media.backdropPath, media.posterPath),
                 contentDescription = media.title,
                 alignment = if (isLandscapeMode) Alignment.Center else focus,
+                onLoaded = onArtworkLoaded,
                 modifier =
                     Modifier.fillMaxSize()
+                        // The image itself fades out at the bottom, so it melts into the blurred
+                        // ambient page instead of ending in a visible band.
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(HeroFadeMask, blendMode = BlendMode.DstIn)
+                        }
                         .graphicsLayer {
                             if (!motionEnabled) return@graphicsLayer
-                            // Half scroll speed, a slight over-scale so edges never show, and a
-                            // pull-down stretch anchored at the top.
+                            // Parallax: half scroll speed, with a slight over-scale so edges
+                            // never show. A pull stretches the hero box itself, not this layer.
                             translationY = scrollOffset() * HERO_PARALLAX
-                            val scale = HERO_OVERSCALE + pullPx() / size.height.coerceAtLeast(1f)
-                            scaleX = scale
-                            scaleY = scale
+                            scaleX = HERO_OVERSCALE
+                            scaleY = HERO_OVERSCALE
                             transformOrigin = TransformOrigin(.5f, 0f)
                         }
                         .background(MaterialTheme.colorScheme.surfaceVariant),
@@ -575,17 +651,12 @@ private fun HeroHeaderSection(
                             // into the blurred backdrop without a seam.
                             Brush.verticalGradient(
                                 0f to Color.Transparent,
-                                .35f to Color.Transparent,
-                                .55f to LionTheme.colors.scrim.copy(alpha = .22f),
-                                .72f to LionTheme.colors.scrim.copy(alpha = LionAlpha.Scrim),
-                                .88f to
-                                    MaterialTheme.colorScheme.background.copy(
-                                        alpha = AMBIENT_TINT_ALPHA
-                                    ),
-                                1f to
-                                    MaterialTheme.colorScheme.background.copy(
-                                        alpha = AMBIENT_TINT_ALPHA
-                                    ),
+                                .4f to Color.Transparent,
+                                .62f to LionTheme.colors.scrim.copy(alpha = .22f),
+                                .8f to LionTheme.colors.scrim.copy(alpha = LionAlpha.Scrim),
+                                // Ends clear: below the hero the page is the bare ambient layer,
+                                // so any tint left here would show as a step.
+                                1f to Color.Transparent,
                             )
                         )
             )
@@ -845,6 +916,9 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
     state: DetailsState,
     onAction: (DetailsAction) -> Unit,
     onEpisodeLongClick: (Episode) -> Unit,
+    // Clear by default so the blurred backdrop continues behind the season tabs; the two-pane
+    // layout passes its fixed pane colour.
+    seasonRowColor: Color = Color.Transparent,
 ) {
     if (
         (media.mediaType == MediaType.TV_SHOW || media.mediaType == MediaType.ANIME) &&
@@ -856,7 +930,7 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
                 .coerceAtLeast(0)
 
         item {
-            Box(modifier = Modifier.background(LionTheme.colors.pane)) {
+            Box(modifier = Modifier.background(seasonRowColor)) {
                 SecondaryScrollableTabRow(
                     selectedTabIndex = selectedSeasonIndex,
                     edgePadding = 16.dp,
@@ -1029,12 +1103,24 @@ private fun LocalHeaderPreview() {
 /** Fraction of the toolbar height its surface travels while sliding in. */
 private const val TOOLBAR_SLIDE = .35f
 
+/** Opaque top, fading to transparent over the lower third of the hero image. */
+private val HeroFadeMask =
+    Brush.verticalGradient(0f to Color.Black, .62f to Color.Black, 1f to Color.Transparent)
+
 /** Hero image moves at this fraction of the scroll speed. */
 private const val HERO_PARALLAX = .5f
 
 /** Slight over-scale so parallax never reveals the image edge. */
 private const val HERO_OVERSCALE = 1.06f
 
-/** Pull distance kept per pixel dragged past the top, and its cap. */
-private const val HERO_PULL_RESISTANCE = .5f
-private const val HERO_PULL_MAX_PX = 480f
+/** Pull distance kept per pixel dragged past the top (before it tightens), and its cap. */
+private const val HERO_PULL_RESISTANCE = .55f
+private const val HERO_PULL_MAX_PX = 420f
+
+/** Fixed hero height plus the current pull, applied in layout so a pull never recomposes. */
+private fun Modifier.stretchedHeight(base: Dp, pullPx: () -> Float): Modifier =
+    layout { measurable, constraints ->
+        val height = base.roundToPx() + pullPx().roundToInt()
+        val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }

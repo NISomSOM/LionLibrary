@@ -293,6 +293,7 @@ fun HomeScreen(
                     items = state.movies,
                     onItemClick = { onMediaClick(it.id, it.mediaType) },
                     onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    shelfKey = "movies",
                     onHeaderClick = {
                         onLibraryClick(MediaFilter.MOVIES)
                     },
@@ -307,6 +308,7 @@ fun HomeScreen(
                     items = state.tvShows,
                     onItemClick = { onMediaClick(it.id, it.mediaType) },
                     onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    shelfKey = "tv-shows",
                     onHeaderClick = {
                         onLibraryClick(MediaFilter.TV_SHOWS)
                     },
@@ -321,6 +323,7 @@ fun HomeScreen(
                     items = state.anime,
                     onItemClick = { onMediaClick(it.id, it.mediaType) },
                     onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    shelfKey = "anime",
                     onHeaderClick = {
                         onLibraryClick(MediaFilter.ANIME)
                     },
@@ -335,6 +338,7 @@ fun HomeScreen(
                     items = state.recentlyAdded,
                     onItemClick = { onMediaClick(it.id, it.mediaType) },
                     onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                    shelfKey = "recently-added",
                 )
             }
         }
@@ -347,6 +351,7 @@ fun HomeScreen(
                         items = items,
                         onItemClick = { onMediaClick(it.id, it.mediaType) },
                         onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
+                        shelfKey = "genre:$genre",
                     )
                 }
             }
@@ -704,6 +709,8 @@ fun MediaRow(
     onItemClick: (MediaItem) -> Unit,
     onHeaderClick: (() -> Unit)? = null,
     onItemLongClick: (MediaItem) -> Unit = {},
+    // Identifies this shelf for the poster-to-Details transition; null keeps the plain fade.
+    shelfKey: String? = null,
 ) {
     Column(modifier = Modifier.padding(bottom = LionLayout.SectionGap)) {
         ShelfHeading(
@@ -722,6 +729,7 @@ fun MediaRow(
                     onClick = { onItemClick(item) },
                     onLongClick = { onItemLongClick(item) },
                     modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
+                    sharedShelf = shelfKey,
                 )
             }
         }

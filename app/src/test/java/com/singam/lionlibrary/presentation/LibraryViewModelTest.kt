@@ -48,7 +48,7 @@ class LibraryViewModelTest {
                 )
             backgroundScope.launch { vm.state.collect {} }
 
-            vm.setInitialFilter(MediaFilter.MOVIES)
+            vm.setInitialFilter(MediaFilter.MOVIES, listOf("Drama"))
             advanceTimeBy(201)
             runCurrent()
 
@@ -160,6 +160,96 @@ class LibraryViewModelTest {
             assertThat(vm.state.value.isLoading).isTrue()
             advanceTimeBy(201)
             assertThat(vm.state.value.isLoading).isFalse()
+            vm.viewModelScope.cancel()
+        }
+
+    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()): LibraryViewModel {
+        val repo = FakeMediaRepository()
+        return LibraryViewModel(
+            repo,
+            handle,
+            MarkMediaWatchedUseCase(repo, FakeWatchProgressRepository()),
+            FakeDeletionRepository(),
+        )
+    }
+
+    @Test
+    fun `genre chips add up and a second tap in another case removes one`() =
+        runTest(dispatcher) {
+            val vm = viewModel()
+            backgroundScope.launch { vm.state.collect {} }
+            vm.onAction(LibraryAction.GenreToggled("Drama"))
+            vm.onAction(LibraryAction.GenreToggled("Science Fiction 🚀"))
+            assertThat(vm.state.value.query.genres).containsOnly("Drama", "Science Fiction 🚀")
+
+            vm.onAction(LibraryAction.GenreToggled("drama"))
+            assertThat(vm.state.value.query.genres).containsOnly("Science Fiction 🚀")
+            vm.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `turning the filters chip off removes what its panel applied and nothing else`() =
+        runTest(dispatcher) {
+            val vm = viewModel()
+            backgroundScope.launch { vm.state.collect {} }
+            vm.onAction(LibraryAction.QueryChanged("frieren"))
+            vm.onAction(LibraryAction.TypeChanged(MediaFilter.ANIME))
+            vm.onAction(LibraryAction.ToggleWatchlist)
+            vm.onAction(LibraryAction.ToggleFilters)
+            vm.onAction(LibraryAction.SortChanged(LibrarySort.RATING))
+            vm.onAction(LibraryAction.WatchChanged(WatchFilter.WATCHED))
+            vm.onAction(LibraryAction.GenreToggled("Fantasy"))
+            vm.onAction(LibraryAction.YearChanged("2023"))
+
+            vm.onAction(LibraryAction.ToggleFilters)
+
+            assertThat(vm.state.value.filtersVisible).isFalse()
+            assertThat(vm.state.value.yearInput).isEmpty()
+            assertThat(vm.state.value.query)
+                .isEqualTo(
+                    LibraryQuery(text = "frieren", type = MediaFilter.ANIME, watchlistOnly = true)
+                )
+            vm.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `genres from a shelf arrow open the panel with those chips selected`() =
+        runTest(dispatcher) {
+            val vm = viewModel()
+            backgroundScope.launch { vm.state.collect {} }
+            vm.setInitialFilter(null, listOf("Drama", "Crime"))
+            assertThat(vm.state.value.filtersVisible).isTrue()
+            assertThat(vm.state.value.query.genres).containsOnly("Drama", "Crime")
+            assertThat(vm.state.value.query.type).isEqualTo(MediaFilter.ALL)
+            vm.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `selected genres and the open panel survive process death`() =
+        runTest(dispatcher) {
+            val handle = SavedStateHandle()
+            val first = viewModel(handle)
+            val collector = backgroundScope.launch { first.state.collect {} }
+            first.onAction(LibraryAction.ToggleFilters)
+            first.onAction(LibraryAction.GenreToggled("Drama"))
+            first.onAction(LibraryAction.GenreToggled("Comedy"))
+            collector.cancel()
+            first.viewModelScope.cancel()
+
+            val restored =
+                viewModel(SavedStateHandle(handle.keys().associateWith { handle.get<Any>(it) }))
+            backgroundScope.launch { restored.state.collect {} }
+            assertThat(restored.state.value.query.genres).containsOnly("Drama", "Comedy")
+            assertThat(restored.state.value.filtersVisible).isTrue()
+            restored.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `a single genre saved before multi-select is restored as one chip`() =
+        runTest(dispatcher) {
+            val vm = viewModel(SavedStateHandle(mapOf("genre" to "Animation")))
+            backgroundScope.launch { vm.state.collect {} }
+            assertThat(vm.state.value.query.genres).containsOnly("Animation")
             vm.viewModelScope.cancel()
         }
 }

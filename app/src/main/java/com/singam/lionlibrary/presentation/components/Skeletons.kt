@@ -55,14 +55,17 @@ import com.singam.lionlibrary.ui.theme.rememberSystemMotionEnabled
 private val LocalShimmerPhase = compositionLocalOf<State<Float>> { mutableFloatStateOf(0f) }
 
 /**
- * Provides one shimmer clock for all placeholders below it. The clock runs only while the screen is
- * resumed and system animations are on; otherwise placeholders are static blocks.
+ * Provides one shimmer clock for all placeholders below it. The clock runs only while [active], the
+ * screen is resumed and system animations are on; otherwise placeholders are static blocks. A page
+ * that only sometimes shows placeholders stays wrapped and passes [active], so its content keeps
+ * its place (and scroll position) when they come and go.
  */
 @Composable
-fun ShimmerHost(content: @Composable () -> Unit) {
+fun ShimmerHost(active: Boolean = true, content: @Composable () -> Unit) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val lifecycleState by lifecycle.currentStateFlow.collectAsStateWithLifecycle()
-    val running = rememberSystemMotionEnabled() && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    val running =
+        active && rememberSystemMotionEnabled() && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     val phase =
         if (running) {
             val transition = rememberInfiniteTransition(label = "shimmer")
@@ -165,16 +168,23 @@ fun LibrarySkeleton(minimumCardWidth: Dp, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(LionLayout.ItemGap),
             verticalArrangement = Arrangement.spacedBy(LionLayout.ItemGap),
         ) {
-            items(12) {
-                Column {
-                    SkeletonBlock(Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-                    Spacer(Modifier.height(LionLayout.CaptionGap))
-                    SkeletonLine(72.dp)
-                }
-            }
+            items(LIBRARY_SKELETON_CELLS) { LibrarySkeletonCell() }
         }
     }
 }
+
+/** One placeholder poster of the Library grid; needs a [ShimmerHost] above it. */
+@Composable
+fun LibrarySkeletonCell(modifier: Modifier = Modifier) {
+    Column(modifier) {
+        SkeletonBlock(Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+        Spacer(Modifier.height(LionLayout.CaptionGap))
+        SkeletonLine(72.dp)
+    }
+}
+
+/** Placeholder posters shown while Library's first results load. */
+const val LIBRARY_SKELETON_CELLS = 12
 
 /** Details while its row loads: hero, title lines and a few episode rows. */
 @Composable

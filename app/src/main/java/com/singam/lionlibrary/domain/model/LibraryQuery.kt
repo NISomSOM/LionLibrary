@@ -18,7 +18,8 @@ enum class WatchFilter {
 data class LibraryQuery(
     val text: String = "",
     val type: MediaFilter = MediaFilter.ALL,
-    val genre: String = "",
+    /** Selected genres; a title matches when it has any of them. Empty means every genre. */
+    val genres: Set<String> = emptySet(),
     val year: Int? = null,
     val watch: WatchFilter = WatchFilter.ALL,
     val sort: LibrarySort = LibrarySort.TITLE_ASC,

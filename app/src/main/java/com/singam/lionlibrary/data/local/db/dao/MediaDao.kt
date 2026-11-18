@@ -62,7 +62,6 @@ interface MediaDao {
         AND (:type = 'ALL' OR (:type = 'MOVIES' AND m.mediaType = 'MOVIE')
              OR (:type = 'TV_SHOWS' AND m.mediaType = 'TV_SHOW')
              OR (:type = 'ANIME' AND (m.mediaType = 'ANIME' OR (m.mediaType = 'MOVIE' AND m.genres LIKE '%Anime%'))))
-        AND (:genre = '' OR instr(',' || lower(m.genres) || ',', ',' || lower(:genre) || ',') > 0)
         AND (:year IS NULL OR m.year = :year)
         AND (:watchlist = 0 OR m.isWatchlisted = 1)
         AND (:watch = 'ALL'
@@ -89,7 +88,6 @@ interface MediaDao {
         text: String,
         pattern: String,
         type: String,
-        genre: String,
         year: Int?,
         watch: String,
         sort: String,

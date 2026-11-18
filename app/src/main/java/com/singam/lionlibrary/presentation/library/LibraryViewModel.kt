@@ -55,7 +55,8 @@ sealed interface LibraryAction {
 
     data class WatchChanged(val value: WatchFilter) : LibraryAction
 
-    data class GenreChanged(val value: String) : LibraryAction
+    /** Selects or clears one genre chip; several can be selected at once. */
+    data class GenreToggled(val genre: String) : LibraryAction
 
     data class YearChanged(val value: String) : LibraryAction
 
@@ -91,7 +92,10 @@ class LibraryViewModel(
             type =
                 MediaFilter.entries.find { it.name == saved.get<String>("type") }
                     ?: MediaFilter.ALL,
-            genre = saved["genre"] ?: "",
+            genres =
+                saved.get<ArrayList<String>>(GENRES_KEY)?.toSet()
+                    // A single genre saved before multi-select.
+                    ?: setOfNotNull(saved.get<String>("genre")?.takeIf { it.isNotBlank() }),
             year = saved.get<String>("year")?.toIntOrNull(),
             watch =
                 WatchFilter.entries.find { it.name == saved.get<String>("watch") }
@@ -103,7 +107,13 @@ class LibraryViewModel(
         )
     // Screen-local query/filter choices. Results are merged in only while the screen collects.
     private val local =
-        MutableStateFlow(LibraryState(query = initial, yearInput = saved["year"] ?: ""))
+        MutableStateFlow(
+            LibraryState(
+                query = initial,
+                yearInput = saved["year"] ?: "",
+                filtersVisible = saved[FILTERS_VISIBLE_KEY] ?: false,
+            )
+        )
 
     private var lastGenres: List<String> = emptyList()
     private var lastResult: BrowseResult? = null
@@ -174,8 +184,34 @@ class LibraryViewModel(
         }
     }
 
-    fun setInitialFilter(filter: MediaFilter) {
-        if (!saved.contains("type")) updateQuery { it.copy(type = filter) }
+    /**
+     * Applies the type and genres a page was opened with (a Home shelf arrow, a Details related
+     * row), once: a restored page keeps whatever the viewer changed since. Genres open the filter
+     * panel so the selected chips are visible and can be cleared.
+     */
+    fun setInitialFilter(filter: MediaFilter?, genres: List<String>) {
+        if ((filter == null && genres.isEmpty()) || saved.contains("type")) return
+        if (genres.isNotEmpty()) setFiltersVisible(true)
+        updateQuery { it.copy(type = filter ?: it.type, genres = genres.toSet()) }
+    }
+
+    private fun setFiltersVisible(visible: Boolean) {
+        saved[FILTERS_VISIBLE_KEY] = visible
+        local.update { it.copy(filtersVisible = visible) }
+    }
+
+    /** Clears everything the filter panel sets: sort, watch state, genres and year. */
+    private fun clearPanelFilters() {
+        saved["year"] = ""
+        local.update { it.copy(yearInput = "") }
+        updateQuery {
+            it.copy(
+                genres = emptySet(),
+                year = null,
+                watch = WatchFilter.ALL,
+                sort = LibrarySort.TITLE_ASC,
+            )
+        }
     }
 
     private fun updateQuery(transform: (LibraryQuery) -> LibraryQuery) {
@@ -183,7 +219,7 @@ class LibraryViewModel(
         val query = local.value.query
         saved["query"] = query.text
         saved["type"] = query.type.name
-        saved["genre"] = query.genre
+        saved[GENRES_KEY] = ArrayList(query.genres)
         saved["watch"] = query.watch.name
         saved["sort"] = query.sort.name
         saved["watchlist"] = query.watchlistOnly
@@ -230,7 +266,20 @@ class LibraryViewModel(
             is LibraryAction.TypeChanged -> updateQuery { it.copy(type = action.value) }
             is LibraryAction.SortChanged -> updateQuery { it.copy(sort = action.value) }
             is LibraryAction.WatchChanged -> updateQuery { it.copy(watch = action.value) }
-            is LibraryAction.GenreChanged -> updateQuery { it.copy(genre = action.value) }
+            is LibraryAction.GenreToggled ->
+                updateQuery {
+                    val selected = it.genres.any { genre -> genre.equals(action.genre, true) }
+                    it.copy(
+                        genres =
+                            if (selected)
+                                it.genres
+                                    .filterNot { genre ->
+                                        genre.equals(action.genre, true)
+                                    }
+                                    .toSet()
+                            else it.genres + action.genre
+                    )
+                }
             is LibraryAction.YearChanged -> {
                 saved["year"] = action.value
                 local.update { it.copy(yearInput = action.value) }
@@ -238,8 +287,12 @@ class LibraryViewModel(
             }
             LibraryAction.ToggleWatchlist ->
                 updateQuery { it.copy(watchlistOnly = !it.watchlistOnly) }
-            LibraryAction.ToggleFilters ->
-                local.update { it.copy(filtersVisible = !it.filtersVisible) }
+            LibraryAction.ToggleFilters -> {
+                val closing = local.value.filtersVisible
+                // Turning the chip off removes what its panel applied.
+                if (closing) clearPanelFilters()
+                setFiltersVisible(!closing)
+            }
             LibraryAction.Reset -> {
                 saved["year"] = ""
                 local.update { it.copy(yearInput = "") }
@@ -248,6 +301,9 @@ class LibraryViewModel(
         }
     }
 }
+
+private const val GENRES_KEY = "genres"
+private const val FILTERS_VISIBLE_KEY = "filtersVisible"
 
 private data class BrowseResult(
     val query: LibraryQuery,

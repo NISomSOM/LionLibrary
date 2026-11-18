@@ -35,3 +35,12 @@ data class MediaItem(
 
 val MediaItem.isSingleFile: Boolean
     get() = mediaType == MediaType.MOVIE || (isUnidentified && filePath != null)
+
+/** The comma-separated genres as a list: trimmed, blanks dropped, each once. */
+val MediaItem.genreList: List<String>
+    get() = genres?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }?.distinct().orEmpty()
+
+/** True when [selected] is empty or the title has at least one of them (case-insensitive). */
+fun MediaItem.hasAnyGenre(selected: Collection<String>): Boolean =
+    selected.isEmpty() ||
+        genreList.any { own -> selected.any { it.equals(own, ignoreCase = true) } }

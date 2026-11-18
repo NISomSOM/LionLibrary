@@ -12,6 +12,7 @@ import com.singam.lionlibrary.domain.model.MediaFilter
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.Season
+import com.singam.lionlibrary.domain.model.hasAnyGenre
 import com.singam.lionlibrary.domain.repository.MediaRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -32,13 +33,14 @@ class RoomMediaRepository(
                 query.text.trim(),
                 "%$escaped%",
                 query.type.name,
-                query.genre,
                 query.year,
                 query.watch.name,
                 query.sort.name,
                 query.watchlistOnly,
             )
-            .map { items -> items.map { it.toMediaItem() } }
+            // Several genres can be selected (any of them matches); filtering after the query
+            // keeps its sort order.
+            .map { items -> items.map { it.toMediaItem() }.filter { it.hasAnyGenre(query.genres) } }
             .flowOn(Dispatchers.Default)
     }
 

@@ -4,8 +4,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
@@ -15,7 +13,10 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -23,12 +24,14 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.components.DeletionDialog
+import com.singam.lionlibrary.presentation.components.LIBRARY_SKELETON_CELLS
 import com.singam.lionlibrary.presentation.components.LibraryFilterChip
 import com.singam.lionlibrary.presentation.components.LibrarySearchField
-import com.singam.lionlibrary.presentation.components.LibrarySkeleton
+import com.singam.lionlibrary.presentation.components.LibrarySkeletonCell
 import com.singam.lionlibrary.presentation.components.MediaCard
 import com.singam.lionlibrary.presentation.components.MediaItemPreview
 import com.singam.lionlibrary.presentation.components.PageHeading
+import com.singam.lionlibrary.presentation.components.ShimmerHost
 import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
 import com.singam.lionlibrary.presentation.navigation.LocalPosterTapOrigin
 import com.singam.lionlibrary.ui.theme.LionLayout
@@ -40,6 +43,7 @@ import org.koin.androidx.compose.koinViewModel
 fun LibraryRoot(
     snackbarHostState: SnackbarHostState,
     initialFilter: MediaFilter? = null,
+    initialGenres: List<String> = emptyList(),
     onMediaClick: (Long, MediaType) -> Unit,
     onSettingsClick: () -> Unit,
     viewModel: LibraryViewModel = koinViewModel(),
@@ -47,7 +51,9 @@ fun LibraryRoot(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbarScope = rememberCoroutineScope()
-    LaunchedEffect(initialFilter) { initialFilter?.let(viewModel::setInitialFilter) }
+    LaunchedEffect(initialFilter, initialGenres) {
+        viewModel.setInitialFilter(initialFilter, initialGenres)
+    }
     LaunchedEffect(viewModel.events) {
         viewModel.events.collect { event ->
             when (event) {
@@ -92,32 +98,114 @@ fun LibraryScreen(
             onDelete = { onAction(LibraryAction.RequestDelete(media.id)) },
         )
     }
-    Column(
-        modifier
-            .fillMaxSize()
-            .windowInsetsPadding(
-                WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
-            )
-            .imePadding()
-            .padding(horizontal = 16.dp)
-    ) {
+    val tapOrigin = LocalPosterTapOrigin.current
+    val showSkeleton = state.isLoading && state.items.isEmpty()
+    val skeletonDescription = stringResource(R.string.loading_content)
+    // One grid scrolls the whole page: heading, search and filters move up with the posters.
+    ShimmerHost(active = showSkeleton) {
+        LazyVerticalGrid(
+            // The grid's own bounds are where its cards can show: a poster flying to or from a
+            // card half under the status bar is cut off there too.
+            modifier =
+                modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                        )
+                    )
+                    .imePadding()
+                    .onGloballyPositioned {
+                        tapOrigin?.onViewport(LIBRARY_SHELF, it.boundsInRoot())
+                    },
+            columns = GridCells.Adaptive(minimumCardWidth),
+            contentPadding =
+                PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomInset + 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item(key = "header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
+                LibraryHeader(
+                    query = state.query,
+                    yearInput = state.yearInput,
+                    filtersVisible = state.filtersVisible,
+                    genres = state.genres,
+                    error = state.error,
+                    isRefreshing = state.isLoading && state.items.isNotEmpty(),
+                    onAction = onAction,
+                )
+            }
+            when {
+                // Placeholders only when there is nothing to show yet; a new query over existing
+                // results keeps them visible under a thin progress line.
+                showSkeleton ->
+                    items(LIBRARY_SKELETON_CELLS, contentType = { "skeleton" }) { index ->
+                        LibrarySkeletonCell(
+                            if (index == 0)
+                                Modifier.testTag("library-skeleton").semantics {
+                                    contentDescription = skeletonDescription
+                                }
+                            else Modifier
+                        )
+                    }
+                state.items.isEmpty() ->
+                    item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                        LibraryEmptyState(
+                            query = state.query,
+                            onClearFilters = { onAction(LibraryAction.Reset) },
+                            onSettingsClick = onSettingsClick,
+                        )
+                    }
+                else ->
+                    items(state.items, key = { it.id }, contentType = { "poster" }) { item ->
+                        MediaCard(
+                            item,
+                            { onMediaClick(item.id, item.mediaType) },
+                            Modifier.fillMaxWidth()
+                                .animateItem(fadeInSpec = null, fadeOutSpec = null),
+                            onToggleWatchlist = {
+                                onAction(LibraryAction.ToggleItemWatchlist(item.id))
+                            },
+                            onLongClick = { onAction(LibraryAction.MediaOptions(item)) },
+                            sharedShelf = LIBRARY_SHELF,
+                        )
+                    }
+            }
+        }
+    }
+}
+
+/** Heading, search, the chip rows and (when open) the filter and sort panel. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LibraryHeader(
+    query: LibraryQuery,
+    yearInput: String,
+    filtersVisible: Boolean,
+    genres: List<String>,
+    error: UiText?,
+    isRefreshing: Boolean,
+    onAction: (LibraryAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth().padding(bottom = 4.dp)) {
         PageHeading(
-            stringResource(if (state.query.watchlistOnly) R.string.watchlist else R.string.library)
+            stringResource(if (query.watchlistOnly) R.string.watchlist else R.string.library)
         )
         LibrarySearchField(
-            state.query.text,
+            query.text,
             { onAction(LibraryAction.QueryChanged(it)) },
             stringResource(R.string.search_library),
             Modifier.padding(bottom = 8.dp),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LibraryFilterChip(
-                selected = state.query.watchlistOnly,
+                selected = query.watchlistOnly,
                 onClick = { onAction(LibraryAction.ToggleWatchlist) },
                 label = { Text(stringResource(R.string.watchlist)) },
             )
             LibraryFilterChip(
-                selected = state.filtersVisible,
+                selected = filtersVisible,
                 onClick = { onAction(LibraryAction.ToggleFilters) },
                 label = { Text(stringResource(R.string.filter_options)) },
             )
@@ -125,139 +213,86 @@ fun LibraryScreen(
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(MediaFilter.entries) { filter ->
                 LibraryFilterChip(
-                    selected = state.query.type == filter,
+                    selected = query.type == filter,
                     onClick = { onAction(LibraryAction.TypeChanged(filter)) },
                     label = { Text(stringResource(filter.label())) },
                 )
             }
         }
-        if (state.filtersVisible) {
-            Column(
-                Modifier.weight(1f, fill = false)
-                    .heightIn(max = 240.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(LibrarySort.entries) { sort ->
-                        LibraryFilterChip(
-                            selected = state.query.sort == sort,
-                            onClick = { onAction(LibraryAction.SortChanged(sort)) },
-                            label = { Text(stringResource(sort.label())) },
-                        )
-                    }
-                }
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(WatchFilter.entries) { watch ->
-                        LibraryFilterChip(
-                            selected = state.query.watch == watch,
-                            onClick = { onAction(LibraryAction.WatchChanged(watch)) },
-                            label = { Text(stringResource(watch.label())) },
-                        )
-                    }
-                }
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.genres) { genre ->
-                        LibraryFilterChip(
-                            selected = state.query.genre == genre,
-                            onClick = {
-                                onAction(
-                                    LibraryAction.GenreChanged(
-                                        if (state.query.genre == genre) "" else genre
-                                    )
-                                )
-                            },
-                            label = { Text(genre) },
-                        )
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = state.query.genre,
-                        onValueChange = { onAction(LibraryAction.GenreChanged(it)) },
-                        label = { Text(stringResource(R.string.genre)) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
+        if (filtersVisible) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(LibrarySort.entries) { sort ->
+                    LibraryFilterChip(
+                        selected = query.sort == sort,
+                        onClick = { onAction(LibraryAction.SortChanged(sort)) },
+                        label = { Text(stringResource(sort.label())) },
                     )
-                    OutlinedTextField(
-                        value = state.yearInput,
-                        onValueChange = { onAction(LibraryAction.YearChanged(it)) },
-                        label = { Text(stringResource(R.string.year)) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                TextButton(onClick = { onAction(LibraryAction.Reset) }) {
-                    Text(stringResource(R.string.clear_filters))
                 }
             }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(WatchFilter.entries) { watch ->
+                    LibraryFilterChip(
+                        selected = query.watch == watch,
+                        onClick = { onAction(LibraryAction.WatchChanged(watch)) },
+                        label = { Text(stringResource(watch.label())) },
+                    )
+                }
+            }
+            // Several genres can be selected; a title matching any of them is shown.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                genres.forEach { genre ->
+                    LibraryFilterChip(
+                        selected = query.genres.any { it.equals(genre, ignoreCase = true) },
+                        onClick = { onAction(LibraryAction.GenreToggled(genre)) },
+                        label = { Text(genre) },
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = yearInput,
+                onValueChange = { onAction(LibraryAction.YearChanged(it)) },
+                label = { Text(stringResource(R.string.year)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(.5f),
+            )
+            TextButton(onClick = { onAction(LibraryAction.Reset) }) {
+                Text(stringResource(R.string.clear_filters))
+            }
         }
-        state.error?.let {
+        error?.let {
             Text(it.resolve(LocalContext.current), color = MaterialTheme.colorScheme.error)
         }
-        // Placeholders only when there is nothing to show yet; a new query over existing results
-        // keeps them visible under a thin progress line.
-        if (state.isLoading && state.items.isEmpty())
-            LibrarySkeleton(minimumCardWidth, Modifier.weight(1f))
-        else if (state.items.isEmpty()) {
-            val filtered =
-                state.query.text.isNotBlank() ||
-                    state.query.genre.isNotBlank() ||
-                    state.query.year != null ||
-                    state.query.watch != WatchFilter.ALL ||
-                    state.query.type != MediaFilter.ALL
-            val title =
-                if (filtered) R.string.filter_empty
-                else if (state.query.watchlistOnly) R.string.watchlist_empty
-                else R.string.library_empty
-            val help =
-                if (filtered) R.string.filter_empty_help
-                else if (state.query.watchlistOnly) R.string.watchlist_empty_help
-                else R.string.library_empty_help
-            Column(
-                Modifier.weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(top = 16.dp, bottom = bottomInset + 16.dp)
-            ) {
-                Text(stringResource(title), style = MaterialTheme.typography.titleLarge)
-                Text(stringResource(help), style = MaterialTheme.typography.bodyLarge)
-                if (filtered)
-                    TextButton(onClick = { onAction(LibraryAction.Reset) }) {
-                        Text(stringResource(R.string.clear_filters))
-                    }
-                else if (!state.query.watchlistOnly)
-                    Button(onClick = onSettingsClick) {
-                        Text(stringResource(R.string.open_settings))
-                    }
-            }
-        } else {
-            if (state.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            val tapOrigin = LocalPosterTapOrigin.current
-            LazyVerticalGrid(
-                // The grid's own bounds are where its cards can show: a poster flying to or from
-                // a card half under the search and filters is cut off there too.
-                modifier =
-                    Modifier.weight(1f).onGloballyPositioned {
-                        tapOrigin?.onViewport(LIBRARY_SHELF, it.boundsInRoot())
-                    },
-                columns = GridCells.Adaptive(minimumCardWidth),
-                contentPadding = PaddingValues(top = 16.dp, bottom = bottomInset + 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(state.items, key = { it.id }) { item ->
-                    MediaCard(
-                        item,
-                        { onMediaClick(item.id, item.mediaType) },
-                        Modifier.fillMaxWidth().animateItem(fadeInSpec = null, fadeOutSpec = null),
-                        onToggleWatchlist = {
-                            onAction(LibraryAction.ToggleItemWatchlist(item.id))
-                        },
-                        onLongClick = { onAction(LibraryAction.MediaOptions(item)) },
-                        sharedShelf = LIBRARY_SHELF,
-                    )
-                }
-            }
-        }
+        if (isRefreshing) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/** No results: missing setup, an empty watchlist or filters that match nothing. */
+@Composable
+private fun LibraryEmptyState(
+    query: LibraryQuery,
+    onClearFilters: () -> Unit,
+    onSettingsClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val filtered =
+        query.text.isNotBlank() ||
+            query.genres.isNotEmpty() ||
+            query.year != null ||
+            query.watch != WatchFilter.ALL ||
+            query.type != MediaFilter.ALL
+    val title =
+        if (filtered) R.string.filter_empty
+        else if (query.watchlistOnly) R.string.watchlist_empty else R.string.library_empty
+    val help =
+        if (filtered) R.string.filter_empty_help
+        else if (query.watchlistOnly) R.string.watchlist_empty_help else R.string.library_empty_help
+    Column(modifier.fillMaxWidth().padding(top = 4.dp)) {
+        Text(stringResource(title), style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(help), style = MaterialTheme.typography.bodyLarge)
+        if (filtered)
+            TextButton(onClick = onClearFilters) { Text(stringResource(R.string.clear_filters)) }
+        else if (!query.watchlistOnly)
+            Button(onClick = onSettingsClick) { Text(stringResource(R.string.open_settings)) }
     }
 }
 
@@ -317,6 +352,24 @@ private fun WatchlistPreview() {
 private fun FiltersPreview() {
     LionLibraryTheme {
         LibraryScreen(LibraryState(filtersVisible = true, isLoading = false), {}, { _, _ -> }, {})
+    }
+}
+
+@Preview(name = "Several genres selected")
+@Composable
+private fun SelectedGenresPreview() {
+    LionLibraryTheme {
+        LibraryScreen(
+            LibraryState(
+                query = LibraryQuery(genres = setOf("Action", "Drama")),
+                filtersVisible = true,
+                genres = listOf("Action", "Animation", "Anime", "Comedy", "Drama", "Fantasy"),
+                isLoading = false,
+            ),
+            {},
+            { _, _ -> },
+            {},
+        )
     }
 }
 

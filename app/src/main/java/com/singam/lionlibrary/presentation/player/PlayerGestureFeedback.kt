@@ -87,8 +87,7 @@ internal fun PlayerGestureFeedback(
                     formatSeekOffset(seekDrag.offsetMs),
                     formatTime(seekDrag.targetMs),
                 )
-            doubleTap == DoubleTapFeedback.SEEK_BACK ->
-                stringResource(R.string.player_seek_back_10)
+            doubleTap == DoubleTapFeedback.SEEK_BACK -> stringResource(R.string.player_seek_back_10)
             doubleTap == DoubleTapFeedback.SEEK_FORWARD ->
                 stringResource(R.string.player_seek_forward_10)
             doubleTap == DoubleTapFeedback.PAUSED -> stringResource(R.string.player_paused)

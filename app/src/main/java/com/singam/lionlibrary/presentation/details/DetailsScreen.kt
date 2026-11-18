@@ -66,6 +66,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -133,7 +134,9 @@ import com.singam.lionlibrary.presentation.components.rememberHeroPullConnection
 import com.singam.lionlibrary.presentation.components.stretchedHeight
 import com.singam.lionlibrary.presentation.navigation.LocalDetailsBlur
 import com.singam.lionlibrary.presentation.navigation.LocalNavAnimatedVisibilityScope
+import com.singam.lionlibrary.presentation.navigation.LocalPosterTapOrigin
 import com.singam.lionlibrary.presentation.navigation.LocalPosterTransitions
+import com.singam.lionlibrary.presentation.navigation.LocalSharedTransitionScope
 import com.singam.lionlibrary.presentation.navigation.PosterTiming
 import com.singam.lionlibrary.presentation.navigation.PosterTransition
 import com.singam.lionlibrary.presentation.navigation.detailsPosterSharedBounds
@@ -231,8 +234,38 @@ fun DetailsScreen(
     val posterLayout =
         configuration.orientation == Configuration.ORIENTATION_PORTRAIT &&
             configuration.smallestScreenWidthDp < 600
-    val heroSharedBounds = detailsPosterSharedBounds(posterTransition?.key.takeIf { posterLayout })
-    val shared = heroSharedBounds != null && posterTransition != null
+    val listState = rememberLazyListState()
+    // Scrolled so far that more than half the poster is above the screen: going back then shrinks
+    // the whole page into its card (`PageShrink`) instead of flying a poster in from off screen.
+    val heroHalfPx = with(LocalDensity.current) { posterHeroHeight().toPx() } / 2f
+    val scrolledAway by
+        remember(listState, heroHalfPx) {
+            derivedStateOf {
+                listState.firstVisibleItemIndex > 0 ||
+                    listState.firstVisibleItemScrollOffset > heroHalfPx
+            }
+        }
+    val tapOrigin = LocalPosterTapOrigin.current
+    // The hero shares its bounds with the card only while it could fly back: scrolled away, the
+    // card is left alone so it shows as soon as Home does.
+    val heroSharedBounds =
+        detailsPosterSharedBounds(posterTransition?.key.takeIf { posterLayout && !scrolledAway })
+    // Same conditions as the hero's shared bounds, minus the scroll: a page whose poster has
+    // scrolled
+    // away still came from a card and still goes back to it.
+    val shared =
+        posterLayout &&
+            posterTransition != null &&
+            LocalSharedTransitionScope.current != null &&
+            LocalNavAnimatedVisibilityScope.current != null &&
+            rememberSystemMotionEnabled()
+    val shrinkClose =
+        shared &&
+            scrolledAway &&
+            posterTransition?.closesToCard == true &&
+            tapOrigin?.cardBoundsOf(posterTransition.key) != null
+    // The navigation host reads this to keep the page solid while it shrinks.
+    SideEffect { posterTransition?.key?.let { tapOrigin?.setShrinksOnClose(it, shrinkClose) } }
 
     val transition = LocalNavAnimatedVisibilityScope.current?.transition
     val settled =
@@ -285,7 +318,34 @@ fun DetailsScreen(
             transitionSpec = { tween(motion.closeBodyMs, easing = FastOutSlowInEasing) },
             label = "bodyFadeOut",
         ) { state ->
-            if (state == EnterExitState.Visible) 1f else 0f
+            // A shrinking page keeps its body: the whole page goes back into the card.
+            if (state == EnterExitState.Visible || shrinkClose) 1f else 0f
+        }
+    // Only on the way back to the card; a page coming back from the player stays put.
+    val shrinkProgress =
+        transition?.animateFloat(
+            transitionSpec = { tween(motion.shrinkMs, easing = LionMotion.Easing) },
+            label = "pageShrink",
+        ) { state ->
+            if (state == EnterExitState.PostExit && shrinkClose) 1f else 0f
+        }
+    val cornerPx = with(LocalDensity.current) { LionLayout.CardRadius.toPx() }
+    val pageShrink =
+        remember(shrinkProgress, posterTransition?.key, cornerPx) {
+            val key = posterTransition?.key
+            PageShrink(
+                progress = { shrinkProgress?.value ?: 0f },
+                target = {
+                    // The part of the card not hidden behind a bar above its list (Library).
+                    key?.let { tapOrigin?.cardBoundsOf(it) }
+                        ?.let { card ->
+                            val top = tapOrigin?.viewportOf(key.origin)?.top ?: card.top
+                            if (top > card.top) card.copy(top = minOf(top, card.bottom)) else card
+                        }
+                },
+                fullCard = { key?.let { tapOrigin?.cardBoundsOf(it) } },
+                cornerPx = cornerPx,
+            )
         }
     // Faded away, the page would still take every touch meant for Home, so it leaves then.
     val bodyGone by remember(closeFade) { derivedStateOf { (closeFade?.value ?: 1f) <= 0f } }
@@ -307,13 +367,12 @@ fun DetailsScreen(
             null
         }
     val motionEnabled = rememberSystemMotionEnabled()
-    val listState = rememberLazyListState()
     val heroPull = remember { mutableFloatStateOf(0f) }
     val pageBackground =
         if (LocalDetailsBlur.current) MaterialTheme.colorScheme.background
         else LionTheme.colors.playerBackground
-    Box(modifier.fillMaxSize().background(pageBackground)) {
-        if (heroSharedBounds != null && posterTransition != null) {
+    Box(modifier.fillMaxSize().pageShrink(pageShrink).background(pageBackground)) {
+        if (shared && posterTransition != null) {
             // The shared poster is one element for the page's whole life, drawn here between the
             // ambient backdrop and the page (which leaves the hero's place empty): there from
             // the first frame for the flight out, and still the same element for the flight back.
@@ -325,7 +384,7 @@ fun DetailsScreen(
             SharedHeroPoster(
                 posterPath = posterTransition.posterPath,
                 contentDescription = state.media?.title,
-                sharedBounds = heroSharedBounds,
+                sharedBounds = heroSharedBounds ?: Modifier,
                 listState = listState,
                 pullPx = { heroPull.floatValue },
                 fadeAmount = { heroFade?.value ?: 1f },
@@ -345,6 +404,9 @@ fun DetailsScreen(
                 heroPullState = heroPull,
                 bodyReveal = reveal,
             )
+        }
+        if (shrinkClose && posterTransition != null) {
+            pageShrink.ShrinkPoster(posterTransition.posterPath)
         }
     }
 }

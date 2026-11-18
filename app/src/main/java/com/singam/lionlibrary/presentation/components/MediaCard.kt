@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -33,7 +34,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -44,6 +46,7 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.presentation.details.prewarmAmbientBackdrop
 import com.singam.lionlibrary.presentation.navigation.LocalPosterTapOrigin
+import com.singam.lionlibrary.presentation.navigation.PosterSharedElementKey
 import com.singam.lionlibrary.presentation.navigation.posterCardSharedBounds
 import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionTheme
@@ -127,7 +130,16 @@ fun MediaCard(
                 Modifier.fillMaxWidth()
                     .aspectRatio(2f / 3f)
                     .then(longPress.modifier)
-                    .onSizeChanged { artworkSize = it.toSize() }
+                    .onGloballyPositioned {
+                        artworkSize = it.size.toSize()
+                        // Where a Details page shrinking back into this card has to land.
+                        if (sharedShelf != null) {
+                            tapOrigin?.onCardPlaced(
+                                PosterSharedElementKey(mediaItem.id, sharedShelf),
+                                Rect(it.positionInRoot(), artworkSize),
+                            )
+                        }
+                    }
                     .then(sharedBounds)
                     .clip(RoundedCornerShape(LionLayout.CardRadius))
                     .cardEdge(LionLayout.CardRadius, LionTheme.colors)

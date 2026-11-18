@@ -57,9 +57,14 @@ data class PosterSharedElementKey(val mediaId: Long, val origin: String)
 
 /**
  * What a Details page needs to share its hero with the card that opened it: the [key] and the
- * poster file, known before the page has loaded anything.
+ * poster file, known before the page has loaded anything. [closesToCard] is false while the page is
+ * leaving forward (to the player or another title) rather than going back to that card.
  */
-data class PosterTransition(val key: PosterSharedElementKey, val posterPath: String)
+data class PosterTransition(
+    val key: PosterSharedElementKey,
+    val posterPath: String,
+    val closesToCard: Boolean = true,
+)
 
 /**
  * Carries the tapped card's shelf and poster to the navigation call made in the same click, so the
@@ -74,6 +79,11 @@ class PosterTapOrigin {
     // size of its cards' artwork. Plain maps: written on layout, read only while a poster flies.
     private val viewports = HashMap<String, Rect>()
     private val cardSizes = HashMap<String, Size>()
+
+    // Where each card's artwork last sat (root coordinates), for a page shrinking back into it, and
+    // the pages that will shrink rather than fly their poster when they close.
+    private val cardBounds = HashMap<PosterSharedElementKey, Rect>()
+    private val shrinkingPages = HashSet<PosterSharedElementKey>()
 
     fun onCardTapped(origin: String, posterPath: String, cardSize: Size? = null) {
         pending = origin to posterPath
@@ -95,6 +105,19 @@ class PosterTapOrigin {
     internal fun viewportOf(origin: String): Rect? = viewports[origin]
 
     internal fun cardSizeOf(origin: String): Size? = cardSizes[origin]
+
+    fun onCardPlaced(key: PosterSharedElementKey, bounds: Rect) {
+        cardBounds[key] = bounds
+    }
+
+    internal fun cardBoundsOf(key: PosterSharedElementKey): Rect? = cardBounds[key]
+
+    /** Whether the Details page of [key] closes by shrinking into its card (see `pageShrink`). */
+    internal fun setShrinksOnClose(key: PosterSharedElementKey, shrinks: Boolean) {
+        if (shrinks) shrinkingPages += key else shrinkingPages -= key
+    }
+
+    internal fun shrinksOnClose(key: PosterSharedElementKey): Boolean = key in shrinkingPages
 }
 
 val LocalPosterTapOrigin = staticCompositionLocalOf<PosterTapOrigin?> { null }

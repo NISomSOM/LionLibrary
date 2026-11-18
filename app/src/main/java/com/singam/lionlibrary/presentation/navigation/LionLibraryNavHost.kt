@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,6 +13,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -99,12 +101,12 @@ fun LionLibraryNavHost(
                 fadeOut(tween(duration, easing = LionMotion.Easing))
             },
             popEnterTransition = { popEnter() },
-            popExitTransition = { popExit() },
+            popExitTransition = { popExit(tapOrigin) },
             // Navigation's own predictive back shrinks the leaving page to 70%; Android 16 runs it
             // for a back button press too (seen on the tablet as a slow zoom out). Going back looks
             // the same however it is triggered.
             predictivePopEnterTransition = { popEnter() },
-            predictivePopExitTransition = { popExit() },
+            predictivePopExitTransition = { popExit(tapOrigin) },
         ) {
             composable<HomeRoute> {
                 CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
@@ -153,13 +155,22 @@ fun LionLibraryNavHost(
                     )
                 },
                 exitTransition = { fadeOut(tween(100, easing = LionMotion.Easing)) },
+                // Must be named here: a destination's pop transitions default to its own enter and
+                // exit (the quick fade above), which would hide the poster close and the shrink.
+                popEnterTransition = { popEnter() },
+                popExitTransition = { popExit(tapOrigin) },
             ) { entry ->
                 val route = entry.toRoute<DetailsRoute>()
+                // Going back to its card means the page on top is this one (a back gesture in
+                // progress) or the one it was opened from; anything else is a forward move.
+                val top by navController.currentBackStackEntryAsState()
+                val below = remember(entry.id) { navController.previousBackStackEntry?.id }
                 val posterTransition =
                     if (route.origin != null && route.posterPath != null) {
                         PosterTransition(
                             PosterSharedElementKey(route.mediaId, route.origin),
                             route.posterPath,
+                            closesToCard = top?.id == entry.id || top?.id == below,
                         )
                     } else {
                         null
@@ -206,8 +217,19 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.popEnter(): EnterT
  * poster, then its backdrop fades quickly as the poster flies home; other Details pages crossfade;
  * the rest fade out quickly.
  */
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(): ExitTransition =
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(
+    tapOrigin: PosterTapOrigin
+): ExitTransition =
     when {
+        // Shrinking whole into its card: solid until it is there, then it hands over to the card.
+        initialState.posterKey()?.let(tapOrigin::shrinksOnClose) == true ->
+            fadeOut(
+                tween(
+                    PosterTiming.shrinkFadeMs,
+                    delayMillis = PosterTiming.shrinkMs - PosterTiming.shrinkFadeMs,
+                    easing = LinearEasing,
+                )
+            )
         initialState.opensFromPoster() ->
             fadeOut(
                 tween(
@@ -227,6 +249,16 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(): ExitTra
  */
 private fun NavHostController.isSettled(): Boolean =
     currentBackStackEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != false
+
+/** The poster key of a Details page opened from a poster card, else null. */
+private fun NavBackStackEntry.posterKey(): PosterSharedElementKey? =
+    if (destination.hasRoute<DetailsRoute>()) {
+        toRoute<DetailsRoute>().let { route ->
+            route.origin?.let { PosterSharedElementKey(route.mediaId, it) }
+        }
+    } else {
+        null
+    }
 
 /** True for a Details page opened by tapping a poster card (see [PosterSharedElementKey]). */
 private fun NavBackStackEntry.opensFromPoster(): Boolean =

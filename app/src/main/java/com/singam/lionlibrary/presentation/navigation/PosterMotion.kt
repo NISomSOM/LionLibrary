@@ -9,7 +9,9 @@ import androidx.compose.ui.unit.dp
  * appears [bodyStartMs] after the tap (while the poster is still landing) in three groups, each
  * fading in over [groupFadeMs] while sliding down [slide] from just under the poster,
  * [groupStaggerMs] apart. Closing: the body fades out over [closeBodyMs] with the same small slide
- * up; the poster holds [closeHoldMs] and then flies home for [closeMs].
+ * up; the poster holds [closeHoldMs] and then flies home for [closeMs]. A page scrolled so far that
+ * its poster is mostly off screen instead shrinks whole into its card over [shrinkMs], and its last
+ * [shrinkFadeMs] hand over to the card itself.
  */
 @Immutable
 data class PosterMotion(
@@ -21,6 +23,8 @@ data class PosterMotion(
     val closeBodyMs: Int,
     val closeHoldMs: Int,
     val closeMs: Int,
+    val shrinkMs: Int,
+    val shrinkFadeMs: Int,
 )
 
 /**
@@ -38,4 +42,6 @@ val PosterTiming =
         closeBodyMs = 100,
         closeHoldMs = 40,
         closeMs = 240,
+        shrinkMs = 340,
+        shrinkFadeMs = 90,
     )

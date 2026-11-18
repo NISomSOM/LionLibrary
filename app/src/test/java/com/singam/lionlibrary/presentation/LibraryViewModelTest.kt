@@ -188,27 +188,23 @@ class LibraryViewModelTest {
         }
 
     @Test
-    fun `turning the filters chip off removes what its panel applied and nothing else`() =
+    fun `hiding the filter menus keeps their filters and All clears only the genres`() =
         runTest(dispatcher) {
             val vm = viewModel()
             backgroundScope.launch { vm.state.collect {} }
-            vm.onAction(LibraryAction.QueryChanged("frieren"))
-            vm.onAction(LibraryAction.TypeChanged(MediaFilter.ANIME))
-            vm.onAction(LibraryAction.ToggleWatchlist)
             vm.onAction(LibraryAction.ToggleFilters)
             vm.onAction(LibraryAction.SortChanged(LibrarySort.RATING))
             vm.onAction(LibraryAction.WatchChanged(WatchFilter.WATCHED))
             vm.onAction(LibraryAction.GenreToggled("Fantasy"))
-            vm.onAction(LibraryAction.YearChanged("2023"))
+            vm.onAction(LibraryAction.GenreToggled("Drama"))
 
             vm.onAction(LibraryAction.ToggleFilters)
-
             assertThat(vm.state.value.filtersVisible).isFalse()
-            assertThat(vm.state.value.yearInput).isEmpty()
+            assertThat(vm.state.value.query.genres).containsOnly("Fantasy", "Drama")
+
+            vm.onAction(LibraryAction.AllGenresSelected)
             assertThat(vm.state.value.query)
-                .isEqualTo(
-                    LibraryQuery(text = "frieren", type = MediaFilter.ANIME, watchlistOnly = true)
-                )
+                .isEqualTo(LibraryQuery(sort = LibrarySort.RATING, watch = WatchFilter.WATCHED))
             vm.viewModelScope.cancel()
         }
 

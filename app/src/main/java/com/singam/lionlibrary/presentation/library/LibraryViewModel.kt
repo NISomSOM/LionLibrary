@@ -55,8 +55,11 @@ sealed interface LibraryAction {
 
     data class WatchChanged(val value: WatchFilter) : LibraryAction
 
-    /** Selects or clears one genre chip; several can be selected at once. */
+    /** Selects or clears one genre in the genre menu; several can be selected at once. */
     data class GenreToggled(val genre: String) : LibraryAction
+
+    /** The genre menu's All: no genre filter. */
+    data object AllGenresSelected : LibraryAction
 
     data class YearChanged(val value: String) : LibraryAction
 
@@ -200,20 +203,6 @@ class LibraryViewModel(
         local.update { it.copy(filtersVisible = visible) }
     }
 
-    /** Clears everything the filter panel sets: sort, watch state, genres and year. */
-    private fun clearPanelFilters() {
-        saved["year"] = ""
-        local.update { it.copy(yearInput = "") }
-        updateQuery {
-            it.copy(
-                genres = emptySet(),
-                year = null,
-                watch = WatchFilter.ALL,
-                sort = LibrarySort.TITLE_ASC,
-            )
-        }
-    }
-
     private fun updateQuery(transform: (LibraryQuery) -> LibraryQuery) {
         local.update { it.copy(query = transform(it.query), error = null) }
         val query = local.value.query
@@ -287,12 +276,9 @@ class LibraryViewModel(
             }
             LibraryAction.ToggleWatchlist ->
                 updateQuery { it.copy(watchlistOnly = !it.watchlistOnly) }
-            LibraryAction.ToggleFilters -> {
-                val closing = local.value.filtersVisible
-                // Turning the chip off removes what its panel applied.
-                if (closing) clearPanelFilters()
-                setFiltersVisible(!closing)
-            }
+            LibraryAction.AllGenresSelected -> updateQuery { it.copy(genres = emptySet()) }
+            // Only shows or hides the menus; the filters they set stay applied.
+            LibraryAction.ToggleFilters -> setFiltersVisible(!local.value.filtersVisible)
             LibraryAction.Reset -> {
                 saved["year"] = ""
                 local.update { it.copy(yearInput = "") }

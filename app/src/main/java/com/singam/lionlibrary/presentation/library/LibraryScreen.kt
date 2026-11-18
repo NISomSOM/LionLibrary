@@ -25,6 +25,8 @@ import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.components.DeletionDialog
 import com.singam.lionlibrary.presentation.components.LIBRARY_SKELETON_CELLS
+import com.singam.lionlibrary.presentation.components.LibraryDropdown
+import com.singam.lionlibrary.presentation.components.LibraryDropdownItem
 import com.singam.lionlibrary.presentation.components.LibraryFilterChip
 import com.singam.lionlibrary.presentation.components.LibrarySearchField
 import com.singam.lionlibrary.presentation.components.LibrarySkeletonCell
@@ -220,32 +222,62 @@ private fun LibraryHeader(
             }
         }
         if (filtersVisible) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(LibrarySort.entries) { sort ->
-                    LibraryFilterChip(
-                        selected = query.sort == sort,
-                        onClick = { onAction(LibraryAction.SortChanged(sort)) },
-                        label = { Text(stringResource(sort.label())) },
-                    )
-                }
-            }
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(WatchFilter.entries) { watch ->
-                    LibraryFilterChip(
-                        selected = query.watch == watch,
-                        onClick = { onAction(LibraryAction.WatchChanged(watch)) },
-                        label = { Text(stringResource(watch.label())) },
-                    )
-                }
-            }
-            // Several genres can be selected; a title matching any of them is shown.
+            // One compact row of menus instead of a chip per option.
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                genres.forEach { genre ->
-                    LibraryFilterChip(
-                        selected = query.genres.any { it.equals(genre, ignoreCase = true) },
-                        onClick = { onAction(LibraryAction.GenreToggled(genre)) },
-                        label = { Text(genre) },
+                LibraryDropdown(
+                    label = stringResource(query.sort.label()),
+                    active = query.sort != LibrarySort.TITLE_ASC,
+                ) { close ->
+                    LibrarySort.entries.forEach { sort ->
+                        LibraryDropdownItem(
+                            text = stringResource(sort.label()),
+                            selected = query.sort == sort,
+                            onClick = {
+                                onAction(LibraryAction.SortChanged(sort))
+                                close()
+                            },
+                        )
+                    }
+                }
+                LibraryDropdown(
+                    label =
+                        if (query.watch == WatchFilter.ALL)
+                            stringResource(R.string.library_watch_any)
+                        else stringResource(query.watch.label()),
+                    active = query.watch != WatchFilter.ALL,
+                ) { close ->
+                    WatchFilter.entries.forEach { watch ->
+                        LibraryDropdownItem(
+                            text = stringResource(watch.label()),
+                            selected = query.watch == watch,
+                            onClick = {
+                                onAction(LibraryAction.WatchChanged(watch))
+                                close()
+                            },
+                        )
+                    }
+                }
+                // Several genres can be selected (the menu stays open); a title matching any of
+                // them is shown. All, first, removes the genre filter.
+                LibraryDropdown(
+                    label = genreMenuLabel(query.genres),
+                    active = query.genres.isNotEmpty(),
+                ) { close ->
+                    LibraryDropdownItem(
+                        text = stringResource(R.string.all),
+                        selected = query.genres.isEmpty(),
+                        onClick = {
+                            onAction(LibraryAction.AllGenresSelected)
+                            close()
+                        },
                     )
+                    genres.forEach { genre ->
+                        LibraryDropdownItem(
+                            text = genre,
+                            selected = query.genres.any { it.equals(genre, ignoreCase = true) },
+                            onClick = { onAction(LibraryAction.GenreToggled(genre)) },
+                        )
+                    }
                 }
             }
             OutlinedTextField(
@@ -295,6 +327,15 @@ private fun LibraryEmptyState(
             Button(onClick = onSettingsClick) { Text(stringResource(R.string.open_settings)) }
     }
 }
+
+/** The genre menu's button: All genres, the one genre, or the first and how many more. */
+@Composable
+private fun genreMenuLabel(selected: Set<String>): String =
+    when (selected.size) {
+        0 -> stringResource(R.string.library_genres_all)
+        1 -> selected.first()
+        else -> stringResource(R.string.library_genres_more, selected.first(), selected.size - 1)
+    }
 
 internal fun MediaFilter.label() =
     when (this) {

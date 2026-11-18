@@ -13,4 +13,9 @@
     <string name="details_blur_description">The details page sits on a blurred copy of the title\'s artwork. Off: a solid black background.</string>
     <!-- Details: other library titles that share a genre with this one -->
     <string name="related_content">Related</string>
+    <!-- Library filter menus -->
+    <string name="library_genres_all">All genres</string>
+    <!-- %1$s = first selected genre, %2$d = how many more are selected -->
+    <string name="library_genres_more">%1$s +%2$d</string>
+    <string name="library_watch_any">Any status</string>
 </resources>

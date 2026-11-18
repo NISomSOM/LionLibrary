@@ -102,6 +102,9 @@ val LocalPosterTapOrigin = staticCompositionLocalOf<PosterTapOrigin?> { null }
 /** The Poster animation setting: false gives plain fades and a banner hero on Details. */
 val LocalPosterTransitions = staticCompositionLocalOf { true }
 
+/** The Blurred background setting: false puts Details on solid black. */
+val LocalDetailsBlur = staticCompositionLocalOf { true }
+
 /**
  * Shared bounds for a poster card's artwork: the poster leaves the card and flies to the Details
  * hero, and comes back the same way. The card's picture is drawn underneath the hero's copy of the

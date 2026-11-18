@@ -231,6 +231,13 @@ fun SettingsScreen(
                     { onAction(SettingsAction.OnPosterTransitionsToggle(it)) },
                     description = stringResource(R.string.poster_animation_description),
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                PlaybackSetting(
+                    stringResource(R.string.details_blur),
+                    state.detailsBlur,
+                    { onAction(SettingsAction.OnDetailsBlurToggle(it)) },
+                    description = stringResource(R.string.details_blur_description),
+                )
             }
             SettingsSection(stringResource(R.string.scan_library)) {
                 if (state.isScanning) {

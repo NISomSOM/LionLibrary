@@ -159,6 +159,15 @@ class PreferencesManager(context: Context) {
     suspend fun setPosterTransitions(enabled: Boolean) {
         portable.edit { prefs -> prefs[PreferencesKeys.POSTER_TRANSITIONS] = enabled }
     }
+
+    /** Blurred artwork behind Details; on by default. Off: solid black. */
+    val detailsBlur: Flow<Boolean> = portableData.map { prefs ->
+        prefs[PreferencesKeys.DETAILS_BLUR] ?: true
+    }
+
+    suspend fun setDetailsBlur(enabled: Boolean) {
+        portable.edit { prefs -> prefs[PreferencesKeys.DETAILS_BLUR] = enabled }
+    }
 }
 
 /** Emits empty preferences (so every key reads its default) when the file cannot be read. */

@@ -5,7 +5,11 @@ import kotlinx.serialization.Serializable
 
 @Serializable data object HomeRoute
 
-@Serializable data class LibraryRoute(val filter: String? = null)
+/**
+ * [filter] is a [com.singam.lionlibrary.domain.model.MediaFilter] name; [genres] preselect chips.
+ */
+@Serializable
+data class LibraryRoute(val filter: String? = null, val genres: List<String> = emptyList())
 
 @Serializable data object SettingsRoute
 

@@ -55,4 +55,9 @@ class DataStoreSettingsRepository(private val preferencesManager: PreferencesMan
 
     override suspend fun setPosterTransitions(enabled: Boolean) =
         preferencesManager.setPosterTransitions(enabled)
+
+    override val detailsBlur: Flow<Boolean> = preferencesManager.detailsBlur
+
+    override suspend fun setDetailsBlur(enabled: Boolean) =
+        preferencesManager.setDetailsBlur(enabled)
 }

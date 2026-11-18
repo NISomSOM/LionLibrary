@@ -23,7 +23,9 @@ import androidx.compose.ui.unit.dp
 import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import com.singam.lionlibrary.presentation.navigation.LocalDetailsBlur
 import com.singam.lionlibrary.ui.theme.LionMotion
+import com.singam.lionlibrary.ui.theme.LionTheme
 import java.io.File
 
 /** Darkening over the ambient image; the hero gradient ends in the same tint so they meet. */
@@ -35,7 +37,8 @@ private const val AMBIENT_DECODE_PX = 96
 /**
  * Page background for Details: a small, heavily blurred and darkened copy of the title's local
  * backdrop that crossfades in. Blur needs Android 12; below that, on low-RAM devices, without a
- * local image or when it fails to load, the flat background shows instead. Never uses a URL.
+ * local image or when it fails to load, the flat background shows instead. Never uses a URL. With
+ * the Blurred background setting off ([LocalDetailsBlur]) the page is solid black.
  */
 @Composable
 internal fun DetailsAmbientBackdrop(
@@ -45,9 +48,14 @@ internal fun DetailsAmbientBackdrop(
 ) {
     val context = LocalContext.current
     val supported = remember(context) { ambientSupported(context) }
+    val blurred = LocalDetailsBlur.current
     val background = MaterialTheme.colorScheme.background
-    Box(modifier.fillMaxSize().background(background)) {
-        if (!supported || path == null) return@Box
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(if (blurred) background else LionTheme.colors.playerBackground)
+    ) {
+        if (!blurred || !supported || path == null) return@Box
         var loaded by remember(path) { mutableStateOf(false) }
         val alpha by
             animateFloatAsState(

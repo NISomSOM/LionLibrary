@@ -50,4 +50,13 @@ interface SettingsRepository {
         get() = flowOf(true)
 
     suspend fun setPosterTransitions(enabled: Boolean) {}
+
+    /**
+     * Whether the Details page sits on a blurred copy of the title's artwork (on) or on solid black
+     * (off).
+     */
+    val detailsBlur: Flow<Boolean>
+        get() = flowOf(true)
+
+    suspend fun setDetailsBlur(enabled: Boolean) {}
 }

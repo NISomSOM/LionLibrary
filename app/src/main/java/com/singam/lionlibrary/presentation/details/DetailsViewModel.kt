@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.Episode
+import com.singam.lionlibrary.domain.model.LibraryQuery
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.model.Season
@@ -20,6 +21,7 @@ import com.singam.lionlibrary.domain.repository.MediaDeletionRepository
 import com.singam.lionlibrary.domain.repository.MediaRepository
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
+import com.singam.lionlibrary.domain.usecase.relatedMedia
 import com.singam.lionlibrary.presentation.common.DeletionPresenter
 import com.singam.lionlibrary.presentation.common.DeletionUiState
 import com.singam.lionlibrary.presentation.common.UiText
@@ -56,6 +58,8 @@ data class DetailsState(
     val resumeEpisodeIds: Set<Long> = emptySet(),
     val watchedEpisodeIds: Set<Long> = emptySet(),
     val episodeProgressMap: Map<Long, Float> = emptyMap(),
+    /** Other library titles sharing a genre with this one, closest first. */
+    val relatedMedia: List<MediaItem> = emptyList(),
     val selectedEpisodeForOptions: Episode? = null,
     val deletion: DeletionUiState = DeletionUiState(),
     val isLoading: Boolean = true,
@@ -185,9 +189,21 @@ class DetailsViewModel(
                         DetailsShape.SHOW -> showContent()
                     }
                 }
-        return combine(media, body) { item, content -> content.copy(media = item) }
+        // Titles sharing a genre with this one; an unchanged answer does not rebuild the page.
+        val related =
+            combine(media, allIdentified()) { item, all ->
+                    item?.let { relatedMedia(it, all) }.orEmpty()
+                }
+                .distinctUntilChanged()
+        return combine(media, body, related) { item, content, relatedItems ->
+                content.copy(media = item, relatedMedia = relatedItems)
+            }
             .catch { emit(DetailsContent(error = UiText.Resource(R.string.error_unknown))) }
     }
+
+    /** Every title in the library, for the related row; a failure only leaves the row empty. */
+    private fun allIdentified(): Flow<List<MediaItem>> =
+        mediaRepository.browse(LibraryQuery()).catch { emit(emptyList()) }
 
     private fun showContent(): Flow<DetailsContent> {
         val seasons =
@@ -383,6 +399,7 @@ private data class DetailsContent(
     val resumeEpisodeIds: Set<Long> = emptySet(),
     val watchedEpisodeIds: Set<Long> = emptySet(),
     val episodeProgressMap: Map<Long, Float> = emptyMap(),
+    val relatedMedia: List<MediaItem> = emptyList(),
     val error: UiText? = null,
 ) {
     fun withProgress(progressList: List<WatchProgress>): DetailsContent {
@@ -412,6 +429,7 @@ private data class DetailsContent(
             resumeEpisodeIds = resumeEpisodeIds,
             watchedEpisodeIds = watchedEpisodeIds,
             episodeProgressMap = episodeProgressMap,
+            relatedMedia = relatedMedia,
             isLoading = false,
             error = error,
         )

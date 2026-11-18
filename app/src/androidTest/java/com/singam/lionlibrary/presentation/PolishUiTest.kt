@@ -19,8 +19,8 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.presentation.components.JumpBackInCard
+import com.singam.lionlibrary.presentation.components.MediaRow
 import com.singam.lionlibrary.presentation.home.HeroBannerCarousel
-import com.singam.lionlibrary.presentation.home.MediaRow
 import com.singam.lionlibrary.presentation.library.*
 import com.singam.lionlibrary.presentation.settings.*
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
@@ -267,7 +267,9 @@ class PolishUiTest {
     fun entireShelfHeadingStillOpensItsCategory() {
         var opened = false
         compose.setContent {
-            LionLibraryTheme { MediaRow("Movies", listOf(film), {}, { opened = true }) }
+            LionLibraryTheme {
+                MediaRow("Movies", listOf(film), {}, onHeaderClick = { opened = true })
+            }
         }
         compose.onNodeWithText("Movies").performClick()
         compose.runOnIdle { assertTrue(opened) }

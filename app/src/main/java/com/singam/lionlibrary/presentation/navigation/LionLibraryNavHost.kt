@@ -37,6 +37,8 @@ fun LionLibraryNavHost(
     navController: NavHostController,
     // Off: no poster flight; Details fades in with a banner hero.
     posterTransitions: Boolean,
+    // Off: Details sits on solid black instead of its blurred artwork.
+    detailsBlur: Boolean,
     snackbarHostState: SnackbarHostState,
     windowSizeClass: WindowSizeClass,
     modifier: Modifier = Modifier,
@@ -59,11 +61,22 @@ fun LionLibraryNavHost(
             navController.navigate(DetailsRoute(id, tapped?.first, tapped?.second))
         }
     }
+    // A shelf arrow (Home categories, Details related titles) opens Library as the top-level
+    // destination, filtered by a type and/or genres.
+    val openLibrary: (MediaFilter?, List<String>) -> Unit = { filter, genres ->
+        if (navController.isSettled()) {
+            navController.navigate(LibraryRoute(filter?.name, genres)) {
+                popUpTo<HomeRoute> { saveState = true }
+                launchSingleTop = true
+            }
+        }
+    }
     // Where a long-pressed card sits, for the preview that lifts out of it.
     val longPressOrigin = remember { LongPressOrigin() }
     CompositionLocalProvider(
         LocalPosterTapOrigin provides tapOrigin,
         LocalPosterTransitions provides posterTransitions,
+        LocalDetailsBlur provides detailsBlur,
         LocalLongPressOrigin provides longPressOrigin,
     ) {
         NavHost(
@@ -105,25 +118,21 @@ fun LionLibraryNavHost(
                                 navController.navigate(PlayerRoute(type, id))
                             }
                         },
-                        onNavigateToLibrary = {
-                            navController.navigate(LibraryRoute(it.name)) {
-                                popUpTo<HomeRoute> { saveState = true }
-                                launchSingleTop = true
-                            }
-                        },
+                        onNavigateToLibrary = { openLibrary(it, emptyList()) },
+                        onNavigateToGenre = { openLibrary(null, listOf(it)) },
                         onSettingsClick = { navController.navigate(SettingsRoute) },
                     )
                 }
             }
             composable<LibraryRoute> { entry ->
+                val route = entry.toRoute<LibraryRoute>()
                 val filter =
-                    entry.toRoute<LibraryRoute>().filter?.let { value ->
-                        MediaFilter.entries.find { it.name == value }
-                    }
+                    route.filter?.let { value -> MediaFilter.entries.find { it.name == value } }
                 CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                     LibraryRoot(
                         snackbarHostState = snackbarHostState,
                         initialFilter = filter,
+                        initialGenres = route.genres,
                         onMediaClick = { id, _ -> openDetails(id) },
                         onSettingsClick = { navController.navigate(SettingsRoute) },
                     )
@@ -163,6 +172,8 @@ fun LionLibraryNavHost(
                             navController.navigate(PlayerRoute(type, id))
                         },
                         onBack = { navController.popBackStack() },
+                        onMediaClick = openDetails,
+                        onRelatedGenresClick = { openLibrary(null, it) },
                         posterTransition = posterTransition,
                     )
                 }

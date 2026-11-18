@@ -102,9 +102,9 @@ import com.singam.lionlibrary.presentation.components.HomeSkeleton
 import com.singam.lionlibrary.presentation.components.JumpBackInCard
 import com.singam.lionlibrary.presentation.components.LocalArtwork
 import com.singam.lionlibrary.presentation.components.LongPressPreview
-import com.singam.lionlibrary.presentation.components.MediaCard
 import com.singam.lionlibrary.presentation.components.MediaItemPreview
 import com.singam.lionlibrary.presentation.components.MediaOptionItem
+import com.singam.lionlibrary.presentation.components.MediaRow
 import com.singam.lionlibrary.presentation.components.PreviewFilm
 import com.singam.lionlibrary.presentation.components.ShelfHeading
 import com.singam.lionlibrary.presentation.components.rememberBackdropAlignment
@@ -132,6 +132,7 @@ fun HomeRoot(
     onNavigateToShowDetails: (Long) -> Unit,
     onNavigateToPlayer: (MediaType, Long) -> Unit,
     onNavigateToLibrary: (MediaFilter) -> Unit,
+    onNavigateToGenre: (String) -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onMediaClick: (Long, MediaType) -> Unit = { _, _ -> },
     onLibraryClick: (MediaFilter) -> Unit = {},
@@ -172,6 +173,7 @@ fun HomeRoot(
             else onNavigateToShowDetails(id)
         },
         onLibraryClick = onNavigateToLibrary,
+        onGenreClick = onNavigateToGenre,
     )
 }
 
@@ -185,6 +187,7 @@ fun HomeScreen(
     onSettingsClick: () -> Unit = {},
     onMediaClick: (Long, MediaType) -> Unit = { _, _ -> },
     onLibraryClick: (MediaFilter) -> Unit = {},
+    onGenreClick: (String) -> Unit = {},
 ) {
     val selectedJumpBackInItem = state.selectedJumpBackInItem
     DeletionDialog(
@@ -359,6 +362,7 @@ fun HomeScreen(
                         onItemClick = { onMediaClick(it.id, it.mediaType) },
                         onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
                         shelfKey = "genre:$genre",
+                        onHeaderClick = { onGenreClick(genre) },
                     )
                 }
             }
@@ -710,40 +714,6 @@ internal fun HeroBannerCarousel(
 }
 
 @Composable
-fun MediaRow(
-    title: String,
-    items: List<MediaItem>,
-    onItemClick: (MediaItem) -> Unit,
-    onHeaderClick: (() -> Unit)? = null,
-    onItemLongClick: (MediaItem) -> Unit = {},
-    // Identifies this shelf for the poster-to-Details transition; null keeps the plain fade.
-    shelfKey: String? = null,
-) {
-    Column(modifier = Modifier.padding(bottom = LionLayout.SectionGap)) {
-        ShelfHeading(
-            title,
-            Modifier.padding(horizontal = LionLayout.Gutter).padding(bottom = 10.dp),
-            onClick = onHeaderClick,
-        )
-
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            items(items, key = { it.id }) { item ->
-                MediaCard(
-                    mediaItem = item,
-                    onClick = { onItemClick(item) },
-                    onLongClick = { onItemLongClick(item) },
-                    modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
-                    sharedShelf = shelfKey,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun JumpBackInRow(
     title: String,
     items: List<JumpBackInItem>,
@@ -823,7 +793,7 @@ private fun ShelfPreview() {
             "Movies",
             listOf(PreviewFilm),
             {},
-            {},
+            onHeaderClick = {},
         )
     }
 }

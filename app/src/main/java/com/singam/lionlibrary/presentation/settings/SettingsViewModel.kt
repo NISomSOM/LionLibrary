@@ -41,6 +41,7 @@ data class SettingsState(
     val forceExternalPlayer: Boolean = false,
     val onlineSkipTimes: Boolean = true,
     val posterTransitions: Boolean = true,
+    val detailsBlur: Boolean = true,
 )
 
 sealed interface SettingsAction {
@@ -71,6 +72,8 @@ sealed interface SettingsAction {
     data class OnOnlineSkipTimesToggle(val enabled: Boolean) : SettingsAction
 
     data class OnPosterTransitionsToggle(val enabled: Boolean) : SettingsAction
+
+    data class OnDetailsBlurToggle(val enabled: Boolean) : SettingsAction
 }
 
 sealed interface SettingsEvent {
@@ -139,6 +142,7 @@ class SettingsViewModel(
                 toggleForceExternalPlayer(action.enabled)
             is SettingsAction.OnOnlineSkipTimesToggle -> toggleOnlineSkipTimes(action.enabled)
             is SettingsAction.OnPosterTransitionsToggle -> togglePosterTransitions(action.enabled)
+            is SettingsAction.OnDetailsBlurToggle -> toggleDetailsBlur(action.enabled)
         }
     }
 
@@ -189,6 +193,10 @@ class SettingsViewModel(
 
             settingsRepository.posterTransitions.first().let { enabled ->
                 _state.update { it.copy(posterTransitions = enabled) }
+            }
+
+            settingsRepository.detailsBlur.first().let { enabled ->
+                _state.update { it.copy(detailsBlur = enabled) }
             }
         }
     }
@@ -311,6 +319,13 @@ class SettingsViewModel(
         launchSetting {
             settingsRepository.setPosterTransitions(enabled)
             _state.update { it.copy(posterTransitions = enabled) }
+        }
+    }
+
+    private fun toggleDetailsBlur(enabled: Boolean) {
+        launchSetting {
+            settingsRepository.setDetailsBlur(enabled)
+            _state.update { it.copy(detailsBlur = enabled) }
         }
     }
 }

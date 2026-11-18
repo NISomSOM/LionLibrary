@@ -19,4 +19,5 @@ object PreferencesKeys {
     val FORCE_EXTERNAL_PLAYER = booleanPreferencesKey("force_external_player")
     val ONLINE_SKIP_TIMES = booleanPreferencesKey("online_skip_times")
     val POSTER_TRANSITIONS = booleanPreferencesKey("poster_transitions")
+    val DETAILS_BLUR = booleanPreferencesKey("details_blur")
 }

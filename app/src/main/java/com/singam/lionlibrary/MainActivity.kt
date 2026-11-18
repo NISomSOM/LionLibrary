@@ -76,6 +76,14 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private val detailsBlur by lazy {
+        settingsRepository.detailsBlur.stateIn(
+            lifecycleScope,
+            SharingStarted.WhileSubscribed(),
+            true,
+        )
+    }
+
     // A scan publishes artwork in bursts; sampling turns hundreds of publications into a few
     // artwork refreshes. The latest revision always arrives.
     private val artworkRevision by lazy {
@@ -96,6 +104,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val revision by artworkRevision.collectAsStateWithLifecycle()
             val posterAnimation by posterTransitions.collectAsStateWithLifecycle()
+            val blurredDetails by detailsBlur.collectAsStateWithLifecycle()
             LionLibraryTheme(artworkRevision = revision) {
                 val windowSizeClass = calculateWindowSizeClass(this)
                 val navController = rememberNavController()
@@ -199,6 +208,7 @@ class MainActivity : ComponentActivity() {
                                     LionLibraryNavHost(
                                         navController = navController,
                                         posterTransitions = posterAnimation,
+                                        detailsBlur = blurredDetails,
                                         snackbarHostState = snackbarHostState,
                                         windowSizeClass = windowSizeClass,
                                         modifier =

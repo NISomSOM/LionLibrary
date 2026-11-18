@@ -9,4 +9,8 @@
     <string name="appearance">Appearance</string>
     <string name="poster_animation">Poster animation</string>
     <string name="poster_animation_description">On a phone held upright, posters fly into the details page and back. Off: pages fade in, with the title\'s banner and logo at the top.</string>
+    <string name="details_blur">Blurred background</string>
+    <string name="details_blur_description">The details page sits on a blurred copy of the title\'s artwork. Off: a solid black background.</string>
+    <!-- Details: other library titles that share a genre with this one -->
+    <string name="related_content">Related</string>
 </resources>

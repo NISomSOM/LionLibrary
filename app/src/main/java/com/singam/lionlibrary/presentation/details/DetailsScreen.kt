@@ -113,6 +113,7 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.Episode
 import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
+import com.singam.lionlibrary.domain.model.genreList
 import com.singam.lionlibrary.domain.model.isSingleFile
 import com.singam.lionlibrary.presentation.components.ArtworkTitle
 import com.singam.lionlibrary.presentation.components.DeletionDialog
@@ -125,10 +126,12 @@ import com.singam.lionlibrary.presentation.components.LetterboxdMark
 import com.singam.lionlibrary.presentation.components.LocalArtwork
 import com.singam.lionlibrary.presentation.components.LongPressPreview
 import com.singam.lionlibrary.presentation.components.MediaOptionItem
+import com.singam.lionlibrary.presentation.components.MediaRow
 import com.singam.lionlibrary.presentation.components.PreviewFilm
 import com.singam.lionlibrary.presentation.components.rememberBackdropAlignment
 import com.singam.lionlibrary.presentation.components.rememberHeroPullConnection
 import com.singam.lionlibrary.presentation.components.stretchedHeight
+import com.singam.lionlibrary.presentation.navigation.LocalDetailsBlur
 import com.singam.lionlibrary.presentation.navigation.LocalNavAnimatedVisibilityScope
 import com.singam.lionlibrary.presentation.navigation.LocalPosterTransitions
 import com.singam.lionlibrary.presentation.navigation.PosterTiming
@@ -152,6 +155,10 @@ fun DetailsRoot(
     windowSizeClass: WindowSizeClass,
     onNavigateToPlayer: (MediaType, Long) -> Unit,
     onBack: () -> Unit = {},
+    // A related title's poster opens its own Details page.
+    onMediaClick: (Long) -> Unit = {},
+    // The related row's arrow: Library filtered by this title's genres.
+    onRelatedGenresClick: (List<String>) -> Unit = {},
     // Set when a poster card opened this page: the hero then shares that poster with the card.
     posterTransition: PosterTransition? = null,
     viewModel: DetailsViewModel = koinViewModel(),
@@ -202,6 +209,8 @@ fun DetailsRoot(
         windowSizeClass = windowSizeClass,
         onAction = viewModel::onAction,
         onBack = onBack,
+        onMediaClick = onMediaClick,
+        onRelatedGenresClick = onRelatedGenresClick,
         posterTransition = posterTransition,
     )
 }
@@ -213,6 +222,8 @@ fun DetailsScreen(
     onAction: (DetailsAction) -> Unit,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
+    onMediaClick: (Long) -> Unit = {},
+    onRelatedGenresClick: (List<String>) -> Unit = {},
     posterTransition: PosterTransition? = null,
 ) {
     val configuration = LocalConfiguration.current
@@ -298,7 +309,10 @@ fun DetailsScreen(
     val motionEnabled = rememberSystemMotionEnabled()
     val listState = rememberLazyListState()
     val heroPull = remember { mutableFloatStateOf(0f) }
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    val pageBackground =
+        if (LocalDetailsBlur.current) MaterialTheme.colorScheme.background
+        else LionTheme.colors.playerBackground
+    Box(modifier.fillMaxSize().background(pageBackground)) {
         if (heroSharedBounds != null && posterTransition != null) {
             // The shared poster is one element for the page's whole life, drawn here between the
             // ambient backdrop and the page (which leaves the hero's place empty): there from
@@ -324,6 +338,8 @@ fun DetailsScreen(
                 windowSizeClass,
                 onAction,
                 onBack = onBack,
+                onMediaClick = onMediaClick,
+                onRelatedGenresClick = onRelatedGenresClick,
                 externalHero = shared,
                 listState = listState,
                 heroPullState = heroPull,
@@ -416,6 +432,8 @@ private fun DetailsContent(
     onAction: (DetailsAction) -> Unit,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
+    onMediaClick: (Long) -> Unit = {},
+    onRelatedGenresClick: (List<String>) -> Unit = {},
     // True when the caller draws the ambient backdrop and the portrait hero image itself (a page
     // opened from a poster card); the hero's place in the list is then left empty.
     externalHero: Boolean = false,
@@ -591,6 +609,14 @@ private fun DetailsContent(
                             onAction,
                             bannerHero = bannerHero,
                         )
+                        // Two panes: related titles fill the space under the banner and synopsis.
+                        RelatedMediaRow(
+                            media,
+                            state.relatedMedia,
+                            onMediaClick,
+                            onRelatedGenresClick,
+                            Modifier.padding(bottom = 16.dp),
+                        )
                     }
 
                     LazyColumn(
@@ -642,6 +668,19 @@ private fun DetailsContent(
                         onAction,
                         { onAction(DetailsAction.SelectOptions(it)) },
                     )
+                    // At the very bottom: after the synopsis of a movie, after every episode of a
+                    // show.
+                    if (state.relatedMedia.isNotEmpty()) {
+                        item(key = "related", contentType = "related") {
+                            RelatedMediaRow(
+                                media,
+                                state.relatedMedia,
+                                onMediaClick,
+                                onRelatedGenresClick,
+                                Modifier.padding(top = 16.dp).bodyRevealGroup(2),
+                            )
+                        }
+                    }
                 }
             }
 
@@ -981,6 +1020,9 @@ private fun HeroHeaderSection(
                     rememberSaveable(media.id) {
                         mutableStateOf(false)
                     }
+                // Compose-internal: whether the synopsis is longer than the collapsed lines. Only
+                // then is there anything to show more or less of.
+                var isLong by remember(media.id, media.overview) { mutableStateOf(false) }
                 Column(
                     modifier = Modifier.fillMaxWidth().bodyRevealGroup(1),
                     horizontalAlignment = Alignment.Start,
@@ -989,20 +1031,27 @@ private fun HeroHeaderSection(
                         text = media.overview,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = if (isExpanded) Int.MAX_VALUE else 3,
+                        maxLines = if (isExpanded) Int.MAX_VALUE else OVERVIEW_COLLAPSED_LINES,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { layout ->
+                            isLong =
+                                if (isExpanded) layout.lineCount > OVERVIEW_COLLAPSED_LINES
+                                else layout.hasVisualOverflow
+                        },
                     )
 
-                    TextButton(
-                        onClick = { isExpanded = !isExpanded },
-                        contentPadding = PaddingValues(0.dp),
-                    ) {
-                        Text(
-                            stringResource(
-                                if (isExpanded) R.string.show_less else R.string.show_more
-                            ),
-                            style = MaterialTheme.typography.labelLarge,
-                        )
+                    if (isLong) {
+                        TextButton(
+                            onClick = { isExpanded = !isExpanded },
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (isExpanded) R.string.show_less else R.string.show_more
+                                ),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        }
                     }
                 }
             }
@@ -1082,6 +1131,33 @@ private fun BannerHeroArtwork(
 
 /** Banner hero height as a multiple of the screen width. */
 private const val BANNER_HERO_RATIO = 1.33f
+
+/** Synopsis lines shown before Show more. */
+private const val OVERVIEW_COLLAPSED_LINES = 3
+
+/**
+ * Other library titles sharing a genre with [media], as a Home-style shelf. Its arrow opens Library
+ * filtered by this title's genres. Nothing is drawn without related titles. A related poster opens
+ * its page with a crossfade (no poster flight between two Details pages).
+ */
+@Composable
+private fun RelatedMediaRow(
+    media: MediaItem,
+    related: List<MediaItem>,
+    onMediaClick: (Long) -> Unit,
+    onGenresClick: (List<String>) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (related.isEmpty()) return
+    MediaRow(
+        title = stringResource(R.string.related_content),
+        items = related,
+        onItemClick = { onMediaClick(it.id) },
+        onHeaderClick = { onGenresClick(media.genreList) },
+        modifier = modifier,
+        gutter = LionLayout.DetailGutter,
+    )
+}
 
 private fun LazyListScope.seasonSelectorAndEpisodes(
     media: MediaItem,
@@ -1312,3 +1388,38 @@ private fun heroFadeMask(amount: Float): Brush =
 
 /** Hero image moves at this fraction of the scroll speed. */
 private const val HERO_PARALLAX = .5f
+
+@Preview(name = "Long synopsis with Show more")
+@Composable
+private fun LongSynopsisHeaderPreview() {
+    LionLibraryTheme {
+        val media =
+            PreviewDetailsFilm.copy(
+                overview =
+                    "A long journey through familiar places, with unexpected discoveries and a " +
+                        "new beginning. Old friends return, a quiet town keeps its secrets and " +
+                        "every road leads somewhere it should not. By the end of the season " +
+                        "nothing is quite what it seemed at the start."
+            )
+        HeroHeaderSection(
+            media,
+            DetailsState(media = media, isLoading = false).playbackLabel(),
+            false,
+            {},
+        )
+    }
+}
+
+@Preview(name = "Related titles")
+@Preview(name = "Related titles, large text", widthDp = 320, fontScale = 2f)
+@Composable
+private fun RelatedMediaRowPreview() {
+    LionLibraryTheme {
+        RelatedMediaRow(
+            PreviewDetailsFilm,
+            listOf(PreviewFilm.copy(id = 2, title = "Michael"), PreviewFilm.copy(id = 3)),
+            {},
+            {},
+        )
+    }
+}

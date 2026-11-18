@@ -274,4 +274,33 @@ class DetailsViewModelTest {
             assertThat(vm.state.value.nextEpisodeToWatch?.id).isEqualTo(33L)
             vm.viewModelScope.cancel()
         }
+
+    @Test
+    fun `related titles share a genre and never include the page's own title`() =
+        runTest(dispatcher) {
+            val own = media(7, genres = "Drama,Crime")
+            media.put(own)
+            media.browseAnswer = {
+                listOf(own, media(8, genres = "Comedy"), media(9, genres = "crime"))
+            }
+            val vm = viewModel(7)
+            backgroundScope.launch { vm.state.collect {} }
+
+            assertThat(vm.state.value.relatedMedia.map { it.id }).containsExactly(9L)
+            vm.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `a failing library query only leaves the related row empty`() =
+        runTest(dispatcher) {
+            media.put(media(7, genres = "Drama"))
+            media.browseFailure = IllegalStateException("db")
+            val vm = viewModel(7)
+            backgroundScope.launch { vm.state.collect {} }
+
+            assertThat(vm.state.value.media?.id).isEqualTo(7L)
+            assertThat(vm.state.value.error).isNull()
+            assertThat(vm.state.value.relatedMedia).isEmpty()
+            vm.viewModelScope.cancel()
+        }
 }

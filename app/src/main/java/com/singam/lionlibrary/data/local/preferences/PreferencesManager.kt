@@ -168,6 +168,15 @@ class PreferencesManager(context: Context) {
     suspend fun setDetailsBlur(enabled: Boolean) {
         portable.edit { prefs -> prefs[PreferencesKeys.DETAILS_BLUR] = enabled }
     }
+
+    /** Chapter marks and name on the player's seek bar; on by default. Display only. */
+    val showChapters: Flow<Boolean> = portableData.map { prefs ->
+        prefs[PreferencesKeys.SHOW_CHAPTERS] ?: true
+    }
+
+    suspend fun setShowChapters(enabled: Boolean) {
+        portable.edit { prefs -> prefs[PreferencesKeys.SHOW_CHAPTERS] = enabled }
+    }
 }
 
 /** Emits empty preferences (so every key reads its default) when the file cannot be read. */

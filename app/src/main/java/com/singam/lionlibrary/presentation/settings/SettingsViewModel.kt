@@ -42,6 +42,7 @@ data class SettingsState(
     val onlineSkipTimes: Boolean = true,
     val posterTransitions: Boolean = true,
     val detailsBlur: Boolean = true,
+    val showChapters: Boolean = true,
 )
 
 sealed interface SettingsAction {
@@ -74,6 +75,8 @@ sealed interface SettingsAction {
     data class OnPosterTransitionsToggle(val enabled: Boolean) : SettingsAction
 
     data class OnDetailsBlurToggle(val enabled: Boolean) : SettingsAction
+
+    data class OnShowChaptersToggle(val enabled: Boolean) : SettingsAction
 }
 
 sealed interface SettingsEvent {
@@ -143,6 +146,7 @@ class SettingsViewModel(
             is SettingsAction.OnOnlineSkipTimesToggle -> toggleOnlineSkipTimes(action.enabled)
             is SettingsAction.OnPosterTransitionsToggle -> togglePosterTransitions(action.enabled)
             is SettingsAction.OnDetailsBlurToggle -> toggleDetailsBlur(action.enabled)
+            is SettingsAction.OnShowChaptersToggle -> toggleShowChapters(action.enabled)
         }
     }
 
@@ -197,6 +201,10 @@ class SettingsViewModel(
 
             settingsRepository.detailsBlur.first().let { enabled ->
                 _state.update { it.copy(detailsBlur = enabled) }
+            }
+
+            settingsRepository.showChapters.first().let { enabled ->
+                _state.update { it.copy(showChapters = enabled) }
             }
         }
     }
@@ -326,6 +334,13 @@ class SettingsViewModel(
         launchSetting {
             settingsRepository.setDetailsBlur(enabled)
             _state.update { it.copy(detailsBlur = enabled) }
+        }
+    }
+
+    private fun toggleShowChapters(enabled: Boolean) {
+        launchSetting {
+            settingsRepository.setShowChapters(enabled)
+            _state.update { it.copy(showChapters = enabled) }
         }
     }
 }

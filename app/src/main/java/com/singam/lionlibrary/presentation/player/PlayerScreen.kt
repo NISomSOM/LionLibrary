@@ -497,7 +497,8 @@ fun PlayerScreen(
                     onAspectClick = { onAction(PlayerAction.OnAspectCycle) },
                     onInfoClick = { onAction(PlayerAction.OnPanelChange(PlayerPanel.INFO)) },
                     onNextClick = { onAction(PlayerAction.OnPlayNext) },
-                    chapters = state.chapters,
+                    // Display only: skip buttons read the chapters in the ViewModel either way.
+                    chapters = if (state.showChapters) state.chapters else emptyList(),
                     modifier =
                         Modifier.align(Alignment.BottomCenter)
                             .safeDrawingPadding()

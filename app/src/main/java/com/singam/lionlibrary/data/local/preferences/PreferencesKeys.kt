@@ -20,4 +20,5 @@ object PreferencesKeys {
     val ONLINE_SKIP_TIMES = booleanPreferencesKey("online_skip_times")
     val POSTER_TRANSITIONS = booleanPreferencesKey("poster_transitions")
     val DETAILS_BLUR = booleanPreferencesKey("details_blur")
+    val SHOW_CHAPTERS = booleanPreferencesKey("show_chapters")
 }

@@ -54,6 +54,8 @@ data class PlayerState(
     val skipButton: SkipSegmentType? = null,
     /** Chapters of the current file, drawn on the seek bar; empty when it has none. */
     val chapters: List<PlaybackChapter> = emptyList(),
+    /** The Show chapters setting: off hides marks and names. Skip buttons still use [chapters]. */
+    val showChapters: Boolean = true,
     /** Press-and-hold on the video is playing at 2x; release restores [playbackSpeed]. */
     val isHoldSpeedActive: Boolean = false,
 ) {
@@ -199,6 +201,11 @@ class PlayerViewModel(
                 skipSession.setOnlineEnabled(it)
             }
         }
+        viewModelScope.launch {
+            settings.showChapters.distinctUntilChanged().collect { show ->
+                mutableState.update { it.copy(showChapters = show) }
+            }
+        }
         viewModelScope.launch { skipSession.segments.collect { refreshSkipButton() } }
         viewModelScope.launch {
             // Keyed by session so the next file's engine is hidden too when the card stays up.
@@ -277,6 +284,7 @@ class PlayerViewModel(
                     playbackSpeed = previous.playbackSpeed,
                     aspectMode = previous.aspectMode,
                     subtitleScale = previous.subtitleScale,
+                    showChapters = previous.showChapters,
                     supportsSubtitleDelay = selected.supportsSubtitleDelay,
                     supportsSubtitleScale = selected.supportsSubtitleScale,
                 )

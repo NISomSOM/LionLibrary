@@ -70,7 +70,10 @@ class PlayerViewModelTest {
             }
         }
 
-    private fun TestScope.start(type: MediaType = MediaType.TV_SHOW): EngineFake {
+    private fun TestScope.start(
+        type: MediaType = MediaType.TV_SHOW,
+        settings: FakeSettingsRepository = FakeSettingsRepository(),
+    ): EngineFake {
         vm =
             PlayerViewModel(
                 SavedStateHandle(mapOf("mediaType" to type.name, "mediaId" to 11L)),
@@ -78,7 +81,7 @@ class PlayerViewModelTest {
                 object : LaunchPlayerUseCase {
                     override fun invoke(fileUri: Uri, positionMs: Long) = Intent()
                 },
-                FakeSettingsRepository().apply { onlineSkipTimes.value = false },
+                settings.apply { onlineSkipTimes.value = false },
                 factory,
                 object : PlaybackAudioFocus {
                     override fun request(onLoss: () -> Unit) = true
@@ -146,6 +149,29 @@ class PlayerViewModelTest {
 
         assertEquals(4_000L, vm.positionMs.value)
         assertSame(stateBefore, vm.state.value)
+    }
+
+    @Test
+    fun hiddenChaptersStillGiveTheSkipIntroButton() = playerTest {
+        val engine = start(settings = FakeSettingsRepository().apply { showChapters.value = false })
+        val chapters =
+            listOf(PlaybackChapter(0, 90_000, "Opening"), PlaybackChapter(90_000, null, "A"))
+
+        engine.position = 10_000
+        engine.emit {
+            it.copy(
+                chapters = chapters,
+                durationMs = 1_400_000,
+                isSeekable = true,
+                playbackState = EnginePlaybackState.READY,
+            )
+        }
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertFalse(vm.state.value.showChapters)
+        assertEquals(chapters, vm.state.value.chapters)
+        assertEquals(SkipSegmentType.INTRO, vm.state.value.skipButton)
     }
 
     @Test

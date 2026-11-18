@@ -223,6 +223,13 @@ fun SettingsScreen(
                     { onAction(SettingsAction.OnOnlineSkipTimesToggle(it)) },
                     description = stringResource(R.string.online_skip_times_description),
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                PlaybackSetting(
+                    stringResource(R.string.show_chapters),
+                    state.showChapters,
+                    { onAction(SettingsAction.OnShowChaptersToggle(it)) },
+                    description = stringResource(R.string.show_chapters_description),
+                )
             }
             SettingsSection(stringResource(R.string.appearance)) {
                 PlaybackSetting(

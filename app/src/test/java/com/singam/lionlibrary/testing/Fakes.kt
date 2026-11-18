@@ -257,6 +257,7 @@ class FakeSettingsRepository : SettingsRepository {
     override val onlineSkipTimes = MutableStateFlow(true)
     override val posterTransitions = MutableStateFlow(true)
     override val detailsBlur = MutableStateFlow(true)
+    override val showChapters = MutableStateFlow(true)
 
     /** When set, every write throws it (a full or unreadable DataStore). */
     var writeFailure: Throwable? = null
@@ -293,6 +294,8 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setPosterTransitions(enabled: Boolean) = write(posterTransitions, enabled)
 
     override suspend fun setDetailsBlur(enabled: Boolean) = write(detailsBlur, enabled)
+
+    override suspend fun setShowChapters(enabled: Boolean) = write(showChapters, enabled)
 }
 
 class FakeMetadataRepository : MetadataRepository {

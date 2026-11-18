@@ -7,4 +7,6 @@
     <string name="online_skip_times">Online skip times</string>
     <string name="online_skip_times_description">Look up intro and credits times on TheIntroDB and SkipDB while a video plays. Named chapters in the file work without this.</string>
     <string name="skip_times_attribution">Intro and credits times: TheIntroDB (theintrodb.org) and SkipDB (skipdb.tv). SkipDB data is made available under the Open Database License (ODbL) 1.0.</string>
+    <string name="show_chapters">Show chapters</string>
+    <string name="show_chapters_description">Chapter marks and the chapter name on the player\'s seek bar. Skip intro and Skip credits work either way.</string>
 </resources>

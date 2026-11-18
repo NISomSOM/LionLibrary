@@ -60,4 +60,9 @@ class DataStoreSettingsRepository(private val preferencesManager: PreferencesMan
 
     override suspend fun setDetailsBlur(enabled: Boolean) =
         preferencesManager.setDetailsBlur(enabled)
+
+    override val showChapters: Flow<Boolean> = preferencesManager.showChapters
+
+    override suspend fun setShowChapters(enabled: Boolean) =
+        preferencesManager.setShowChapters(enabled)
 }

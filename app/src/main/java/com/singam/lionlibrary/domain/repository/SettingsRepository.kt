@@ -59,4 +59,13 @@ interface SettingsRepository {
         get() = flowOf(true)
 
     suspend fun setDetailsBlur(enabled: Boolean) {}
+
+    /**
+     * Whether the player draws chapter marks and the chapter name on the seek bar. Display only:
+     * chapter-based skip buttons work either way.
+     */
+    val showChapters: Flow<Boolean>
+        get() = flowOf(true)
+
+    suspend fun setShowChapters(enabled: Boolean) {}
 }

@@ -7,6 +7,9 @@
     <!-- %1$s = signed offset such as +1:05, %2$s = target time such as 12:34 -->
     <string name="player_seek_drag">%1$s · %2$s</string>
     <string name="player_hold_speed">2× speed</string>
+    <!-- Double tap in the centre of the video -->
+    <string name="player_paused">Paused</string>
+    <string name="player_resumed">Playing</string>
     <string name="cd_hold_speed">Playing at double speed while held</string>
 
     <!-- Fallback names for unlabelled tracks; %1$d = position in the list -->

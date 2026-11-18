@@ -220,7 +220,7 @@ fun PlayerScreen(
     var volumeLevel by remember { mutableStateOf<Float?>(null) }
     var volumeDragging by remember { mutableStateOf(false) }
     var seekDrag by remember { mutableStateOf<SeekDragFeedback?>(null) }
-    var doubleTapZone by remember { mutableStateOf<GestureZone?>(null) }
+    var doubleTap by remember { mutableStateOf<DoubleTapFeedback?>(null) }
     var doubleTapCount by remember { mutableIntStateOf(0) }
 
     // Keep each level pill up briefly after the finger lifts.
@@ -236,11 +236,11 @@ fun PlayerScreen(
             volumeLevel = null
         }
     }
-    // Each double tap restarts the short "-10 s / +10 s" label.
+    // Each double tap restarts the short "-10 s / +10 s / Paused / Playing" label.
     LaunchedEffect(doubleTapCount) {
         if (doubleTapCount > 0) {
             delay(600)
-            doubleTapZone = null
+            doubleTap = null
         }
     }
 
@@ -258,12 +258,23 @@ fun PlayerScreen(
                     )
 
                 override fun onDoubleTap(zone: GestureZone) {
+                    val feedback =
+                        when (zone) {
+                            GestureZone.LEFT -> DoubleTapFeedback.SEEK_BACK
+                            GestureZone.RIGHT -> DoubleTapFeedback.SEEK_FORWARD
+                            GestureZone.CENTER ->
+                                if (currentState.isPlaying) DoubleTapFeedback.PAUSED
+                                else DoubleTapFeedback.RESUMED
+                        }
                     currentOnAction(
-                        if (zone == GestureZone.LEFT) PlayerAction.OnSeekBackward
-                        else PlayerAction.OnSeekForward
+                        when (zone) {
+                            GestureZone.LEFT -> PlayerAction.OnSeekBackward
+                            GestureZone.RIGHT -> PlayerAction.OnSeekForward
+                            GestureZone.CENTER -> PlayerAction.OnPlayPause
+                        }
                     )
                     haptics.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                    doubleTapZone = zone
+                    doubleTap = feedback
                     doubleTapCount++
                 }
 
@@ -377,7 +388,7 @@ fun PlayerScreen(
         // Seek and speed feedback: shadowed text near the top, clear of the picture's centre.
         PlayerGestureFeedback(
             seekDrag = seekDrag,
-            doubleTapZone = doubleTapZone,
+            doubleTap = doubleTap,
             isHoldSpeedActive = state.isHoldSpeedActive,
             modifier =
                 Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 56.dp),

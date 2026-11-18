@@ -16,7 +16,7 @@ import androidx.compose.ui.input.pointer.positionChange
 internal interface PlayerGestureHandler {
     fun onTap()
 
-    /** Double tap on the left or right third (never the centre). */
+    /** Double tap: the left/right thirds seek, the centre third pauses or resumes. */
     fun onDoubleTap(zone: GestureZone)
 
     /** Finger held still for the long-press timeout; [onHoldEnd] follows on release. */
@@ -49,7 +49,8 @@ private sealed interface Start {
 
 /**
  * One handler for every touch on the video, replacing separate per-third detectors:
- * - tap toggles controls; double tap seeks on the left/right thirds;
+ * - tap toggles controls; double tap seeks on the left/right thirds and pauses/resumes in the
+ *   centre;
  * - holding still plays at 2x until release (never while moving or locked);
  * - a horizontal drag seeks; a clearly vertical drag changes volume (left) or brightness (right);
  * - drags that start inside system edges/bars ([exclusion]) are left to the system.
@@ -84,19 +85,19 @@ internal fun Modifier.playerGestures(
                     classify(down.id, down.position, viewConfiguration.touchSlop)
                 } ?: Start.Hold
             when (start) {
-                Start.Tap ->
-                    if (zone == GestureZone.CENTER) handler.onTap()
-                    else {
-                        val second =
-                            withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
-                                awaitFirstDown(requireUnconsumed = false)
-                            }
-                        if (second == null) handler.onTap()
-                        else {
-                            waitForUpOrCancellation()
-                            handler.onDoubleTap(zone)
+                Start.Tap -> {
+                    // Every third waits briefly for a second tap: the sides seek, the centre
+                    // pauses/resumes. A lone tap then toggles the controls.
+                    val second =
+                        withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
+                            awaitFirstDown(requireUnconsumed = false)
                         }
+                    if (second == null) handler.onTap()
+                    else {
+                        waitForUpOrCancellation()
+                        handler.onDoubleTap(zone)
                     }
+                }
                 Start.Hold -> {
                     handler.onHoldStart()
                     try {

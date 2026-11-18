@@ -48,6 +48,14 @@ import kotlin.math.roundToInt
 /** A horizontal seek drag in progress: signed distance from where it started and the target. */
 @Immutable internal data class SeekDragFeedback(val offsetMs: Long, val targetMs: Long)
 
+/** What the last double tap did, shown briefly as text. */
+internal enum class DoubleTapFeedback {
+    SEEK_BACK,
+    SEEK_FORWARD,
+    PAUSED,
+    RESUMED,
+}
+
 /** "+1:05" / "−0:30" for a seek offset. */
 internal fun formatSeekOffset(offsetMs: Long): String =
     (if (offsetMs < 0) "−" else "+") + formatTime(abs(offsetMs))
@@ -61,13 +69,13 @@ private fun feedbackTextStyle(): TextStyle =
     )
 
 /**
- * Shadowed text near the top of the video: drag-seek offset and target, the ±10 s of a double tap,
- * or the 2x hold indicator. Drag-seek wins when several are active.
+ * Shadowed text near the top of the video: drag-seek offset and target, the ±10 s or Paused/Playing
+ * of a double tap, or the 2x hold indicator. Drag-seek wins when several are active.
  */
 @Composable
 internal fun PlayerGestureFeedback(
     seekDrag: SeekDragFeedback?,
-    doubleTapZone: GestureZone?,
+    doubleTap: DoubleTapFeedback?,
     isHoldSpeedActive: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -79,8 +87,12 @@ internal fun PlayerGestureFeedback(
                     formatSeekOffset(seekDrag.offsetMs),
                     formatTime(seekDrag.targetMs),
                 )
-            doubleTapZone == GestureZone.LEFT -> stringResource(R.string.player_seek_back_10)
-            doubleTapZone == GestureZone.RIGHT -> stringResource(R.string.player_seek_forward_10)
+            doubleTap == DoubleTapFeedback.SEEK_BACK ->
+                stringResource(R.string.player_seek_back_10)
+            doubleTap == DoubleTapFeedback.SEEK_FORWARD ->
+                stringResource(R.string.player_seek_forward_10)
+            doubleTap == DoubleTapFeedback.PAUSED -> stringResource(R.string.player_paused)
+            doubleTap == DoubleTapFeedback.RESUMED -> stringResource(R.string.player_resumed)
             isHoldSpeedActive -> stringResource(R.string.player_hold_speed)
             else -> null
         }
@@ -180,7 +192,25 @@ private fun SeekDragFeedbackPreview() {
 @Preview(name = "Double tap back")
 @Composable
 private fun DoubleTapFeedbackPreview() {
-    LionLibraryTheme { PlayerGestureFeedback(null, GestureZone.LEFT, false) }
+    LionLibraryTheme { PlayerGestureFeedback(null, DoubleTapFeedback.SEEK_BACK, false) }
+}
+
+@Preview(name = "Double tap forward")
+@Composable
+private fun DoubleTapForwardFeedbackPreview() {
+    LionLibraryTheme { PlayerGestureFeedback(null, DoubleTapFeedback.SEEK_FORWARD, false) }
+}
+
+@Preview(name = "Double tap pause")
+@Composable
+private fun DoubleTapPauseFeedbackPreview() {
+    LionLibraryTheme { PlayerGestureFeedback(null, DoubleTapFeedback.PAUSED, false) }
+}
+
+@Preview(name = "Double tap resume", fontScale = 2f)
+@Composable
+private fun DoubleTapResumeFeedbackPreview() {
+    LionLibraryTheme { PlayerGestureFeedback(null, DoubleTapFeedback.RESUMED, false) }
 }
 
 @Preview(name = "Hold 2x", fontScale = 2f)

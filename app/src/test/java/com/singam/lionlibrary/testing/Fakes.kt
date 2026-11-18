@@ -149,8 +149,10 @@ class FakeMediaRepository : MediaRepository {
     override fun search(query: String, filter: MediaFilter) =
         browse(LibraryQuery(text = query, type = filter))
 
+    var recentlyAdded: List<MediaItem> = emptyList()
+
     override fun getRecentlyAdded(): Flow<List<MediaItem>> =
-        subscriptions.track(MutableStateFlow(emptyList()))
+        subscriptions.track(MutableStateFlow(recentlyAdded))
 
     override suspend fun getById(id: Long): MediaItem? = items.value[id]
 

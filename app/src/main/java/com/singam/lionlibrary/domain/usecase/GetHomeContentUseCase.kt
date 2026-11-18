@@ -35,9 +35,11 @@ class GetHomeContentUseCase(
                 val allMedia = (movies + tvShows + anime).distinctBy { it.id }
                 HomeContent(
                     jumpBackInItems = jumpBackInItems,
-                    movies = movies,
-                    tvShows = tvShows,
-                    anime = anime + animeMovies,
+                    // Category rows are alphabetical (Recently added and Jump back in keep their
+                    // own recency order).
+                    movies = movies.sortedByTitle(),
+                    tvShows = tvShows.sortedByTitle(),
+                    anime = (anime + animeMovies).sortedByTitle(),
                     recentlyAdded = recentlyAdded,
                     allMedia = allMedia,
                     genres = genreShelves(allMedia),
@@ -47,7 +49,16 @@ class GetHomeContentUseCase(
     }
 }
 
-/** Groups titles by their comma-separated genres (trimmed, blanks dropped), sorted by name. */
+/** Alphabetical by title, ignoring case; equal titles keep a stable order by local id. */
+internal fun List<MediaItem>.sortedByTitle(): List<MediaItem> =
+    sortedWith(
+        compareBy<MediaItem, String>(String.CASE_INSENSITIVE_ORDER) { it.title }.thenBy { it.id }
+    )
+
+/**
+ * Groups titles by their comma-separated genres (trimmed, blanks dropped), shelves sorted by name
+ * and the titles in each shelf alphabetical.
+ */
 internal fun genreShelves(items: List<MediaItem>): Map<String, List<MediaItem>> {
     val shelves = sortedMapOf<String, MutableList<MediaItem>>()
     items.forEach { item ->
@@ -58,5 +69,5 @@ internal fun genreShelves(items: List<MediaItem>): Map<String, List<MediaItem>> 
             ?.distinct()
             ?.forEach { genre -> shelves.getOrPut(genre) { mutableListOf() }.add(item) }
     }
-    return shelves
+    return shelves.mapValuesTo(sortedMapOf()) { (_, titles) -> titles.sortedByTitle() }
 }

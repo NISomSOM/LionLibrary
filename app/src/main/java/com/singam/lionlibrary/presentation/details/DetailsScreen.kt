@@ -5,10 +5,12 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import androidx.annotation.StringRes
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -31,6 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -49,7 +52,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.SnackbarHostState
@@ -59,10 +61,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -72,23 +76,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -108,7 +107,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.singam.lionlibrary.R
@@ -125,10 +123,18 @@ import com.singam.lionlibrary.presentation.components.ImdbYellow
 import com.singam.lionlibrary.presentation.components.LetterboxdGreen
 import com.singam.lionlibrary.presentation.components.LetterboxdMark
 import com.singam.lionlibrary.presentation.components.LocalArtwork
+import com.singam.lionlibrary.presentation.components.LongPressPreview
 import com.singam.lionlibrary.presentation.components.MediaOptionItem
 import com.singam.lionlibrary.presentation.components.PreviewFilm
 import com.singam.lionlibrary.presentation.components.rememberBackdropAlignment
-import com.singam.lionlibrary.presentation.navigation.rememberPosterZoom
+import com.singam.lionlibrary.presentation.components.rememberHeroPullConnection
+import com.singam.lionlibrary.presentation.components.stretchedHeight
+import com.singam.lionlibrary.presentation.navigation.LocalNavAnimatedVisibilityScope
+import com.singam.lionlibrary.presentation.navigation.LocalPosterTransitions
+import com.singam.lionlibrary.presentation.navigation.PosterTiming
+import com.singam.lionlibrary.presentation.navigation.PosterTransition
+import com.singam.lionlibrary.presentation.navigation.detailsPosterSharedBounds
+import com.singam.lionlibrary.presentation.navigation.posterHeroHeight
 import com.singam.lionlibrary.ui.theme.LionAlpha
 import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
@@ -136,6 +142,7 @@ import com.singam.lionlibrary.ui.theme.LionMotion
 import com.singam.lionlibrary.ui.theme.LionTheme
 import com.singam.lionlibrary.ui.theme.rememberSystemMotionEnabled
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -145,6 +152,8 @@ fun DetailsRoot(
     windowSizeClass: WindowSizeClass,
     onNavigateToPlayer: (MediaType, Long) -> Unit,
     onBack: () -> Unit = {},
+    // Set when a poster card opened this page: the hero then shares that poster with the card.
+    posterTransition: PosterTransition? = null,
     viewModel: DetailsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -193,6 +202,7 @@ fun DetailsRoot(
         windowSizeClass = windowSizeClass,
         onAction = viewModel::onAction,
         onBack = onBack,
+        posterTransition = posterTransition,
     )
 }
 
@@ -203,43 +213,200 @@ fun DetailsScreen(
     onAction: (DetailsAction) -> Unit,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
+    posterTransition: PosterTransition? = null,
 ) {
-    // One opaque container for every state of the page (loading, error, loaded). When a poster
-    // was tapped, this is what zooms out of that card, so it must exist from the first frame.
-    var heroLoaded by remember { mutableStateOf(false) }
-    val pageReady = !state.isLoading && (state.media == null || heroLoaded)
-    val zoom = rememberPosterZoom(pageReady)
-    // The outer box only draws the still picture of the previous page behind an opening zoom.
-    Box(modifier.fillMaxSize().then(zoom?.backdropModifier ?: Modifier)) {
-        Box(
-            Modifier.fillMaxSize()
-                .then(zoom?.modifier ?: Modifier)
-                .background(MaterialTheme.colorScheme.background)
-        ) {
+    val configuration = LocalConfiguration.current
+    // Only the phone-portrait hero is a full poster; other layouts keep the plain fades.
+    val posterLayout =
+        configuration.orientation == Configuration.ORIENTATION_PORTRAIT &&
+            configuration.smallestScreenWidthDp < 600
+    val heroSharedBounds = detailsPosterSharedBounds(posterTransition?.key.takeIf { posterLayout })
+    val shared = heroSharedBounds != null && posterTransition != null
+
+    val transition = LocalNavAnimatedVisibilityScope.current?.transition
+    val settled =
+        transition == null ||
+            (transition.currentState == EnterExitState.Visible &&
+                transition.targetState == EnterExitState.Visible)
+    val motion = remember { PosterTiming }
+    // While the poster flies out of its card, the page is only that poster on its blurred
+    // backdrop: composing the whole page at the start of the flight made it stutter. The body
+    // is composed while the poster is landing. Saved, so it does not wait again after the player
+    // or a rotation.
+    var bodyVisible by rememberSaveable { mutableStateOf(!shared) }
+    LaunchedEffect(settled) { if (settled) bodyVisible = true }
+    LaunchedEffect(Unit) {
+        delay(motion.bodyStartMs.toLong())
+        bodyVisible = true
+    }
+    // The hero's bottom fade grows while the poster flies out of its card and is in place when it
+    // lands (a fade that arrived afterwards read as a late blur), and recedes on the way back so
+    // the poster matches its card again. Driven by the navigation transition, like the flight.
+    val heroFade =
+        transition?.animateFloat(
+            transitionSpec = {
+                tween(
+                    if (targetState == EnterExitState.PostExit) LionMotion.Fast
+                    else LionMotion.Standard,
+                    easing = LinearEasing,
+                )
+            },
+            label = "heroFade",
+        ) { state ->
+            if (state == EnterExitState.Visible) 1f else 0f
+        }
+    // The body arrives in three groups (genres and actions; details and synopsis; seasons and
+    // episodes), each fading in while sliding down a little from just under the poster, a few
+    // tens of milliseconds apart. One clock for all three, started when the body appears.
+    val revealClock = remember { Animatable(if (bodyVisible) REVEAL_DONE else 0f) }
+    LaunchedEffect(bodyVisible) {
+        if (bodyVisible && revealClock.value < REVEAL_DONE) {
+            val total = motion.groupFadeMs + motion.groupStaggerMs * (BODY_GROUPS - 1)
+            revealClock.animateTo(REVEAL_DONE, tween(total, easing = LinearEasing))
+        }
+    }
+    // Going back, the whole body fades out with the same small slide up, quickly, while the poster
+    // holds; then the poster flies. Driven by the navigation transition, so a back gesture scrubs
+    // it. Anything but Visible counts as away: a Back pressed before the page has fully arrived is
+    // reported as a return to PreEnter, not as PostExit.
+    val closeFade =
+        transition?.animateFloat(
+            transitionSpec = { tween(motion.closeBodyMs, easing = FastOutSlowInEasing) },
+            label = "bodyFadeOut",
+        ) { state ->
+            if (state == EnterExitState.Visible) 1f else 0f
+        }
+    // Faded away, the page would still take every touch meant for Home, so it leaves then.
+    val bodyGone by remember(closeFade) { derivedStateOf { (closeFade?.value ?: 1f) <= 0f } }
+    val reveal: BodyReveal? =
+        if (shared) {
+            remember(closeFade, motion) {
+                BodyReveal(motion.slide) { group ->
+                    val total = motion.groupFadeMs + motion.groupStaggerMs * (BODY_GROUPS - 1)
+                    val elapsed = revealClock.value / REVEAL_DONE * total
+                    val local =
+                        ((elapsed - group * motion.groupStaggerMs) / motion.groupFadeMs).coerceIn(
+                            0f,
+                            1f,
+                        )
+                    LionMotion.EnterEasing.transform(local) * (closeFade?.value ?: 1f)
+                }
+            }
+        } else {
+            null
+        }
+    val motionEnabled = rememberSystemMotionEnabled()
+    val listState = rememberLazyListState()
+    val heroPull = remember { mutableFloatStateOf(0f) }
+    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        if (heroSharedBounds != null && posterTransition != null) {
+            // The shared poster is one element for the page's whole life, drawn here between the
+            // ambient backdrop and the page (which leaves the hero's place empty): there from
+            // the first frame for the flight out, and still the same element for the flight back.
+            DetailsAmbientBackdrop(
+                posterTransition.posterPath,
+                Modifier.matchParentSize(),
+                fadeMillis = LionMotion.Medium,
+            )
+            SharedHeroPoster(
+                posterPath = posterTransition.posterPath,
+                contentDescription = state.media?.title,
+                sharedBounds = heroSharedBounds,
+                listState = listState,
+                pullPx = { heroPull.floatValue },
+                fadeAmount = { heroFade?.value ?: 1f },
+                motionEnabled = motionEnabled,
+            )
+        }
+        if (bodyVisible && !bodyGone) {
             DetailsContent(
                 state,
                 windowSizeClass,
                 onAction,
                 onBack = onBack,
-                instantContent = zoom != null,
-                onHeroLoaded = { heroLoaded = true },
+                externalHero = shared,
+                listState = listState,
+                heroPullState = heroPull,
+                bodyReveal = reveal,
             )
-            // Going back: the poster fades in over the shrinking page, framed exactly like the
-            // card it is heading for, so the page lands as that poster instead of fading away.
-            val posterPath = state.media?.posterPath
-            if (zoom != null && zoom.isClosing && posterPath != null) {
-                LocalArtwork(
-                    paths = listOf(posterPath),
-                    contentDescription = null,
-                    modifier =
-                        Modifier.fillMaxWidth().aspectRatio(2f / 3f).graphicsLayer {
-                            alpha = zoom.posterAlpha()
-                        },
-                )
-            }
         }
     }
 }
+
+/**
+ * The portrait hero of a page opened from a poster card: that poster, sharing its bounds with the
+ * card. It sits where the list's first item leaves room for it and follows the list: it scrolls
+ * away with the item, moves at half speed inside its box and grows with a pull at the top.
+ */
+@Composable
+private fun SharedHeroPoster(
+    posterPath: String,
+    contentDescription: String?,
+    sharedBounds: Modifier,
+    listState: LazyListState,
+    pullPx: () -> Float,
+    fadeAmount: () -> Float,
+    motionEnabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val baseHeight = posterHeroHeight()
+    Box(
+        modifier
+            .fillMaxWidth()
+            .layout { measurable, constraints ->
+                val height = baseHeight.roundToPx() + pullPx().roundToInt()
+                val placeable =
+                    measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+                layout(placeable.width, placeable.height) {
+                    // Read here, so scrolling only moves it. Past the first item it is off screen.
+                    val scrolled =
+                        if (listState.firstVisibleItemIndex == 0) {
+                            listState.firstVisibleItemScrollOffset
+                        } else {
+                            placeable.height
+                        }
+                    placeable.place(0, -scrolled)
+                }
+            }
+            .then(sharedBounds)
+            .clipToBounds()
+    ) {
+        LocalArtwork(
+            paths = listOf(posterPath),
+            contentDescription = contentDescription,
+            modifier =
+                Modifier.fillMaxSize().heroImageEffects(fadeAmount, motionEnabled) {
+                    // Scaled by the fade, which recedes as the poster flies back to its card: a
+                    // scrolled page would otherwise land there with the picture still shifted.
+                    if (listState.firstVisibleItemIndex == 0) {
+                        listState.firstVisibleItemScrollOffset * fadeAmount()
+                    } else {
+                        0f
+                    }
+                },
+        )
+    }
+}
+
+/**
+ * The hero image fades out at its bottom edge by [fadeAmount] (0 leaves it whole), so it melts into
+ * the blurred ambient page instead of ending in a visible band, and moves at half the scroll speed.
+ * The image only ever moves down inside its clipped box, so no edge can show and it needs no
+ * over-scale. A pull stretches the hero box itself, not this layer.
+ */
+private fun Modifier.heroImageEffects(
+    fadeAmount: () -> Float,
+    motionEnabled: Boolean,
+    scrollOffset: () -> Float,
+): Modifier = graphicsLayer {
+    compositingStrategy = CompositingStrategy.Offscreen
+}
+    .drawWithContent {
+        drawContent()
+        val amount = fadeAmount()
+        if (amount > 0f) drawRect(heroFadeMask(amount), blendMode = BlendMode.DstIn)
+    }
+    .graphicsLayer { if (motionEnabled) translationY = scrollOffset() * HERO_PARALLAX }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -249,12 +416,16 @@ private fun DetailsContent(
     onAction: (DetailsAction) -> Unit,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
-    // The page zoom reveals the finished page itself, so the loaded-content fade is skipped.
-    instantContent: Boolean = false,
-    onHeroLoaded: () -> Unit = {},
+    // True when the caller draws the ambient backdrop and the portrait hero image itself (a page
+    // opened from a poster card); the hero's place in the list is then left empty.
+    externalHero: Boolean = false,
+    listState: LazyListState = rememberLazyListState(),
+    heroPullState: MutableFloatState = remember { mutableFloatStateOf(0f) },
+    // 0..1 while the body rolls down from, or back up under, an external hero; null otherwise.
+    // Staggered entrance and exit of the body under an external hero; null otherwise.
+    bodyReveal: BodyReveal? = null,
 ) {
     val selectedEpisodeForOptions = state.selectedEpisodeForOptions
-    val sheetState = rememberModalBottomSheetState()
     DeletionDialog(
         state.deletion,
         { onAction(DetailsAction.ConfirmDelete) },
@@ -281,11 +452,13 @@ private fun DetailsContent(
                 }
                 return
             }
-    val listState = rememberLazyListState()
     // Start when real content arrives, even if the navigation fade ended during loading.
     // The remembered value stays opaque through scrolling, history updates and player return.
-    val contentAlpha = remember(media.id) { Animatable(if (instantContent) 1f else 0f) }
-    LaunchedEffect(media.id) { contentAlpha.animateTo(1f, tween(240, easing = LionMotion.Easing)) }
+    // A body that rolls into view needs no fade of its own.
+    val contentAlpha = remember(media.id) { Animatable(if (bodyReveal != null) 1f else 0f) }
+    LaunchedEffect(media.id) {
+        contentAlpha.animateTo(1f, tween(240, easing = LionMotion.Easing))
+    }
 
     var toolbarHeightPx by remember { mutableIntStateOf(0) }
     var primaryActionAboveToolbar by remember(media.id) { mutableStateOf(false) }
@@ -316,73 +489,58 @@ private fun DetailsContent(
             label = "toolbarLogo",
         )
 
+    // Episode long press: the thumbnail lifts out of the list with the episode's name, date and
+    // full description, then the same options as before.
     selectedEpisodeForOptions?.let { episode ->
-        ModalBottomSheet(
-            onDismissRequest = { onAction(DetailsAction.SelectOptions(null)) },
-            sheetState = sheetState,
-            containerColor = LionTheme.colors.sheet,
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val imagePath = episode.thumbnailPath
-                    if (imagePath != null) {
-                        LocalArtwork(
-                            paths = listOf(imagePath),
-                            contentDescription = episode.title,
-                            contentScale = ContentScale.Crop,
-                            modifier =
-                                Modifier.width(125.dp).height(70.dp).clip(RoundedCornerShape(8.dp)),
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            text = episode.title ?: "Episode ${episode.episodeNumber}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = LionTheme.colors.onMedia,
-                        )
-                        Text(
-                            text =
-                                stringResource(
-                                    R.string.season_number,
-                                    episode.seasonNumber,
-                                ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = LionTheme.colors.textSecondary,
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                MediaOptionItem(
-                    icon = Icons.Default.CheckCircle,
-                    text = stringResource(R.string.ui_mark_as_watched_upto_here),
-                    onClick = {
-                        onAction(DetailsAction.SelectOptions(null))
-                        onAction(DetailsAction.OnMarkWatchedUpTo(episode))
-                    },
+        val episodeLabel =
+            if (episode.episodeEndNumber != null) {
+                stringResource(
+                    R.string.episode_range,
+                    episode.seasonNumber,
+                    episode.episodeNumber,
+                    episode.episodeEndNumber,
                 )
-                MediaOptionItem(
-                    icon = Icons.Default.PlayArrow,
-                    text = stringResource(R.string.ui_play_in_external_player),
-                    onClick = {
-                        onAction(DetailsAction.SelectOptions(null))
-                        onAction(DetailsAction.OnPlayEpisodeExternal(episode))
-                    },
-                    iconTint = LionTheme.colors.ratingStar,
-                )
-                MediaOptionItem(
-                    icon = Icons.Default.Delete,
-                    text = stringResource(R.string.delete_from_device),
-                    onClick = { onAction(DetailsAction.RequestDeleteEpisode(episode.id)) },
-                    iconTint = MaterialTheme.colorScheme.error,
-                )
+            } else {
+                stringResource(R.string.episode_number, episode.seasonNumber, episode.episodeNumber)
             }
+        LongPressPreview(
+            title = episode.title ?: "Episode ${episode.episodeNumber}",
+            onDismiss = { onAction(DetailsAction.SelectOptions(null)) },
+            artworkAspectRatio = 16f / 9f,
+            subtitle =
+                listOfNotNull(episodeLabel, episode.airDate?.ifBlank { null }).joinToString(" · "),
+            description = episode.overview,
+            artwork = {
+                LocalArtwork(
+                    paths = listOf(episode.thumbnailPath, media.backdropPath, media.posterPath),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
+        ) {
+            MediaOptionItem(
+                icon = Icons.Default.CheckCircle,
+                text = stringResource(R.string.ui_mark_as_watched_upto_here),
+                onClick = {
+                    onAction(DetailsAction.SelectOptions(null))
+                    onAction(DetailsAction.OnMarkWatchedUpTo(episode))
+                },
+            )
+            MediaOptionItem(
+                icon = Icons.Default.PlayArrow,
+                text = stringResource(R.string.ui_play_in_external_player),
+                onClick = {
+                    onAction(DetailsAction.SelectOptions(null))
+                    onAction(DetailsAction.OnPlayEpisodeExternal(episode))
+                },
+                iconTint = LionTheme.colors.ratingStar,
+            )
+            MediaOptionItem(
+                icon = Icons.Default.Delete,
+                text = stringResource(R.string.delete_from_device),
+                onClick = { onAction(DetailsAction.RequestDeleteEpisode(episode.id)) },
+                iconTint = MaterialTheme.colorScheme.error,
+            )
         }
     }
 
@@ -406,178 +564,160 @@ private fun DetailsContent(
     // Rubber band at the top of the list: a pull makes the hero taller by this many pixels, so
     // the page follows the finger with growing resistance while the backdrop stretches to fill
     // the gap, and a spring returns it when the finger lifts. Read in layout only.
-    var heroPull by remember(media.id) { mutableFloatStateOf(0f) }
-    val pullConnection =
-        remember(stretchEnabled) {
-            object : NestedScrollConnection {
-                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                    if (heroPull <= 0f || available.y >= 0f) return Offset.Zero
-                    val used = maxOf(available.y, -heroPull)
-                    heroPull += used
-                    return Offset(0f, used)
-                }
+    var heroPull by heroPullState
+    val pullConnection = rememberHeroPullConnection(heroPullState, stretchEnabled)
 
-                override fun onPostScroll(
-                    consumed: Offset,
-                    available: Offset,
-                    source: NestedScrollSource,
-                ): Offset {
-                    if (!stretchEnabled || source != NestedScrollSource.UserInput) {
-                        return Offset.Zero
-                    }
-                    if (available.y <= 0f) return Offset.Zero
-                    // The further it is pulled, the less it gives.
-                    val give = HERO_PULL_RESISTANCE * (1f - heroPull / HERO_PULL_MAX_PX)
-                    heroPull = (heroPull + available.y * give).coerceAtMost(HERO_PULL_MAX_PX)
-                    return Offset(0f, available.y)
-                }
-
-                override suspend fun onPreFling(available: Velocity): Velocity {
-                    if (heroPull > 0f)
-                        animate(
-                            heroPull,
-                            0f,
-                            animationSpec = spring(dampingRatio = .82f, stiffness = 320f),
-                        ) { value, _ ->
-                            heroPull = value
-                        }
-                    return Velocity.Zero
-                }
+    // The full-poster hero is for phone portrait with the Poster animation setting on; everywhere
+    // else (setting off, landscape, tablets) the hero is the title's banner with its logo over it.
+    val bannerHero = !LocalPosterTransitions.current || isTablet || isLandscapeMode
+    CompositionLocalProvider(LocalBodyReveal provides bodyReveal) {
+        Box(modifier = modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha.value }) {
+            // Same picture as the hero (the poster in portrait), so the hero melts into its own
+            // blur.
+            if (!externalHero) {
+                DetailsAmbientBackdrop(
+                    if (isLandscapeMode || bannerHero) media.backdropPath ?: media.posterPath
+                    else media.posterPath ?: media.backdropPath,
+                    Modifier.matchParentSize(),
+                )
             }
-        }
+            if (isTwoPane) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                        HeroHeaderSection(
+                            media,
+                            state.playbackLabel(),
+                            isLandscapeMode,
+                            onAction,
+                            bannerHero = bannerHero,
+                        )
+                    }
 
-    val paneColor = LionTheme.colors.pane
-    Box(modifier = modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha.value }) {
-        DetailsAmbientBackdrop(media.backdropPath ?: media.posterPath, Modifier.matchParentSize())
-        if (isTwoPane) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                    HeroHeaderSection(
-                        media,
-                        state.playbackLabel(),
-                        isLandscapeMode,
-                        onAction,
-                        onArtworkLoaded = onHeroLoaded,
-                    )
+                    LazyColumn(
+                        state = listState,
+                        // Banner and episodes share the screen half and half.
+                        modifier = Modifier.weight(1f),
+                        contentPadding =
+                            PaddingValues(
+                                bottom = 32.dp,
+                                top = if (isLandscapeMode) 16.dp else 64.dp,
+                            ),
+                    ) {
+                        seasonSelectorAndEpisodes(
+                            media,
+                            state,
+                            onAction,
+                            { onAction(DetailsAction.SelectOptions(it)) },
+                        )
+                    }
                 }
-
+            } else {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.weight(1.5f),
-                    contentPadding =
-                        PaddingValues(bottom = 32.dp, top = if (isLandscapeMode) 16.dp else 64.dp),
+                    modifier =
+                        Modifier.fillMaxSize().nestedScroll(pullConnection).testTag("details-list"),
+                    contentPadding = PaddingValues(bottom = 32.dp),
                 ) {
+                    item {
+                        val heroModifier =
+                            if (isTabletPortraitMovie) Modifier.fillParentMaxHeight() else Modifier
+                        HeroHeaderSection(
+                            media,
+                            state.playbackLabel(),
+                            isLandscapeMode,
+                            onAction,
+                            heroModifier,
+                            isTabletPortraitMovie,
+                            onPrimaryActionBottomChanged,
+                            scrollOffset = if (motionEnabled) heroScrollOffset else ({ 0f }),
+                            pullPx = { heroPull },
+                            motionEnabled = motionEnabled,
+                            showArtwork = !externalHero,
+                            bannerHero = bannerHero,
+                        )
+                    }
                     seasonSelectorAndEpisodes(
                         media,
                         state,
                         onAction,
                         { onAction(DetailsAction.SelectOptions(it)) },
-                        seasonRowColor = paneColor,
                     )
                 }
             }
-        } else {
-            LazyColumn(
-                state = listState,
-                modifier =
-                    Modifier.fillMaxSize().nestedScroll(pullConnection).testTag("details-list"),
-                contentPadding = PaddingValues(bottom = 32.dp),
-            ) {
-                item {
-                    val heroModifier =
-                        if (isTabletPortraitMovie) Modifier.fillParentMaxHeight() else Modifier
-                    HeroHeaderSection(
-                        media,
-                        state.playbackLabel(),
-                        isLandscapeMode,
-                        onAction,
-                        heroModifier,
-                        isTabletPortraitMovie,
-                        onPrimaryActionBottomChanged,
-                        scrollOffset = if (motionEnabled) heroScrollOffset else ({ 0f }),
-                        pullPx = { heroPull },
-                        motionEnabled = motionEnabled,
-                        onArtworkLoaded = onHeroLoaded,
-                    )
-                }
-                seasonSelectorAndEpisodes(
-                    media,
-                    state,
-                    onAction,
-                    { onAction(DetailsAction.SelectOptions(it)) },
-                )
-            }
-        }
 
-        if (!isLandscapeMode) {
-            Box {
-                Box(
-                    Modifier.matchParentSize()
-                        .graphicsLayer {
-                            if (!isTwoPane) {
-                                alpha = toolbarProgress
-                                translationY = -(1f - toolbarProgress) * size.height * TOOLBAR_SLIDE
+            if (!isLandscapeMode) {
+                // The toolbar belongs to the body: it fades with the roll.
+                Box(Modifier.graphicsLayer { alpha = bodyReveal?.progress?.invoke(0) ?: 1f }) {
+                    Box(
+                        Modifier.matchParentSize()
+                            .graphicsLayer {
+                                if (!isTwoPane) {
+                                    alpha = toolbarProgress
+                                    translationY =
+                                        -(1f - toolbarProgress) * size.height * TOOLBAR_SLIDE
+                                }
                             }
-                        }
-                        .background(if (isTwoPane) LionTheme.colors.pane else toolbarSurface)
-                )
-                TopAppBar(
-                    modifier =
-                        Modifier.onSizeChanged { toolbarHeightPx = it.height }
-                            .testTag(
-                                if (showTopBarBackground) "details-toolbar-visible"
-                                else "details-toolbar-hidden"
+                            .background(if (isTwoPane) LionTheme.colors.pane else toolbarSurface)
+                    )
+                    TopAppBar(
+                        modifier =
+                            Modifier.onSizeChanged { toolbarHeightPx = it.height }
+                                .testTag(
+                                    if (showTopBarBackground) "details-toolbar-visible"
+                                    else "details-toolbar-hidden"
+                                ),
+                        title = {
+                            Box(
+                                modifier =
+                                    Modifier.fillMaxWidth()
+                                        .padding(end = 48.dp)
+                                        .then(
+                                            if (!showTopBarBackground)
+                                                Modifier.clearAndSetSemantics {}
+                                            else Modifier
+                                        )
+                                        .graphicsLayer { alpha = if (isTwoPane) 1f else logoAlpha },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                ArtworkTitle(
+                                    media.title,
+                                    media.logoPath,
+                                    Modifier.fillMaxWidth(0.8f).height(40.dp),
+                                    compact = true,
+                                )
+                            }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.back),
+                                    tint = LionTheme.colors.onMedia,
+                                )
+                            }
+                        },
+                        colors =
+                            TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                titleContentColor = LionTheme.colors.onMedia,
                             ),
-                    title = {
-                        Box(
-                            modifier =
-                                Modifier.fillMaxWidth()
-                                    .padding(end = 48.dp)
-                                    .then(
-                                        if (!showTopBarBackground) Modifier.clearAndSetSemantics {}
-                                        else Modifier
-                                    )
-                                    .graphicsLayer { alpha = if (isTwoPane) 1f else logoAlpha },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            ArtworkTitle(
-                                media.title,
-                                media.logoPath,
-                                Modifier.fillMaxWidth(0.8f).height(40.dp),
-                                compact = true,
-                            )
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back),
-                                tint = LionTheme.colors.onMedia,
-                            )
-                        }
-                    },
-                    colors =
-                        TopAppBarDefaults.topAppBarColors(
-                            containerColor = Color.Transparent,
-                            titleContentColor = LionTheme.colors.onMedia,
-                        ),
-                )
-            }
-        } else {
-            IconButton(onClick = onBack, modifier = Modifier.padding(16.dp)) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back),
-                    tint = LionTheme.colors.onMedia,
-                    modifier =
-                        Modifier.size(36.dp)
-                            .background(
-                                LionTheme.colors.scrim.copy(alpha = LionAlpha.ScrimStrong),
-                                RoundedCornerShape(18.dp),
-                            )
-                            .padding(6.dp),
-                )
+                    )
+                }
+            } else {
+                IconButton(onClick = onBack, modifier = Modifier.padding(16.dp)) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.back),
+                        tint = LionTheme.colors.onMedia,
+                        modifier =
+                            Modifier.size(36.dp)
+                                .background(
+                                    LionTheme.colors.scrim.copy(alpha = LionAlpha.ScrimStrong),
+                                    RoundedCornerShape(18.dp),
+                                )
+                                .padding(6.dp),
+                    )
+                }
             }
         }
     }
@@ -595,7 +735,10 @@ private fun HeroHeaderSection(
     scrollOffset: () -> Float = { 0f },
     pullPx: () -> Float = { 0f },
     motionEnabled: Boolean = false,
-    onArtworkLoaded: () -> Unit = {},
+    // False leaves the image's place empty, for a hero the caller draws behind the list.
+    showArtwork: Boolean = true,
+    // The title's banner with its logo and genres over it, instead of the full poster.
+    bannerHero: Boolean = false,
 ) {
     val haptics = LocalHapticFeedback.current
     Column(modifier = modifier.fillMaxWidth()) {
@@ -607,92 +750,31 @@ private fun HeroHeaderSection(
                 else
                     Modifier.fillMaxWidth()
                         .stretchedHeight(
-                            (LocalConfiguration.current.screenWidthDp.dp * 1.33f).coerceIn(
-                                420.dp,
-                                760.dp,
-                            ),
+                            if (bannerHero) bannerHeroHeight() else posterHeroHeight(),
                             pullPx,
                         )
             }
         Box(modifier = imageModifier.clipToBounds()) {
-            // Portrait heroes crop a wide backdrop; landscape keeps the centred 16:9 frame.
-            val focus = rememberBackdropAlignment(media.backdropPath ?: media.posterPath)
-            LocalArtwork(
-                paths = listOf(media.backdropPath, media.posterPath),
-                contentDescription = media.title,
-                alignment = if (isLandscapeMode) Alignment.Center else focus,
-                onLoaded = onArtworkLoaded,
-                modifier =
-                    Modifier.fillMaxSize()
-                        // The image itself fades out at the bottom, so it melts into the blurred
-                        // ambient page instead of ending in a visible band.
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(HeroFadeMask, blendMode = BlendMode.DstIn)
-                        }
-                        .graphicsLayer {
-                            if (!motionEnabled) return@graphicsLayer
-                            // Parallax: half scroll speed, with a slight over-scale so edges
-                            // never show. A pull stretches the hero box itself, not this layer.
-                            translationY = scrollOffset() * HERO_PARALLAX
-                            scaleX = HERO_OVERSCALE
-                            scaleY = HERO_OVERSCALE
-                            transformOrigin = TransformOrigin(.5f, 0f)
-                        }
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-
-            Box(
-                modifier =
-                    Modifier.fillMaxSize()
-                        .background(
-                            // Multi-stop fade that ends in the ambient page tint, so the hero runs
-                            // into the blurred backdrop without a seam.
-                            Brush.verticalGradient(
-                                0f to Color.Transparent,
-                                .4f to Color.Transparent,
-                                .62f to LionTheme.colors.scrim.copy(alpha = .22f),
-                                .8f to LionTheme.colors.scrim.copy(alpha = LionAlpha.Scrim),
-                                // Ends clear: below the hero the page is the bare ambient layer,
-                                // so any tint left here would show as a step.
-                                1f to Color.Transparent,
-                            )
-                        )
-            )
-
-            Box(
-                modifier =
-                    Modifier.fillMaxSize()
-                        .padding(horizontal = LionLayout.DetailGutter)
-                        .padding(bottom = 8.dp),
-                contentAlignment = Alignment.BottomCenter,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    ArtworkTitle(
-                        media.title,
-                        media.logoPath,
-                        Modifier.fillMaxWidth(.72f)
-                            .height(80.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.6f)),
-                    )
-
-                    if (!media.genres.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        val genresText =
-                            media.genres.split(",").take(3).joinToString(" • ") { it.trim() }
-                        Text(
-                            text = genresText,
-                            style =
-                                MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Medium
-                                ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            textAlign = TextAlign.Center,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+            // The portrait hero is the title's whole poster (which carries the title itself), the
+            // same picture and shape as its card. Landscape keeps the centred 16:9 backdrop; a
+            // title without a poster crops its backdrop around the subject as before.
+            if (showArtwork && bannerHero) {
+                BannerHeroArtwork(media, isLandscapeMode, motionEnabled, scrollOffset)
+            } else if (showArtwork) {
+                val posterHero = !isLandscapeMode && media.posterPath != null
+                LocalArtwork(
+                    paths =
+                        if (isLandscapeMode) listOf(media.backdropPath, media.posterPath)
+                        else listOf(media.posterPath, media.backdropPath),
+                    contentDescription = media.title,
+                    alignment =
+                        if (isLandscapeMode || posterHero) Alignment.Center
+                        else rememberBackdropAlignment(media.backdropPath),
+                    modifier =
+                        Modifier.fillMaxSize()
+                            .heroImageEffects({ 1f }, motionEnabled, scrollOffset)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
             }
         }
 
@@ -703,8 +785,21 @@ private fun HeroHeaderSection(
                     .padding(top = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            if (!bannerHero && !media.genres.isNullOrBlank()) {
+                Text(
+                    modifier = Modifier.bodyRevealGroup(0),
+                    text = media.genres.split(",").take(3).joinToString(" • ") { it.trim() },
+                    style =
+                        MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().bodyRevealGroup(0),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -775,7 +870,10 @@ private fun HeroHeaderSection(
 
             // One line, Nuvio-style: year and runtime, rating box, then the rating marks.
             Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .bodyRevealGroup(1)
+                        .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -883,7 +981,10 @@ private fun HeroHeaderSection(
                     rememberSaveable(media.id) {
                         mutableStateOf(false)
                     }
-                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().bodyRevealGroup(1),
+                    horizontalAlignment = Alignment.Start,
+                ) {
                     Text(
                         text = media.overview,
                         style = MaterialTheme.typography.bodyLarge,
@@ -911,14 +1012,82 @@ private fun HeroHeaderSection(
     }
 }
 
+/** Height of the portrait banner hero: a third taller than the screen is wide, within limits. */
+@Composable
+private fun bannerHeroHeight(): Dp =
+    (LocalConfiguration.current.screenWidthDp.dp * BANNER_HERO_RATIO).coerceIn(420.dp, 760.dp)
+
+/**
+ * The banner hero (everywhere except a phone held upright with Poster animation on): the title's
+ * backdrop, cropped around its subject in portrait, fading out at the bottom into the blurred page,
+ * with a soft scrim and the title's logo (or its name) and genres over its lower part. Fills its
+ * parent, the hero box.
+ */
+@Composable
+private fun BannerHeroArtwork(
+    media: MediaItem,
+    isLandscapeMode: Boolean,
+    motionEnabled: Boolean,
+    scrollOffset: () -> Float,
+) {
+    val focus = rememberBackdropAlignment(media.backdropPath ?: media.posterPath)
+    LocalArtwork(
+        paths = listOf(media.backdropPath, media.posterPath),
+        contentDescription = media.title,
+        alignment = if (isLandscapeMode) Alignment.Center else focus,
+        modifier =
+            Modifier.fillMaxSize()
+                .heroImageEffects({ 1f }, motionEnabled, scrollOffset)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+    )
+    Box(
+        Modifier.fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    .4f to Color.Transparent,
+                    .62f to LionTheme.colors.scrim.copy(alpha = .22f),
+                    .8f to LionTheme.colors.scrim.copy(alpha = LionAlpha.Scrim),
+                    // Ends clear: below the hero the page is the bare ambient layer.
+                    1f to Color.Transparent,
+                )
+            )
+    )
+    Box(
+        Modifier.fillMaxSize().padding(horizontal = LionLayout.DetailGutter).padding(bottom = 8.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            ArtworkTitle(
+                media.title,
+                media.logoPath,
+                Modifier.fillMaxWidth(.72f)
+                    .height(80.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.6f)),
+            )
+            if (!media.genres.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = media.genres.split(",").take(3).joinToString(" • ") { it.trim() },
+                    style =
+                        MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** Banner hero height as a multiple of the screen width. */
+private const val BANNER_HERO_RATIO = 1.33f
+
 private fun LazyListScope.seasonSelectorAndEpisodes(
     media: MediaItem,
     state: DetailsState,
     onAction: (DetailsAction) -> Unit,
     onEpisodeLongClick: (Episode) -> Unit,
-    // Clear by default so the blurred backdrop continues behind the season tabs; the two-pane
-    // layout passes its fixed pane colour.
-    seasonRowColor: Color = Color.Transparent,
 ) {
     if (
         (media.mediaType == MediaType.TV_SHOW || media.mediaType == MediaType.ANIME) &&
@@ -930,7 +1099,8 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
                 .coerceAtLeast(0)
 
         item {
-            Box(modifier = Modifier.background(seasonRowColor)) {
+            // Clear, so the blurred backdrop continues behind the season tabs in every layout.
+            Box(modifier = Modifier.bodyRevealGroup(2)) {
                 SecondaryScrollableTabRow(
                     selectedTabIndex = selectedSeasonIndex,
                     edgePadding = 16.dp,
@@ -986,7 +1156,7 @@ private fun LazyListScope.seasonSelectorAndEpisodes(
                     }
                 },
                 onLongClick = { onEpisodeLongClick(episode) },
-                modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp),
+                modifier = Modifier.bodyRevealGroup(2),
             )
         }
     } else if (
@@ -1103,24 +1273,42 @@ private fun LocalHeaderPreview() {
 /** Fraction of the toolbar height its surface travels while sliding in. */
 private const val TOOLBAR_SLIDE = .35f
 
-/** Opaque top, fading to transparent over the lower third of the hero image. */
-private val HeroFadeMask =
-    Brush.verticalGradient(0f to Color.Black, .62f to Color.Black, 1f to Color.Transparent)
+/**
+ * How the page body enters and leaves under an external hero: [progress] gives each group's
+ * visibility (0 away, 1 in place), and a group still on its way sits up to [slide] higher, just
+ * under the poster.
+ */
+@Stable internal class BodyReveal(val slide: Dp, val progress: (group: Int) -> Float)
+
+private val LocalBodyReveal = staticCompositionLocalOf<BodyReveal?> { null }
+
+/** Fades and slides this part of the body with its [group]; nothing without a [BodyReveal]. */
+@Composable
+private fun Modifier.bodyRevealGroup(group: Int): Modifier {
+    val reveal = LocalBodyReveal.current ?: return this
+    return graphicsLayer {
+        val p = reveal.progress(group)
+        alpha = p
+        translationY = -(1f - p) * reveal.slide.toPx()
+    }
+}
+
+/** Body groups: genres and actions, details and synopsis, seasons and episodes. */
+private const val BODY_GROUPS = 3
+
+/** End value of the reveal clock. */
+private const val REVEAL_DONE = 1f
+
+/** The hero image is opaque down to this fraction of its height, then fades out. */
+private const val HERO_FADE_START = .8f
+
+/** Mask for the hero's bottom edge; [amount] 0 leaves the image whole, 1 fades it out fully. */
+private fun heroFadeMask(amount: Float): Brush =
+    Brush.verticalGradient(
+        0f to Color.Black,
+        HERO_FADE_START to Color.Black,
+        1f to Color.Black.copy(alpha = 1f - amount),
+    )
 
 /** Hero image moves at this fraction of the scroll speed. */
 private const val HERO_PARALLAX = .5f
-
-/** Slight over-scale so parallax never reveals the image edge. */
-private const val HERO_OVERSCALE = 1.06f
-
-/** Pull distance kept per pixel dragged past the top (before it tightens), and its cap. */
-private const val HERO_PULL_RESISTANCE = .55f
-private const val HERO_PULL_MAX_PX = 420f
-
-/** Fixed hero height plus the current pull, applied in layout so a pull never recomposes. */
-private fun Modifier.stretchedHeight(base: Dp, pullPx: () -> Float): Modifier =
-    layout { measurable, constraints ->
-        val height = base.roundToPx() + pullPx().roundToInt()
-        val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
-        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-    }

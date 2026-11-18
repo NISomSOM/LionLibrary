@@ -39,15 +39,19 @@ fun JumpBackInCard(
     val moreActions = stringResource(R.string.more_actions)
     val background = MaterialTheme.colorScheme.background
     val status = item.resumeCardStatus()
+    val longPress = rememberLongPressSource()
     Column(
         modifier
-            .width(247.dp)
+            .width(LionLayout.resumeCardWidth)
             .clip(RoundedCornerShape(LionLayout.CardRadius))
             .cardEdge(LionLayout.CardRadius, LionTheme.colors)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onLongClick,
+                onLongClick = {
+                    longPress.capture()
+                    onLongClick()
+                },
                 onLongClickLabel = moreActions,
             )
             .semantics {
@@ -60,7 +64,7 @@ fun JumpBackInCard(
                     )
             }
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).then(longPress.modifier)) {
             LocalArtwork(
                 listOf(item.thumbnailPath, item.backdropPath, item.posterPath),
                 null,

@@ -122,7 +122,7 @@ private fun SkeletonPosterShelf(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(LionLayout.ItemGap),
         ) {
             repeat(4) {
-                SkeletonBlock(Modifier.width(LionLayout.PosterWidth).aspectRatio(2f / 3f))
+                SkeletonBlock(Modifier.width(LionLayout.posterCardWidth).aspectRatio(2f / 3f))
             }
         }
     }

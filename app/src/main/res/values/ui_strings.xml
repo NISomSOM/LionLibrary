@@ -5,4 +5,8 @@
     <!-- Jump Back In options: %1$d season, %2$d episode, %3$s episode title (may be empty) -->
     <string name="jump_back_in_episode">S%1$dE%2$d • %3$s</string>
     <string name="loading_content">Loading</string>
+    <string name="marked_as_watched">Marked as watched</string>
+    <string name="appearance">Appearance</string>
+    <string name="poster_animation">Poster animation</string>
+    <string name="poster_animation_description">On a phone held upright, posters fly into the details page and back. Off: pages fade in, with the title\'s banner and logo at the top.</string>
 </resources>

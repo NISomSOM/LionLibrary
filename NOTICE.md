@@ -57,6 +57,10 @@ independent application and is not affiliated with or endorsed by VideoLAN.
 
 **Coil** (image loading) — Apache License 2.0
 
+## Adapted sample code
+
+**Jetsnack** (android/compose-samples) — Apache License 2.0, Copyright 2020 The Android Open Source Project. The poster-to-Details shared transition is adapted from it.
+
 ---
 
 Full license texts for Apache License 2.0 and LGPLv2.1 are available at:

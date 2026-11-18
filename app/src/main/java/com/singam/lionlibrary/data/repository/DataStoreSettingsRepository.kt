@@ -50,4 +50,9 @@ class DataStoreSettingsRepository(private val preferencesManager: PreferencesMan
 
     override suspend fun setOnlineSkipTimes(enabled: Boolean) =
         preferencesManager.setOnlineSkipTimes(enabled)
+
+    override val posterTransitions: Flow<Boolean> = preferencesManager.posterTransitions
+
+    override suspend fun setPosterTransitions(enabled: Boolean) =
+        preferencesManager.setPosterTransitions(enabled)
 }

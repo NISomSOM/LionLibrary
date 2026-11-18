@@ -6,8 +6,11 @@ import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.*
 import com.singam.lionlibrary.domain.model.*
+import com.singam.lionlibrary.domain.usecase.MarkMediaWatchedUseCase
 import com.singam.lionlibrary.presentation.library.*
+import com.singam.lionlibrary.testing.FakeDeletionRepository
 import com.singam.lionlibrary.testing.FakeMediaRepository
+import com.singam.lionlibrary.testing.FakeWatchProgressRepository
 import com.singam.lionlibrary.testing.media
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -36,7 +39,13 @@ class LibraryViewModelTest {
             val repository = FakeMediaRepository()
             val handle =
                 SavedStateHandle(mapOf("type" to "ANIME", "query" to "😀 %_", "watchlist" to true))
-            val vm = LibraryViewModel(repository, handle)
+            val vm =
+                LibraryViewModel(
+                    repository,
+                    handle,
+                    MarkMediaWatchedUseCase(repository, FakeWatchProgressRepository()),
+                    FakeDeletionRepository(),
+                )
             backgroundScope.launch { vm.state.collect {} }
 
             vm.setInitialFilter(MediaFilter.MOVIES)
@@ -54,7 +63,13 @@ class LibraryViewModelTest {
     fun `rapid searches cancel the previous database collection`() =
         runTest(dispatcher) {
             val repo = FakeMediaRepository()
-            val vm = LibraryViewModel(repo, SavedStateHandle())
+            val vm =
+                LibraryViewModel(
+                    repo,
+                    SavedStateHandle(),
+                    MarkMediaWatchedUseCase(repo, FakeWatchProgressRepository()),
+                    FakeDeletionRepository(),
+                )
             backgroundScope.launch { vm.state.collect {} }
 
             vm.onAction(LibraryAction.QueryChanged("slow"))
@@ -73,7 +88,13 @@ class LibraryViewModelTest {
     fun `nothing is observed until the screen collects and it stops after the grace period`() =
         runTest(dispatcher) {
             val repo = FakeMediaRepository()
-            val vm = LibraryViewModel(repo, SavedStateHandle())
+            val vm =
+                LibraryViewModel(
+                    repo,
+                    SavedStateHandle(),
+                    MarkMediaWatchedUseCase(repo, FakeWatchProgressRepository()),
+                    FakeDeletionRepository(),
+                )
             advanceTimeBy(1_000)
             assertThat(repo.subscriptions.active.value).isEqualTo(0)
 
@@ -93,7 +114,13 @@ class LibraryViewModelTest {
     fun `collecting again after playback shows cached results without a loading state`() =
         runTest(dispatcher) {
             val repo = FakeMediaRepository().apply { browseAnswer = { listOf(media(1)) } }
-            val vm = LibraryViewModel(repo, SavedStateHandle())
+            val vm =
+                LibraryViewModel(
+                    repo,
+                    SavedStateHandle(),
+                    MarkMediaWatchedUseCase(repo, FakeWatchProgressRepository()),
+                    FakeDeletionRepository(),
+                )
             val first = backgroundScope.launch { vm.state.collect {} }
             advanceTimeBy(201)
             assertThat(vm.state.value.items.map { it.id }).containsExactly(1L)
@@ -114,7 +141,13 @@ class LibraryViewModelTest {
     fun `failed query clears the spinner and a new query clears the error`() =
         runTest(dispatcher) {
             val repo = FakeMediaRepository().apply { browseFailure = IllegalStateException("db") }
-            val vm = LibraryViewModel(repo, SavedStateHandle())
+            val vm =
+                LibraryViewModel(
+                    repo,
+                    SavedStateHandle(),
+                    MarkMediaWatchedUseCase(repo, FakeWatchProgressRepository()),
+                    FakeDeletionRepository(),
+                )
             backgroundScope.launch { vm.state.collect {} }
             advanceTimeBy(201)
 

@@ -3,10 +3,14 @@ package com.singam.lionlibrary.ui.theme
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 
 /**
@@ -15,6 +19,31 @@ import androidx.compose.ui.unit.dp
  * DESIGN.md (secondary text colour, hairline colour, card edge).
  */
 internal object LionLayout {
+    /**
+     * Tablets (smallest width 600 dp and up) get larger cards than phones, in either orientation;
+     * phone-sized cards look lost on a large screen.
+     */
+    val isTablet: Boolean
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalConfiguration.current.smallestScreenWidthDp >= 600
+
+    /** Width of a poster card on a shelf. */
+    val posterCardWidth
+        @Composable @ReadOnlyComposable get() = if (isTablet) PosterWidthTablet else PosterWidth
+
+    /** Width of a Jump back in card. */
+    val resumeCardWidth
+        @Composable
+        @ReadOnlyComposable
+        get() = if (isTablet) ResumeCardWidthTablet else ResumeCardWidth
+
+    /** Narrowest a Library grid cell may get before the grid drops a column. */
+    val libraryCellMin
+        @Composable
+        @ReadOnlyComposable
+        get() = if (isTablet) LibraryCellMinTablet else LibraryCellMin
+
     // Spacing scale.
     val SpaceXxs = 2.dp
     val SpaceXs = 4.dp
@@ -31,6 +60,11 @@ internal object LionLayout {
     val ItemGap = 12.dp
     val CaptionGap = 6.dp
     val PosterWidth = 126.dp
+    val PosterWidthTablet = 176.dp
+    val ResumeCardWidth = 247.dp
+    val ResumeCardWidthTablet = 340.dp
+    val LibraryCellMin = 104.dp
+    val LibraryCellMinTablet = 156.dp
     val BookmarkGlyph = 16.dp
     val BookmarkBadge = 24.dp
 
@@ -44,6 +78,30 @@ internal object LionLayout {
     /** Width of every hairline border and card edge. */
     val Hairline = 1.dp
 }
+
+/**
+ * On tablets, draws [content] [scale] times larger: every dp and sp inside grows together, so a
+ * phone-sized element keeps its proportions. Phones get [content] unchanged. Only for small,
+ * self-contained pieces (a bar, a title block), not whole screens.
+ */
+@Composable
+internal fun TabletScale(scale: Float, content: @Composable () -> Unit) {
+    if (!LionLayout.isTablet) {
+        content()
+        return
+    }
+    val density = LocalDensity.current
+    CompositionLocalProvider(
+        LocalDensity provides Density(density.density * scale, density.fontScale),
+        content = content,
+    )
+}
+
+/** How much larger the floating navigation bar is on tablets. */
+internal const val TABLET_NAV_SCALE = 1.25f
+
+/** How much larger the Home hero's logo, facts and ratings are on tablets. */
+internal const val TABLET_HERO_TEXT_SCALE = 1.4f
 
 /** Opacity levels, so scrims and disabled/overlay states use a small, consistent set. */
 internal object LionAlpha {

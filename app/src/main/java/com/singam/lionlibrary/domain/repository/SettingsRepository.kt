@@ -2,6 +2,7 @@ package com.singam.lionlibrary.domain.repository
 
 import com.singam.lionlibrary.domain.model.ScanSummary
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 interface SettingsRepository {
     val keyVerified: Flow<Boolean>
@@ -40,4 +41,13 @@ interface SettingsRepository {
     val onlineSkipTimes: Flow<Boolean>
 
     suspend fun setOnlineSkipTimes(enabled: Boolean)
+
+    /**
+     * Whether a tapped poster flies into the Details page (on) or the page simply fades in with a
+     * banner hero (off). Defaults keep test doubles that do not care working.
+     */
+    val posterTransitions: Flow<Boolean>
+        get() = flowOf(true)
+
+    suspend fun setPosterTransitions(enabled: Boolean) {}
 }

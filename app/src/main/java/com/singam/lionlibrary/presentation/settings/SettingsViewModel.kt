@@ -40,6 +40,7 @@ data class SettingsState(
     val forceLibVlc: Boolean = false,
     val forceExternalPlayer: Boolean = false,
     val onlineSkipTimes: Boolean = true,
+    val posterTransitions: Boolean = true,
 )
 
 sealed interface SettingsAction {
@@ -68,6 +69,8 @@ sealed interface SettingsAction {
     data class OnForceExternalPlayerToggle(val enabled: Boolean) : SettingsAction
 
     data class OnOnlineSkipTimesToggle(val enabled: Boolean) : SettingsAction
+
+    data class OnPosterTransitionsToggle(val enabled: Boolean) : SettingsAction
 }
 
 sealed interface SettingsEvent {
@@ -135,6 +138,7 @@ class SettingsViewModel(
             is SettingsAction.OnForceExternalPlayerToggle ->
                 toggleForceExternalPlayer(action.enabled)
             is SettingsAction.OnOnlineSkipTimesToggle -> toggleOnlineSkipTimes(action.enabled)
+            is SettingsAction.OnPosterTransitionsToggle -> togglePosterTransitions(action.enabled)
         }
     }
 
@@ -181,6 +185,10 @@ class SettingsViewModel(
 
             settingsRepository.onlineSkipTimes.first().let { enabled ->
                 _state.update { it.copy(onlineSkipTimes = enabled) }
+            }
+
+            settingsRepository.posterTransitions.first().let { enabled ->
+                _state.update { it.copy(posterTransitions = enabled) }
             }
         }
     }
@@ -296,6 +304,13 @@ class SettingsViewModel(
         launchSetting {
             settingsRepository.setOnlineSkipTimes(enabled)
             _state.update { it.copy(onlineSkipTimes = enabled) }
+        }
+    }
+
+    private fun togglePosterTransitions(enabled: Boolean) {
+        launchSetting {
+            settingsRepository.setPosterTransitions(enabled)
+            _state.update { it.copy(posterTransitions = enabled) }
         }
     }
 }

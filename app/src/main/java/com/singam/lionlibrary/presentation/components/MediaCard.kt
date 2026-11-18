@@ -1,9 +1,15 @@
 package com.singam.lionlibrary.presentation.components
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,31 +19,40 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.MediaItem
-import com.singam.lionlibrary.presentation.navigation.posterArtworkKey
-import com.singam.lionlibrary.presentation.navigation.rememberPosterZoomSource
+import com.singam.lionlibrary.presentation.details.prewarmAmbientBackdrop
+import com.singam.lionlibrary.presentation.navigation.LocalPosterTapOrigin
+import com.singam.lionlibrary.presentation.navigation.posterCardSharedBounds
 import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionTheme
 import com.singam.lionlibrary.ui.theme.cardEdge
 
 /**
- * [sharedShelf] names the shelf or grid this card sits in. With it, a tap makes the Details page
- * zoom out of this card (and back into it); the card itself never moves. A touch also starts
- * decoding the title's backdrop, so the page has its hero ready when it appears.
+ * [sharedShelf] names the shelf or grid this card sits in. With it, the poster is shared with the
+ * Details page a tap opens: it flies out of this card to the top of the page and back. A touch also
+ * starts decoding the title's logo and blurred backdrop, so the page has them ready.
  */
 @Composable
 fun MediaCard(
@@ -50,29 +65,58 @@ fun MediaCard(
 ) {
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
-    val zoomSource =
-        rememberPosterZoomSource(sharedShelf?.let { posterArtworkKey(it, mediaItem.id) })
-    val backdropPath = mediaItem.backdropPath ?: mediaItem.posterPath
+    val tapOrigin = LocalPosterTapOrigin.current
+    val sharedBounds = posterCardSharedBounds(mediaItem.id, sharedShelf)
+    val longPress = rememberLongPressSource()
+    val posterPath = mediaItem.posterPath
     val logoPath = mediaItem.logoPath
+    // The card dips a little under the finger and springs back, so a touch is answered at once.
+    val interactionSource = remember { MutableInteractionSource() }
+    var artworkSize by remember { mutableStateOf(Size.Zero) }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressScale by
+        animateFloatAsState(
+            if (pressed) PRESSED_SCALE else 1f,
+            spring(dampingRatio = .6f, stiffness = Spring.StiffnessMedium),
+            label = "cardPress",
+        )
     Surface(
         modifier =
             modifier
-                .width(LionLayout.PosterWidth)
-                .pointerInput(backdropPath, logoPath, sharedShelf) {
-                    if (sharedShelf == null || backdropPath == null) return@pointerInput
+                .width(LionLayout.posterCardWidth)
+                .graphicsLayer {
+                    scaleX = pressScale
+                    scaleY = pressScale
+                }
+                .pointerInput(posterPath, logoPath, sharedShelf) {
+                    if (sharedShelf == null) return@pointerInput
                     awaitEachGesture {
                         // Observe only: the click and long press below still get the touch.
                         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        prewarmArtwork(context, backdropPath)
+                        posterPath?.let { prewarmAmbientBackdrop(context, it) }
                         logoPath?.let { prewarmArtwork(context, it) }
                     }
                 }
                 .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
                     onClick = {
-                        zoomSource.onTapped()
+                        if (sharedShelf != null && posterPath != null) {
+                            tapOrigin?.onCardTapped(
+                                sharedShelf,
+                                posterPath,
+                                artworkSize.takeIf { it != Size.Zero },
+                            )
+                        }
                         onClick()
                     },
-                    onLongClick = onLongClick,
+                    onLongClick =
+                        onLongClick?.let { handler ->
+                            {
+                                longPress.capture()
+                                handler()
+                            }
+                        },
                 ),
         // Only artwork is rounded: rounding the caption cuts the year at the bottom corners.
         shape = RectangleShape,
@@ -82,7 +126,9 @@ fun MediaCard(
             Box(
                 Modifier.fillMaxWidth()
                     .aspectRatio(2f / 3f)
-                    .then(zoomSource.modifier)
+                    .then(longPress.modifier)
+                    .onSizeChanged { artworkSize = it.toSize() }
+                    .then(sharedBounds)
                     .clip(RoundedCornerShape(LionLayout.CardRadius))
                     .cardEdge(LionLayout.CardRadius, LionTheme.colors)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
@@ -167,3 +213,6 @@ fun MediaCard(
         }
     }
 }
+
+/** Size of a poster card while a finger is on it. */
+private const val PRESSED_SCALE = .955f

@@ -5,11 +5,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.*
+import com.singam.lionlibrary.domain.repository.DeletionTarget
+import com.singam.lionlibrary.domain.repository.MediaDeletionRepository
 import com.singam.lionlibrary.domain.repository.MediaRepository
+import com.singam.lionlibrary.domain.usecase.MarkMediaWatchedUseCase
+import com.singam.lionlibrary.presentation.common.DeletionPresenter
+import com.singam.lionlibrary.presentation.common.DeletionUiState
 import com.singam.lionlibrary.presentation.common.UiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -21,9 +27,26 @@ data class LibraryState(
     val genres: List<String> = emptyList(),
     val isLoading: Boolean = true,
     val error: UiText? = null,
+    val selectedMediaForOptions: MediaItem? = null,
+    val deletion: DeletionUiState = DeletionUiState(),
 )
 
+sealed interface LibraryEvent {
+    data class ShowMessage(val message: UiText) : LibraryEvent
+}
+
 sealed interface LibraryAction {
+    /** Opens (or with null closes) the long-press options of a poster. */
+    data class MediaOptions(val item: MediaItem?) : LibraryAction
+
+    data class MarkWatched(val item: MediaItem) : LibraryAction
+
+    data class RequestDelete(val mediaId: Long) : LibraryAction
+
+    data object ConfirmDelete : LibraryAction
+
+    data object DismissDelete : LibraryAction
+
     data class QueryChanged(val value: String) : LibraryAction
 
     data class TypeChanged(val value: MediaFilter) : LibraryAction
@@ -46,8 +69,22 @@ sealed interface LibraryAction {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-class LibraryViewModel(private val media: MediaRepository, private val saved: SavedStateHandle) :
-    ViewModel() {
+class LibraryViewModel(
+    private val media: MediaRepository,
+    private val saved: SavedStateHandle,
+    private val markMediaWatched: MarkMediaWatchedUseCase,
+    deletionRepository: MediaDeletionRepository,
+) : ViewModel() {
+    private val _events = Channel<LibraryEvent>()
+    val events = _events.receiveAsFlow()
+    private val deletion =
+        DeletionPresenter(
+            deletionRepository,
+            viewModelScope,
+            {},
+            { _events.send(LibraryEvent.ShowMessage(it)) },
+        )
+
     private val initial =
         LibraryQuery(
             text = saved["query"] ?: "",
@@ -131,6 +168,12 @@ class LibraryViewModel(private val media: MediaRepository, private val saved: Sa
                 local.value,
             )
 
+    init {
+        viewModelScope.launch {
+            deletion.state.collect { value -> local.update { it.copy(deletion = value) } }
+        }
+    }
+
     fun setInitialFilter(filter: MediaFilter) {
         if (!saved.contains("type")) updateQuery { it.copy(type = filter) }
     }
@@ -148,7 +191,31 @@ class LibraryViewModel(private val media: MediaRepository, private val saved: Sa
 
     fun onAction(action: LibraryAction) {
         when (action) {
-            is LibraryAction.ToggleItemWatchlist ->
+            is LibraryAction.MediaOptions ->
+                local.update { it.copy(selectedMediaForOptions = action.item) }
+            is LibraryAction.MarkWatched -> {
+                local.update { it.copy(selectedMediaForOptions = null) }
+                viewModelScope.launch {
+                    try {
+                        markMediaWatched(action.item)
+                        _events.send(
+                            LibraryEvent.ShowMessage(UiText.Resource(R.string.marked_as_watched))
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        local.update { it.copy(error = UiText.Resource(R.string.error_storage)) }
+                    }
+                }
+            }
+            is LibraryAction.RequestDelete -> {
+                local.update { it.copy(selectedMediaForOptions = null) }
+                deletion.request(DeletionTarget(action.mediaId))
+            }
+            LibraryAction.ConfirmDelete -> deletion.confirm()
+            LibraryAction.DismissDelete -> deletion.dismiss()
+            is LibraryAction.ToggleItemWatchlist -> {
+                local.update { it.copy(selectedMediaForOptions = null) }
                 viewModelScope.launch {
                     try {
                         media.toggleWatchlist(action.id)
@@ -158,6 +225,7 @@ class LibraryViewModel(private val media: MediaRepository, private val saved: Sa
                         local.update { it.copy(error = UiText.Resource(R.string.error_storage)) }
                     }
                 }
+            }
             is LibraryAction.QueryChanged -> updateQuery { it.copy(text = action.value) }
             is LibraryAction.TypeChanged -> updateQuery { it.copy(type = action.value) }
             is LibraryAction.SortChanged -> updateQuery { it.copy(sort = action.value) }

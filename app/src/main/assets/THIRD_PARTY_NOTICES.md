@@ -17,6 +17,9 @@ AndroidX / Jetpack (including Compose, Room, Media3, DataStore, Navigation, Prof
 kotlinx.coroutines, kotlinx.serialization, Koin, Retrofit and OkHttp: Apache License 2.0.
 Full text: licenses/Apache-2.0.txt.
 Coil: Apache License 2.0. https://github.com/coil-kt/coil
+Jetsnack sample (android/compose-samples): Copyright 2020 The Android Open Source Project,
+Apache License 2.0. The poster-to-Details shared transition is adapted from it.
+https://github.com/android/compose-samples
 
 libVLC Android 3.7.7: LGPL 2.1 or later. Distributed as separate shared libraries;
 LionLibrary does not modify them. Full text: licenses/LGPL-2.1.txt.

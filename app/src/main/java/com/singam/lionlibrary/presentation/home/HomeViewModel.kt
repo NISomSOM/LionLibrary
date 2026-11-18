@@ -11,9 +11,11 @@ import com.singam.lionlibrary.domain.model.MediaItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.repository.DeletionTarget
 import com.singam.lionlibrary.domain.repository.MediaDeletionRepository
+import com.singam.lionlibrary.domain.repository.MediaRepository
 import com.singam.lionlibrary.domain.repository.WatchProgressRepository
 import com.singam.lionlibrary.domain.usecase.GetHomeContentUseCase
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
+import com.singam.lionlibrary.domain.usecase.MarkMediaWatchedUseCase
 import com.singam.lionlibrary.presentation.common.DeletionPresenter
 import com.singam.lionlibrary.presentation.common.DeletionUiState
 import com.singam.lionlibrary.presentation.common.UiText
@@ -54,6 +56,10 @@ data class HomeState(
 sealed interface HomeAction {
     data class MediaOptions(val item: MediaItem?) : HomeAction
 
+    data class MarkWatched(val item: MediaItem) : HomeAction
+
+    data class ToggleWatchlist(val mediaId: Long) : HomeAction
+
     data class RequestDelete(val mediaId: Long) : HomeAction
 
     data object ConfirmDelete : HomeAction
@@ -87,6 +93,8 @@ class HomeViewModel(
     private val launchPlayerUseCase: LaunchPlayerUseCase,
     private val watchProgressRepository: WatchProgressRepository,
     private val externalPlaybackRouter: ExternalPlaybackRouter,
+    private val mediaRepository: MediaRepository,
+    private val markMediaWatched: MarkMediaWatchedUseCase,
     deletionRepository: MediaDeletionRepository,
 ) : ViewModel() {
 
@@ -170,6 +178,33 @@ class HomeViewModel(
         when (action) {
             is HomeAction.MediaOptions ->
                 local.update { it.copy(selectedMediaForOptions = action.item) }
+            is HomeAction.MarkWatched -> {
+                local.update { it.copy(selectedMediaForOptions = null) }
+                viewModelScope.launch {
+                    try {
+                        markMediaWatched(action.item)
+                        _events.send(
+                            HomeEvent.ShowMessage(UiText.Resource(R.string.marked_as_watched))
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        _events.send(HomeEvent.ShowError(UiText.Resource(R.string.error_storage)))
+                    }
+                }
+            }
+            is HomeAction.ToggleWatchlist -> {
+                local.update { it.copy(selectedMediaForOptions = null) }
+                viewModelScope.launch {
+                    try {
+                        mediaRepository.toggleWatchlist(action.mediaId)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        _events.send(HomeEvent.ShowError(UiText.Resource(R.string.error_storage)))
+                    }
+                }
+            }
             is HomeAction.RequestDelete -> {
                 local.update {
                     it.copy(selectedMediaForOptions = null, selectedJumpBackInItem = null)

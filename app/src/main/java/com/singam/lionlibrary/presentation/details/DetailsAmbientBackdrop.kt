@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.singam.lionlibrary.ui.theme.LionMotion
@@ -37,7 +38,11 @@ private const val AMBIENT_DECODE_PX = 96
  * local image or when it fails to load, the flat background shows instead. Never uses a URL.
  */
 @Composable
-internal fun DetailsAmbientBackdrop(path: String?, modifier: Modifier = Modifier) {
+internal fun DetailsAmbientBackdrop(
+    path: String?,
+    modifier: Modifier = Modifier,
+    fadeMillis: Int = LionMotion.Slow,
+) {
     val context = LocalContext.current
     val supported = remember(context) { ambientSupported(context) }
     val background = MaterialTheme.colorScheme.background
@@ -47,18 +52,10 @@ internal fun DetailsAmbientBackdrop(path: String?, modifier: Modifier = Modifier
         val alpha by
             animateFloatAsState(
                 if (loaded) 1f else 0f,
-                tween(LionMotion.Slow, easing = LionMotion.EnterEasing),
+                tween(fadeMillis, easing = LionMotion.EnterEasing),
                 label = "ambientFade",
             )
-        val request =
-            remember(path, context) {
-                val file = File(path)
-                ImageRequest.Builder(context)
-                    .data(file)
-                    .size(AMBIENT_DECODE_PX)
-                    .memoryCacheKey("ambient:$path:${file.lastModified()}:${file.length()}")
-                    .build()
-            }
+        val request = remember(path, context) { ambientRequest(context, path) }
         AsyncImage(
             model = request,
             contentDescription = null,
@@ -72,6 +69,25 @@ internal fun DetailsAmbientBackdrop(path: String?, modifier: Modifier = Modifier
                 .graphicsLayer { this.alpha = alpha }
                 .background(background.copy(alpha = AMBIENT_TINT_ALPHA))
         )
+    }
+}
+
+private fun ambientRequest(context: Context, path: String): ImageRequest {
+    val file = File(path)
+    return ImageRequest.Builder(context)
+        .data(file)
+        .size(AMBIENT_DECODE_PX)
+        .memoryCacheKey("ambient:$path:${file.lastModified()}:${file.length()}")
+        .build()
+}
+
+/**
+ * Starts decoding the small ambient copy of a local image into the memory cache, so a Details page
+ * that is about to open has its blurred backdrop from the first frame. Never uses a URL.
+ */
+fun prewarmAmbientBackdrop(context: Context, path: String) {
+    if (ambientSupported(context)) {
+        SingletonImageLoader.get(context).enqueue(ambientRequest(context, path))
     }
 }
 

@@ -1,6 +1,7 @@
 package com.singam.lionlibrary.presentation.home
 
 import android.content.Context
+import android.content.res.Configuration
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.core.Spring
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -47,16 +47,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -73,8 +72,8 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -85,7 +84,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
@@ -103,17 +101,22 @@ import com.singam.lionlibrary.presentation.components.DeletionDialog
 import com.singam.lionlibrary.presentation.components.HomeSkeleton
 import com.singam.lionlibrary.presentation.components.JumpBackInCard
 import com.singam.lionlibrary.presentation.components.LocalArtwork
+import com.singam.lionlibrary.presentation.components.LongPressPreview
 import com.singam.lionlibrary.presentation.components.MediaCard
+import com.singam.lionlibrary.presentation.components.MediaItemPreview
 import com.singam.lionlibrary.presentation.components.MediaOptionItem
-import com.singam.lionlibrary.presentation.components.PosterPreview
 import com.singam.lionlibrary.presentation.components.PreviewFilm
 import com.singam.lionlibrary.presentation.components.ShelfHeading
 import com.singam.lionlibrary.presentation.components.rememberBackdropAlignment
+import com.singam.lionlibrary.presentation.components.rememberHeroPullConnection
+import com.singam.lionlibrary.presentation.components.stretchedHeight
 import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
 import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import com.singam.lionlibrary.ui.theme.LionMotion
-import com.singam.lionlibrary.ui.theme.LionTheme
+import com.singam.lionlibrary.ui.theme.TABLET_HERO_TEXT_SCALE
+import com.singam.lionlibrary.ui.theme.TabletScale
+import com.singam.lionlibrary.ui.theme.rememberSystemMotionEnabled
 import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -184,29 +187,24 @@ fun HomeScreen(
     onLibraryClick: (MediaFilter) -> Unit = {},
 ) {
     val selectedJumpBackInItem = state.selectedJumpBackInItem
-    val sheetState = rememberModalBottomSheetState()
     DeletionDialog(
         state.deletion,
         { onAction(HomeAction.ConfirmDelete) },
         { onAction(HomeAction.DismissDelete) },
     )
-    // Poster long press: lifted preview over a blurred/dimmed page, same actions as before.
+    // Poster long press: the poster lifts out of its card over a blurred/dimmed page.
     state.selectedMediaForOptions?.let { media ->
-        PosterPreview(
+        MediaItemPreview(
             media = media,
             onOpen = {
                 onAction(HomeAction.MediaOptions(null))
                 onMediaClick(media.id, media.mediaType)
             },
             onDismiss = { onAction(HomeAction.MediaOptions(null)) },
-        ) {
-            MediaOptionItem(
-                Icons.Default.Delete,
-                stringResource(R.string.delete_from_device),
-                { onAction(HomeAction.RequestDelete(media.id)) },
-                iconTint = MaterialTheme.colorScheme.error,
-            )
-        }
+            onMarkWatched = { onAction(HomeAction.MarkWatched(media)) },
+            onToggleWatchlist = { onAction(HomeAction.ToggleWatchlist(media.id)) },
+            onDelete = { onAction(HomeAction.RequestDelete(media.id)) },
+        )
     }
 
     if (state.isLoading) {
@@ -248,10 +246,18 @@ fun HomeScreen(
     }
 
     val listState = rememberLazyListState()
+    // Same rubber band as the Details hero: a pull at the top stretches the carousel.
+    val heroPull = remember { mutableFloatStateOf(0f) }
+    val pullConnection =
+        rememberHeroPullConnection(
+            heroPull,
+            enabled = rememberSystemMotionEnabled() && state.carouselItems.isNotEmpty(),
+        )
     LazyColumn(
         state = listState,
         modifier =
             Modifier.fillMaxSize()
+                .nestedScroll(pullConnection)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
         contentPadding = PaddingValues(bottom = LocalFloatingNavigationInset.current + 16.dp),
     ) {
@@ -265,6 +271,7 @@ fun HomeScreen(
                             listState.firstVisibleItemScrollOffset.toFloat()
                         else 0f
                     },
+                    pullPx = { heroPull.floatValue },
                     onInfoClick = { id, type -> onMediaClick(id, type) },
                     onItemLongClick = { onAction(HomeAction.MediaOptions(it)) },
                 )
@@ -358,105 +365,83 @@ fun HomeScreen(
         }
     }
 
+    // Jump Back In long press: the card's picture lifts out of the row, same options as before.
     selectedJumpBackInItem?.let { item ->
-        ModalBottomSheet(
-            onDismissRequest = { onAction(HomeAction.SelectOptions(null)) },
-            sheetState = sheetState,
-            containerColor = MaterialTheme.colorScheme.surface,
+        LongPressPreview(
+            title = item.mediaTitle,
+            onDismiss = { onAction(HomeAction.SelectOptions(null)) },
+            artworkAspectRatio = 16f / 9f,
+            subtitle =
+                if (item.mediaType != MediaType.MOVIE) {
+                    stringResource(
+                        R.string.jump_back_in_episode,
+                        item.seasonNumber ?: 0,
+                        item.episodeNumber ?: 0,
+                        item.episodeTitle.orEmpty(),
+                    )
+                } else {
+                    null
+                },
+            artwork = {
+                LocalArtwork(
+                    paths = listOf(item.thumbnailPath, item.backdropPath, item.posterPath),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
         ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val imagePath =
-                        if (item.mediaType == MediaType.MOVIE) {
-                            item.posterPath ?: item.backdropPath
-                        } else {
-                            item.thumbnailPath ?: item.backdropPath ?: item.posterPath
-                        }
-                    if (imagePath != null) {
-                        LocalArtwork(
-                            paths = listOf(imagePath),
-                            contentDescription = item.mediaTitle,
-                            contentScale = ContentScale.Crop,
-                            modifier =
-                                Modifier.width(125.dp).height(70.dp).clip(RoundedCornerShape(8.dp)),
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            text = item.mediaTitle,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = LionTheme.colors.onMedia,
-                        )
-                        if (item.mediaType != MediaType.MOVIE) {
-                            Text(
-                                text =
-                                    stringResource(
-                                        R.string.jump_back_in_episode,
-                                        item.seasonNumber ?: 0,
-                                        item.episodeNumber ?: 0,
-                                        item.episodeTitle.orEmpty(),
-                                    ),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = LionTheme.colors.textSecondary,
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                MediaOptionItem(
-                    icon = Icons.Default.Info,
-                    text = stringResource(R.string.ui_go_to_details),
-                    onClick = {
-                        onAction(HomeAction.SelectOptions(null))
-                        onMediaClick(item.mediaId, item.mediaType)
-                    },
-                )
-                MediaOptionItem(
-                    icon = Icons.Default.PlayArrow,
-                    text = stringResource(R.string.ui_play_in_external_player),
-                    onClick = {
-                        onAction(HomeAction.SelectOptions(null))
-                        onAction(HomeAction.OnPlayExternal(item))
-                    },
-                    iconTint = MaterialTheme.colorScheme.primary,
-                )
-                MediaOptionItem(
-                    icon = Icons.Default.Refresh,
-                    text = stringResource(R.string.ui_start_from_beginning),
-                    onClick = {
-                        onAction(HomeAction.SelectOptions(null))
-                        onAction(HomeAction.OnStartFromBeginning(item))
-                    },
-                    iconTint = MaterialTheme.colorScheme.primary,
-                )
-                MediaOptionItem(
-                    icon = Icons.Default.Delete,
-                    text = stringResource(R.string.ui_remove),
-                    onClick = {
-                        onAction(HomeAction.SelectOptions(null))
-                        onAction(HomeAction.OnRemoveWatchProgress(item))
-                    },
-                    iconTint = MaterialTheme.colorScheme.primary,
-                )
-                MediaOptionItem(
-                    icon = Icons.Default.Delete,
-                    text = stringResource(R.string.delete_from_device),
-                    onClick = { onAction(HomeAction.RequestDelete(item.mediaId)) },
-                    iconTint = MaterialTheme.colorScheme.error,
-                )
-            }
+            MediaOptionItem(
+                icon = Icons.Default.Info,
+                text = stringResource(R.string.ui_go_to_details),
+                onClick = {
+                    onAction(HomeAction.SelectOptions(null))
+                    onMediaClick(item.mediaId, item.mediaType)
+                },
+            )
+            MediaOptionItem(
+                icon = Icons.Default.PlayArrow,
+                text = stringResource(R.string.ui_play_in_external_player),
+                onClick = {
+                    onAction(HomeAction.SelectOptions(null))
+                    onAction(HomeAction.OnPlayExternal(item))
+                },
+                iconTint = MaterialTheme.colorScheme.primary,
+            )
+            MediaOptionItem(
+                icon = Icons.Default.Refresh,
+                text = stringResource(R.string.ui_start_from_beginning),
+                onClick = {
+                    onAction(HomeAction.SelectOptions(null))
+                    onAction(HomeAction.OnStartFromBeginning(item))
+                },
+                iconTint = MaterialTheme.colorScheme.primary,
+            )
+            MediaOptionItem(
+                icon = Icons.Default.Delete,
+                text = stringResource(R.string.ui_remove),
+                onClick = {
+                    onAction(HomeAction.SelectOptions(null))
+                    onAction(HomeAction.OnRemoveWatchProgress(item))
+                },
+                iconTint = MaterialTheme.colorScheme.primary,
+            )
+            MediaOptionItem(
+                icon = Icons.Default.Delete,
+                text = stringResource(R.string.delete_from_device),
+                onClick = { onAction(HomeAction.RequestDelete(item.mediaId)) },
+                iconTint = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }
 
+/** Tallest the landscape hero gets, as a share of the screen height. */
+private const val LANDSCAPE_HERO_MAX = .8f
+
 private const val HERO_AUTO_SCROLL_MS = 8_000L
+
+/** Hero image moves at this fraction of the vertical scroll speed (as on Details). */
+private const val HERO_PARALLAX = .5f
 
 @ExperimentalFoundationApi
 @Composable
@@ -465,6 +450,8 @@ internal fun HeroBannerCarousel(
     onInfoClick: (Long, MediaType) -> Unit,
     modifier: Modifier = Modifier,
     verticalScrollOffset: () -> Float = { 0f },
+    // Extra height in pixels while the page is pulled down past its top.
+    pullPx: () -> Float = { 0f },
     onItemLongClick: (MediaItem) -> Unit = {},
 ) {
     if (mediaItems.isEmpty()) return
@@ -529,9 +516,23 @@ internal fun HeroBannerCarousel(
 
     val configuration = LocalConfiguration.current
     val fontScale = LocalDensity.current.fontScale
+    val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // Landscape keeps the backdrop's own 16:9 shape as far as the screen allows, so the picture
+    // is shown whole rather than cut down to a thin strip; portrait is a tall crop.
     val heroHeight =
-        (configuration.screenHeightDp.dp * .58f).coerceIn(360.dp, 600.dp) +
-            (80.dp * (fontScale - 1f).coerceIn(0f, 1f))
+        if (landscape) {
+            minOf(
+                configuration.screenWidthDp.dp * 9f / 16f,
+                configuration.screenHeightDp.dp * LANDSCAPE_HERO_MAX,
+            )
+        } else {
+            (configuration.screenHeightDp.dp * .58f).coerceIn(360.dp, 600.dp) +
+                (80.dp * (fontScale - 1f).coerceIn(0f, 1f))
+        }
+    // Portrait over-scales the picture a little so its sideways parallax never shows an edge;
+    // landscape shows it at its true size and crossfades without the sideways drift.
+    val pictureScale = if (motionEnabled && !landscape) 1.14f else 1f
+    val pictureDrift = if (motionEnabled && !landscape) .055f else 0f
     val logoHeight = 80.dp * fontScale.coerceIn(1f, 1.6f)
     val background = MaterialTheme.colorScheme.background
     val optionsLabel = stringResource(R.string.media_options)
@@ -549,7 +550,7 @@ internal fun HeroBannerCarousel(
                     )
             )
         }
-    Column(modifier.fillMaxWidth().height(heroHeight)) {
+    Column(modifier.fillMaxWidth().stretchedHeight(heroHeight, pullPx)) {
         Box(Modifier.fillMaxWidth().weight(1f).clip(RectangleShape)) {
             // Pager supplies native swipe/fling semantics. Visual layers move less than a full
             // page and crossfade; read offsets in draw to keep frames out of composition.
@@ -586,23 +587,25 @@ internal fun HeroBannerCarousel(
                     val media = mediaItems[page]
                     // Tall hero over a wide backdrop: bias the crop toward the subject.
                     val focus = rememberBackdropAlignment(media.backdropPath ?: media.posterPath)
+                    val layer =
+                        Modifier.fillMaxSize().graphicsLayer {
+                            val offset =
+                                (pagerState.currentPage - page) +
+                                    pagerState.currentPageOffsetFraction
+                            alpha = (1f - abs(offset)).coerceIn(0f, 1f)
+                            translationX = -offset * size.width * pictureDrift
+                            // Same parallax as the Details hero: the picture moves at half the
+                            // scroll speed while the page slides over it.
+                            translationY =
+                                if (motionEnabled) verticalScrollOffset() * HERO_PARALLAX else 0f
+                            scaleX = pictureScale
+                            scaleY = pictureScale
+                        }
                     LocalArtwork(
                         listOf(media.backdropPath, media.posterPath),
                         null,
                         alignment = focus,
-                        modifier =
-                            Modifier.fillMaxSize().graphicsLayer {
-                                val offset =
-                                    (pagerState.currentPage - page) +
-                                        pagerState.currentPageOffsetFraction
-                                alpha = (1f - abs(offset)).coerceIn(0f, 1f)
-                                translationX =
-                                    if (motionEnabled) -offset * size.width * .055f else 0f
-                                translationY =
-                                    if (motionEnabled) verticalScrollOffset() * .22f else 0f
-                                scaleX = if (motionEnabled) 1.14f else 1f
-                                scaleY = if (motionEnabled) 1.14f else 1f
-                            },
+                        modifier = layer,
                     )
                 }
             }
@@ -610,37 +613,41 @@ internal fun HeroBannerCarousel(
             visiblePages.forEach { page ->
                 key(mediaItems[page].id) {
                     val media = mediaItems[page]
-                    Column(
-                        Modifier.align(Alignment.BottomCenter)
-                            .graphicsLayer {
-                                val offset =
-                                    (pagerState.currentPage - page) +
-                                        pagerState.currentPageOffsetFraction
-                                alpha = (1f - abs(offset)).coerceIn(0f, 1f)
-                                translationX =
-                                    if (motionEnabled) -offset * size.width * .18f else 0f
-                            }
-                            .then(
-                                if (page != pagerState.currentPage) Modifier.clearAndSetSemantics {}
-                                else Modifier
+                    // Larger logo and facts on tablets, where phone sizes look small.
+                    TabletScale(TABLET_HERO_TEXT_SCALE) {
+                        Column(
+                            Modifier.align(Alignment.BottomCenter)
+                                .graphicsLayer {
+                                    val offset =
+                                        (pagerState.currentPage - page) +
+                                            pagerState.currentPageOffsetFraction
+                                    alpha = (1f - abs(offset)).coerceIn(0f, 1f)
+                                    translationX =
+                                        if (motionEnabled) -offset * size.width * .18f else 0f
+                                }
+                                .then(
+                                    if (page != pagerState.currentPage)
+                                        Modifier.clearAndSetSemantics {}
+                                    else Modifier
+                                )
+                                .padding(horizontal = LionLayout.Gutter, vertical = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            ArtworkTitle(
+                                media.title,
+                                media.logoPath,
+                                Modifier.fillMaxWidth(.72f).height(logoHeight),
                             )
-                            .padding(horizontal = LionLayout.Gutter, vertical = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        ArtworkTitle(
-                            media.title,
-                            media.logoPath,
-                            Modifier.fillMaxWidth(.72f).height(logoHeight),
-                        )
-                        HeroMetadata(
-                            mediaType = media.mediaType,
-                            genres = media.genres,
-                            durationMinutes = media.duration,
-                            year = media.year,
-                            tmdbRating = media.rating,
-                            letterboxdRating = media.letterboxdRating,
-                            language = media.originalLanguage,
-                        )
+                            HeroMetadata(
+                                mediaType = media.mediaType,
+                                genres = media.genres,
+                                durationMinutes = media.duration,
+                                year = media.year,
+                                tmdbRating = media.rating,
+                                letterboxdRating = media.letterboxdRating,
+                                language = media.originalLanguage,
+                            )
+                        }
                     }
                 }
             }

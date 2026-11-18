@@ -224,6 +224,14 @@ fun SettingsScreen(
                     description = stringResource(R.string.online_skip_times_description),
                 )
             }
+            SettingsSection(stringResource(R.string.appearance)) {
+                PlaybackSetting(
+                    stringResource(R.string.poster_animation),
+                    state.posterTransitions,
+                    { onAction(SettingsAction.OnPosterTransitionsToggle(it)) },
+                    description = stringResource(R.string.poster_animation_description),
+                )
+            }
             SettingsSection(stringResource(R.string.scan_library)) {
                 if (state.isScanning) {
                     val progress = state.scanProgress

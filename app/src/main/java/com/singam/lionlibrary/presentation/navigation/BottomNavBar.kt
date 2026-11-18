@@ -38,6 +38,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import com.singam.lionlibrary.ui.theme.LionMotion
+import com.singam.lionlibrary.ui.theme.TABLET_NAV_SCALE
+import com.singam.lionlibrary.ui.theme.TabletScale
 import kotlin.math.roundToInt
 
 internal data class TopLevelDestination(
@@ -86,12 +88,15 @@ fun BottomNavBar(
     val selectedIndex = topLevelDestinations.indexOfFirst {
         entry?.destination?.hasRoute(it.route::class) == true
     }
-    BottomNavBarContent(
-        selectedIndex,
-        { navController.openTopLevel(topLevelDestinations[it].route) },
-        modifier,
-        compact,
-    )
+    // The same bar, larger on tablets (both orientations).
+    TabletScale(TABLET_NAV_SCALE) {
+        BottomNavBarContent(
+            selectedIndex,
+            { navController.openTopLevel(topLevelDestinations[it].route) },
+            modifier,
+            compact,
+        )
+    }
 }
 
 @Composable

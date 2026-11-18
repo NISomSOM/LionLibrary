@@ -255,6 +255,7 @@ class FakeSettingsRepository : SettingsRepository {
     override val forceLibVlc = MutableStateFlow(false)
     override val forceExternalPlayer = MutableStateFlow(false)
     override val onlineSkipTimes = MutableStateFlow(true)
+    override val posterTransitions = MutableStateFlow(true)
 
     /** When set, every write throws it (a full or unreadable DataStore). */
     var writeFailure: Throwable? = null
@@ -287,6 +288,8 @@ class FakeSettingsRepository : SettingsRepository {
         write(forceExternalPlayer, enabled)
 
     override suspend fun setOnlineSkipTimes(enabled: Boolean) = write(onlineSkipTimes, enabled)
+
+    override suspend fun setPosterTransitions(enabled: Boolean) = write(posterTransitions, enabled)
 }
 
 class FakeMetadataRepository : MetadataRepository {

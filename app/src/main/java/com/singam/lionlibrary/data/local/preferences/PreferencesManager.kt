@@ -150,6 +150,15 @@ class PreferencesManager(context: Context) {
     suspend fun setOnlineSkipTimes(enabled: Boolean) {
         portable.edit { prefs -> prefs[PreferencesKeys.ONLINE_SKIP_TIMES] = enabled }
     }
+
+    /** Poster-to-Details flight; on by default. Off: plain fades and a banner hero. */
+    val posterTransitions: Flow<Boolean> = portableData.map { prefs ->
+        prefs[PreferencesKeys.POSTER_TRANSITIONS] ?: true
+    }
+
+    suspend fun setPosterTransitions(enabled: Boolean) {
+        portable.edit { prefs -> prefs[PreferencesKeys.POSTER_TRANSITIONS] = enabled }
+    }
 }
 
 /** Emits empty preferences (so every key reads its default) when the file cannot be read. */

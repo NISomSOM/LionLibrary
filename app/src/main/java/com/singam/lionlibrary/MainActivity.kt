@@ -6,11 +6,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,7 +21,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -46,11 +45,11 @@ import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.singam.lionlibrary.domain.repository.ArtworkRepository
+import com.singam.lionlibrary.domain.repository.SettingsRepository
 import com.singam.lionlibrary.domain.usecase.ScanCoordinator
 import com.singam.lionlibrary.presentation.navigation.*
 import com.singam.lionlibrary.presentation.navigation.BottomNavBar
 import com.singam.lionlibrary.presentation.navigation.LionLibraryNavHost
-import com.singam.lionlibrary.presentation.navigation.NavigationRailBar
 import com.singam.lionlibrary.presentation.navigation.NavigationScrollConnection
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import com.singam.lionlibrary.ui.theme.LionMotion
@@ -67,6 +66,15 @@ class MainActivity : ComponentActivity() {
 
     private val artworkRepository: ArtworkRepository by inject()
     private val scanCoordinator: ScanCoordinator by inject()
+    private val settingsRepository: SettingsRepository by inject()
+
+    private val posterTransitions by lazy {
+        settingsRepository.posterTransitions.stateIn(
+            lifecycleScope,
+            SharingStarted.WhileSubscribed(),
+            true,
+        )
+    }
 
     // A scan publishes artwork in bursts; sampling turns hundreds of publications into a few
     // artwork refreshes. The latest revision always arrives.
@@ -87,6 +95,7 @@ class MainActivity : ComponentActivity() {
         scanCoordinator.autoScanOnLaunch()
         setContent {
             val revision by artworkRevision.collectAsStateWithLifecycle()
+            val posterAnimation by posterTransitions.collectAsStateWithLifecycle()
             LionLibraryTheme(artworkRevision = revision) {
                 val windowSizeClass = calculateWindowSizeClass(this)
                 val navController = rememberNavController()
@@ -108,8 +117,6 @@ class MainActivity : ComponentActivity() {
                 // A phone's forced landscape player can have a wide window. Orientation
                 // policy must use its smallest width, independent of that temporary window.
                 val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
-                val useNavigationRail =
-                    windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
 
                 DisposableEffect(navController, isTablet) {
                     val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
@@ -161,11 +168,7 @@ class MainActivity : ComponentActivity() {
                             Modifier.windowInsetsPadding(
                                 WindowInsets(
                                     bottom =
-                                        if (
-                                            showNavElements &&
-                                                !useNavigationRail &&
-                                                !keyboardVisible
-                                        )
+                                        if (showNavElements && !keyboardVisible)
                                             with(density) { floatingBarHeightPx.toDp() }
                                         else 0.dp
                                 )
@@ -175,45 +178,63 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 ) { innerPadding ->
-                    val floating = showNavElements && !useNavigationRail && !keyboardVisible
+                    // Phones and tablets alike use the floating bottom bar.
+                    val floating = showNavElements && !keyboardVisible
                     CompositionLocalProvider(
                         LocalFloatingNavigationInset provides
                             if (floating) with(density) { floatingBarHeightPx.toDp() } else 0.dp
                     ) {
-                        Box(
+                        // One shared transition layout around the pages and the floating bar
+                        // (as in Jetsnack): a poster card and its Details page share their bounds
+                        // in its overlay, and the bar is drawn above them there.
+                        SharedTransitionLayout(
                             Modifier.fillMaxSize()
                                 .padding(innerPadding)
                                 .consumeWindowInsets(innerPadding)
                         ) {
-                            Row(Modifier.fillMaxSize().nestedScroll(navScrollConnection)) {
-                                if (showNavElements && useNavigationRail) {
-                                    NavigationRailBar(navController)
-                                }
-                                LionLibraryNavHost(
-                                    navController = navController,
-                                    snackbarHostState = snackbarHostState,
-                                    windowSizeClass = windowSizeClass,
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                            // Fades with the page it belongs to instead of cutting in over a
-                            // Details or player transition.
-                            AnimatedVisibility(
-                                visible = floating,
-                                modifier = Modifier.align(Alignment.BottomCenter),
-                                enter =
-                                    fadeIn(tween(LionMotion.Medium, easing = LionMotion.Easing)),
-                                exit = fadeOut(tween(LionMotion.Fast, easing = LionMotion.Easing)),
+                            CompositionLocalProvider(
+                                LocalSharedTransitionScope provides this@SharedTransitionLayout
                             ) {
-                                BottomNavBar(
-                                    navController,
-                                    Modifier.onSizeChanged {
-                                        // Keep the full-size inset while compact, so lists do not
-                                        // shift as the bar narrows during scrolling.
-                                        if (!navCompact) floatingBarHeightPx = it.height
-                                    },
-                                    compact = navCompact,
-                                )
+                                Box(Modifier.fillMaxSize()) {
+                                    LionLibraryNavHost(
+                                        navController = navController,
+                                        posterTransitions = posterAnimation,
+                                        snackbarHostState = snackbarHostState,
+                                        windowSizeClass = windowSizeClass,
+                                        modifier =
+                                            Modifier.fillMaxSize()
+                                                .nestedScroll(navScrollConnection),
+                                    )
+                                    // Fades with the page it belongs to instead of cutting in over
+                                    // a Details or player transition, and stays above a page that
+                                    // is growing out of or shrinking into a poster card.
+                                    AnimatedVisibility(
+                                        visible = floating,
+                                        modifier =
+                                            Modifier.align(Alignment.BottomCenter)
+                                                .renderInSharedTransitionScopeOverlay(
+                                                    zIndexInOverlay = NAV_BAR_OVERLAY_Z
+                                                ),
+                                        enter =
+                                            fadeIn(
+                                                tween(LionMotion.Medium, easing = LionMotion.Easing)
+                                            ),
+                                        exit =
+                                            fadeOut(
+                                                tween(LionMotion.Fast, easing = LionMotion.Easing)
+                                            ),
+                                    ) {
+                                        BottomNavBar(
+                                            navController,
+                                            Modifier.onSizeChanged {
+                                                // Keep the full-size inset while compact, so lists
+                                                // do not shift as the bar narrows during scrolling.
+                                                if (!navCompact) floatingBarHeightPx = it.height
+                                            },
+                                            compact = navCompact,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

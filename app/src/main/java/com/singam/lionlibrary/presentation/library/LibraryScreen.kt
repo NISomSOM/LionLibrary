@@ -7,8 +7,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -18,24 +22,43 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.presentation.common.UiText
+import com.singam.lionlibrary.presentation.components.DeletionDialog
 import com.singam.lionlibrary.presentation.components.LibraryFilterChip
 import com.singam.lionlibrary.presentation.components.LibrarySearchField
 import com.singam.lionlibrary.presentation.components.LibrarySkeleton
 import com.singam.lionlibrary.presentation.components.MediaCard
+import com.singam.lionlibrary.presentation.components.MediaItemPreview
 import com.singam.lionlibrary.presentation.components.PageHeading
 import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
+import com.singam.lionlibrary.presentation.navigation.LocalPosterTapOrigin
+import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun LibraryRoot(
+    snackbarHostState: SnackbarHostState,
     initialFilter: MediaFilter? = null,
     onMediaClick: (Long, MediaType) -> Unit,
     onSettingsClick: () -> Unit,
     viewModel: LibraryViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val snackbarScope = rememberCoroutineScope()
     LaunchedEffect(initialFilter) { initialFilter?.let(viewModel::setInitialFilter) }
+    LaunchedEffect(viewModel.events) {
+        viewModel.events.collect { event ->
+            when (event) {
+                // In its own coroutine, so a visible message never delays the next event.
+                is LibraryEvent.ShowMessage ->
+                    snackbarScope.launch {
+                        snackbarHostState.showSnackbar(event.message.resolve(context))
+                    }
+            }
+        }
+    }
     LibraryScreen(state, viewModel::onAction, onMediaClick, onSettingsClick)
 }
 
@@ -47,8 +70,28 @@ fun LibraryScreen(
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val minimumCardWidth = 104.dp * (LocalDensity.current.fontScale / 1.3f).coerceIn(1f, 1.6f)
+    val minimumCardWidth =
+        LionLayout.libraryCellMin * (LocalDensity.current.fontScale / 1.3f).coerceIn(1f, 1.6f)
     val bottomInset = LocalFloatingNavigationInset.current
+    DeletionDialog(
+        state.deletion,
+        { onAction(LibraryAction.ConfirmDelete) },
+        { onAction(LibraryAction.DismissDelete) },
+    )
+    // Poster long press: the poster lifts out of the grid over a blurred/dimmed page.
+    state.selectedMediaForOptions?.let { media ->
+        MediaItemPreview(
+            media = media,
+            onOpen = {
+                onAction(LibraryAction.MediaOptions(null))
+                onMediaClick(media.id, media.mediaType)
+            },
+            onDismiss = { onAction(LibraryAction.MediaOptions(null)) },
+            onMarkWatched = { onAction(LibraryAction.MarkWatched(media)) },
+            onToggleWatchlist = { onAction(LibraryAction.ToggleItemWatchlist(media.id)) },
+            onDelete = { onAction(LibraryAction.RequestDelete(media.id)) },
+        )
+    }
     Column(
         modifier
             .fillMaxSize()
@@ -188,8 +231,14 @@ fun LibraryScreen(
             }
         } else {
             if (state.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            val tapOrigin = LocalPosterTapOrigin.current
             LazyVerticalGrid(
-                modifier = Modifier.weight(1f),
+                // The grid's own bounds are where its cards can show: a poster flying to or from
+                // a card half under the search and filters is cut off there too.
+                modifier =
+                    Modifier.weight(1f).onGloballyPositioned {
+                        tapOrigin?.onViewport(LIBRARY_SHELF, it.boundsInRoot())
+                    },
                 columns = GridCells.Adaptive(minimumCardWidth),
                 contentPadding = PaddingValues(top = 16.dp, bottom = bottomInset + 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -203,7 +252,8 @@ fun LibraryScreen(
                         onToggleWatchlist = {
                             onAction(LibraryAction.ToggleItemWatchlist(item.id))
                         },
-                        sharedShelf = "library",
+                        onLongClick = { onAction(LibraryAction.MediaOptions(item)) },
+                        sharedShelf = LIBRARY_SHELF,
                     )
                 }
             }
@@ -285,3 +335,6 @@ private fun ErrorPreview() {
         )
     }
 }
+
+/** Shelf name of the Library grid for the poster transition. */
+private const val LIBRARY_SHELF = "library"

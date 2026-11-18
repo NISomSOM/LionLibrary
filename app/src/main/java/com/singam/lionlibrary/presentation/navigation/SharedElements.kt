@@ -1,363 +1,281 @@
+/*
+ * The scope locals, the shared element key, the shared poster with its animated overlay clip and
+ * the bottom bar drawn in the overlay follow the Jetsnack sample (android/compose-samples,
+ * JetsnackApp.kt, Snacks.kt and SnackDetail.kt), Copyright 2020 The Android Open Source Project,
+ * licensed under the Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
+ * Adapted for LionLibrary.
+ */
 package com.singam.lionlibrary.presentation.navigation
 
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.EnterExitState
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.ArcMode
+import androidx.compose.animation.core.ExperimentalAnimationSpecApi
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.toSize
-import androidx.compose.ui.util.lerp
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import com.singam.lionlibrary.ui.theme.LionLayout
+import com.singam.lionlibrary.ui.theme.LionMotion
 import com.singam.lionlibrary.ui.theme.rememberSystemMotionEnabled
-import kotlin.math.roundToInt
-import kotlinx.coroutines.delay
 
 /** The destination's own enter/exit scope, provided inside each nav `composable {}`. */
-val LocalNavAnimatedVisibilityScope = staticCompositionLocalOf<AnimatedVisibilityScope?> { null }
+val LocalNavAnimatedVisibilityScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
+
+/** The `SharedTransitionLayout` around the navigation host and the floating bar. */
+val LocalSharedTransitionScope = compositionLocalOf<SharedTransitionScope?> { null }
 
 /**
- * Remembers which poster card opened Details and where every card sits on screen, so a Details page
- * can zoom out of its card and back into it. The same title sits on several shelves, so a card is
- * identified by shelf + title. Opening Details any other way (hero carousel, long-press preview)
- * leaves no key: plain fade.
+ * Pairs one poster card with the hero of the Details page it opened. The same title sits on several
+ * shelves, so a card is identified by title and [origin] (its shelf or grid).
+ */
+data class PosterSharedElementKey(val mediaId: Long, val origin: String)
+
+/**
+ * What a Details page needs to share its hero with the card that opened it: the [key] and the
+ * poster file, known before the page has loaded anything.
+ */
+data class PosterTransition(val key: PosterSharedElementKey, val posterPath: String)
+
+/**
+ * Carries the tapped card's shelf and poster to the navigation call made in the same click, so the
+ * Details route can name them. Details opened any other way (hero carousel, long-press preview)
+ * finds nothing here and opens with a plain fade.
  */
 @Stable
-class PosterZoomOrigin(initialKey: String? = null, initialBounds: Rect? = null) {
-    /** Key of the card behind the newest Details page, or null for a plain fade. */
-    var activeKey: String? by mutableStateOf(initialKey)
-        private set
+class PosterTapOrigin {
+    private var pending: Pair<String, String>? = null
 
-    /** True while Details is trading places with the player: those transitions only fade. */
-    var suspended: Boolean by mutableStateOf(false)
-        private set
+    // Per shelf or grid: the part of the screen its cards can show in (root coordinates), and the
+    // size of its cards' artwork. Plain maps: written on layout, read only while a poster flies.
+    private val viewports = HashMap<String, Rect>()
+    private val cardSizes = HashMap<String, Size>()
 
-    // Last known artwork rectangle of each card, in root coordinates. Plain map on purpose: it is
-    // written on every layout pass and read only while a zoom is drawing its frames. Entries are
-    // kept after a card leaves the screen, because a page may still be closing into it.
-    private val cardBounds = HashMap<String, Rect>()
-    private var tappedKey: String? = null
+    fun onCardTapped(origin: String, posterPath: String, cardSize: Size? = null) {
+        pending = origin to posterPath
+        if (cardSize != null) cardSizes[origin] = cardSize
+    }
+
+    /** Shelf and poster of the card tapped in this click, once. */
+    fun consume(): Pair<String, String>? = pending.also { pending = null }
 
     /**
-     * Still picture of the page a zoom is opening over (the whole window, taken at the tap), with
-     * the window size it stands for. Navigation drops the old page almost at once; the opening page
-     * draws this behind itself instead, so Back always meets a fully arrived page.
+     * A scrolling grid or list whose cards can sit partly under a fixed bar above it (Library's
+     * search and filters): a poster flying to or from one of its cards is cut off at [bounds]' top,
+     * as the card itself is.
      */
-    var backdrop: ImageBitmap? by mutableStateOf(null)
-        private set
-
-    var backdropWindowSize: IntSize = IntSize.Zero
-        private set
-
-    /** Set by the navigation host: takes the picture and reports it through [onBackdropReady]. */
-    var requestBackdrop: (() -> Unit)? = null
-
-    init {
-        if (initialKey != null && initialBounds != null) cardBounds[initialKey] = initialBounds
+    fun onViewport(origin: String, bounds: Rect) {
+        viewports[origin] = bounds
     }
 
-    /** Details should zoom from/into a card for the transition that is about to run. */
-    val zoomActive: Boolean
-        get() =
-            windowSnapshotSupported && activeKey?.let(cardBounds::containsKey) == true && !suspended
+    internal fun viewportOf(origin: String): Rect? = viewports[origin]
 
-    /**
-     * Where the card with [key] sits. A page asks for its own card, so a page that is still closing
-     * keeps heading for its card after another title has been opened.
-     */
-    fun boundsOf(key: String): Rect? = cardBounds[key]
-
-    /** A poster card was tapped; navigation follows in the same click. */
-    fun onCardTapped(key: String) {
-        tappedKey = key
-    }
-
-    /** Details is about to open: adopt the tapped card, or nothing if no card started this. */
-    fun onDetailsOpening() {
-        activeKey = tappedKey
-        suspended = false
-        tappedKey = null
-        backdrop = null
-        if (zoomActive) requestBackdrop?.invoke()
-    }
-
-    fun onBackdropReady(image: ImageBitmap, windowSize: IntSize) {
-        backdrop = image
-        backdropWindowSize = windowSize
-    }
-
-    /** The opening zoom has arrived (or the page left): the picture is no longer needed. */
-    fun onBackdropDone() {
-        backdrop = null
-    }
-
-    /** A card was laid out (first time, scrolling, Home returning). */
-    fun onCardPlaced(key: String, bounds: Rect) {
-        cardBounds[key] = bounds
-    }
-
-    /** Details is about to be covered by the player. */
-    fun onPlayerOpening() {
-        suspended = true
-    }
-
-    /** Details is fully on screen again. */
-    fun onDetailsSettled() {
-        suspended = false
-    }
+    internal fun cardSizeOf(origin: String): Size? = cardSizes[origin]
 }
 
-@Composable
-fun rememberPosterZoomOrigin(): PosterZoomOrigin =
-    rememberSaveable(
-        saver =
-            Saver(
-                save = { origin ->
-                    val key = origin.activeKey
-                    val bounds = key?.let(origin::boundsOf)
-                    if (key == null || bounds == null) null
-                    else listOf(key, bounds.left, bounds.top, bounds.right, bounds.bottom)
-                },
-                restore = { saved ->
-                    PosterZoomOrigin(
-                        saved[0] as String,
-                        Rect(
-                            saved[1] as Float,
-                            saved[2] as Float,
-                            saved[3] as Float,
-                            saved[4] as Float,
-                        ),
-                    )
-                },
-            )
-    ) {
-        PosterZoomOrigin()
-    }
+val LocalPosterTapOrigin = staticCompositionLocalOf<PosterTapOrigin?> { null }
 
-val LocalPosterZoomOrigin = staticCompositionLocalOf<PosterZoomOrigin?> { null }
-
-/** Key of one poster card: unique per shelf, so twin cards of a title are told apart. */
-fun posterArtworkKey(shelf: String, mediaId: Long): String = "artwork:$shelf:$mediaId"
+/** The Poster animation setting: false gives plain fades and a banner hero on Details. */
+val LocalPosterTransitions = staticCompositionLocalOf { true }
 
 /**
- * One poster card's link to the page zoom: [modifier] goes on the artwork, [onTapped] is called
- * from the card's click before navigation. The card itself never moves or scales.
- */
-@Stable
-class PosterZoomSource
-internal constructor(private val origin: PosterZoomOrigin?, private val key: String?) {
-    val modifier: Modifier =
-        if (origin == null || key == null) Modifier
-        else Modifier.onGloballyPositioned { origin.onCardPlaced(key, it.fullBoundsInRoot()) }
-
-    fun onTapped() {
-        if (origin != null && key != null) origin.onCardTapped(key)
-    }
-}
-
-@Composable
-fun rememberPosterZoomSource(key: String?): PosterZoomSource {
-    val origin = LocalPosterZoomOrigin.current
-    return remember(origin, key) { PosterZoomSource(origin, key) }
-}
-
-/**
- * Details side of the page zoom. [backdropModifier] goes on a full-size box behind the page and
- * [modifier] on the page root inside it; [posterAlpha] drives a copy of the title's poster laid
- * over the top of the page (full width, 2:3) while [isClosing].
- */
-@Stable
-class PosterZoom
-internal constructor(
-    val backdropModifier: Modifier,
-    val modifier: Modifier,
-    val isClosing: Boolean,
-    val posterAlpha: () -> Float,
-)
-
-/**
- * When a poster card opened this page, the whole page (backdrop, logo, buttons, text) scales up out
- * of that card's rectangle as one piece, clipped like the card while small. The poster itself stays
- * put, so no enlarged poster ever covers the real backdrop. Opening waits for [pageReady] (or a
- * short timeout) before it moves, so the page is finished in every frame of the zoom. The page it
- * grows over is a dimmed still picture of the window taken at the tap.
+ * Shared bounds for a poster card's artwork: the poster leaves the card and flies to the Details
+ * hero, and comes back the same way. The card's picture is drawn underneath the hero's copy of the
+ * same poster: it fades away as the poster leaves and is there at once on the way back.
  *
- * On Back or predictive back the page shrinks into the card again, over the live page underneath.
- * During the second half of that move the poster fades in over the page's top, so what lands on the
- * card is the poster itself and the page can be dropped without anything vanishing.
- *
- * Returns null (plain navigation fades) for pages opened without a card, outside navigation and
- * with system animations off. Transitions to and from the player only fade.
+ * Returns an empty modifier outside a shared transition layout, for a card with no [origin] and
+ * with system animations off.
  */
 @Composable
-fun rememberPosterZoom(pageReady: Boolean): PosterZoom? {
-    val origin = LocalPosterZoomOrigin.current ?: return null
-    val visibility = LocalNavAnimatedVisibilityScope.current ?: return null
-    // This page's own card, fixed for the page's lifetime: opening another title while this one
-    // is still closing must not send it to the other title's card.
-    val key = remember { origin.activeKey } ?: return null
-    if (!rememberSystemMotionEnabled()) return null
-
-    val transition = visibility.transition
-    val settled =
-        transition.currentState == EnterExitState.Visible &&
-            transition.targetState == EnterExitState.Visible
-    LaunchedEffect(settled) { if (settled) origin.onDetailsSettled() }
-
-    // Opening: 0 = the card's rectangle, 1 = full page. The page needs a moment to load its row
-    // and decode the backdrop, so the zoom starts when the page is ready (or after a short
-    // timeout), not at the tap: every frame of the move then shows the finished page.
-    val opening = remember { Animatable(if (origin.suspended || !origin.zoomActive) 1f else 0f) }
-    var started by remember { mutableStateOf(false) }
-    LaunchedEffect(pageReady) { if (pageReady) started = true }
-    LaunchedEffect(Unit) {
-        delay(READY_TIMEOUT_MS)
-        started = true
+fun posterCardSharedBounds(mediaId: Long, origin: String?): Modifier {
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
+    if (origin == null || sharedTransitionScope == null || animatedVisibilityScope == null) {
+        return Modifier
     }
-    LaunchedEffect(started) {
-        if (started) {
-            opening.animateTo(1f, spring(OPEN_DAMPING, OPEN_STIFFNESS))
-            origin.onBackdropDone()
-        }
-    }
-    // The still picture of the old page dims a little as soon as it is shown.
-    val dim = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { dim.animateTo(1f, tween(BACKDROP_DIM_MS)) }
-
-    // Closing (Back and predictive back): driven by the navigation transition itself.
-    val closing =
-        transition.animateFloat(
-            transitionSpec = {
-                // The page underneath is rebuilt during the first frames of a return; the
-                // short hold lets that start behind the still-full page.
-                if (targetState == EnterExitState.PostExit) {
-                    tween(CLOSE_MS, delayMillis = CLOSE_HOLD_MS, easing = FastOutSlowInEasing)
-                } else {
-                    snap()
-                }
-            },
-            label = "posterZoomClose",
-        ) { state ->
-            if (state == EnterExitState.PostExit) 0f else 1f
-        }
-    val isClosing = transition.targetState == EnterExitState.PostExit && !origin.suspended
-
-    val posterAlpha = remember {
-        { ((POSTER_FADE_START - closing.value) / POSTER_FADE_SPAN).coerceIn(0f, 1f) }
-    }
-    var pageOffset by remember { mutableStateOf(Offset.Zero) }
-    val cornerPx = with(LocalDensity.current) { LionLayout.CardRadius.toPx() }
-    val clip = remember { Path() }
-    val scrim = MaterialTheme.colorScheme.background
-    val backdropModifier = Modifier.drawBehind {
-        val picture = origin.backdrop ?: return@drawBehind
-        if (opening.value >= 1f || isClosing) return@drawBehind
-        val window = origin.backdropWindowSize
-        drawImage(
-            picture,
-            dstOffset = IntOffset(-pageOffset.x.roundToInt(), -pageOffset.y.roundToInt()),
-            dstSize = window,
+    if (!rememberSystemMotionEnabled()) return Modifier
+    val tapOrigin = LocalPosterTapOrigin.current
+    val density = LocalDensity.current
+    val heroHeightPx = with(density) { posterHeroHeight().toPx() }
+    with(sharedTransitionScope) {
+        // Fixed corners: an animated shape would recompose every card on every frame.
+        val cornerPx = with(density) { LionLayout.CardRadius.toPx() }
+        val clip =
+            remember(tapOrigin, origin, heroHeightPx) {
+                PosterOverlayClip({ cornerPx }, tapOrigin, origin, heroHeightPx)
+            }
+        return Modifier.sharedBounds(
+            rememberSharedContentState(PosterSharedElementKey(mediaId, origin)),
+            animatedVisibilityScope = animatedVisibilityScope,
+            enter = EnterTransition.None,
+            // The hero's copy of the poster covers this one from the first frame. Left in place,
+            // it would show through the hero's bottom fade until the spring had fully settled.
+            exit = fadeOut(tween(CARD_COPY_FADE_MS, CARD_COPY_HOLD_MS, easing = LinearEasing)),
+            boundsTransform = PosterBoundsTransform,
+            clipInOverlayDuringTransition = clip,
         )
-        drawRect(scrim, alpha = dim.value * (1f - BACKDROP_BRIGHTNESS))
     }
-    val modifier =
-        Modifier.onGloballyPositioned { pageOffset = it.positionInRoot() }
-            .graphicsLayer {
-                val card = origin.boundsOf(key)
-                if (card == null || origin.suspended) return@graphicsLayer
-                val p = opening.value * closing.value
-                if (p == 1f) return@graphicsLayer
-                // Uniform scale pinned to the card's top-left: the page's width matches the
-                // container's width all the way, so the hero grows exactly where the poster is.
-                val scale = lerp(card.width / size.width, 1f, p)
-                transformOrigin = TransformOrigin(0f, 0f)
-                scaleX = scale
-                scaleY = scale
-                translationX = lerp(card.left - pageOffset.x, 0f, p)
-                translationY = lerp(card.top - pageOffset.y, 0f, p)
-                // Fades in while opening. Closing stays solid: it lands as the poster.
-                alpha = (opening.value / OPEN_FADE_SPAN).coerceIn(0f, 1f)
-            }
-            .drawWithContent {
-                val card = origin.boundsOf(key)
-                val p = opening.value * closing.value
-                if (card == null || origin.suspended || p >= 1f) {
-                    drawContent()
-                    return@drawWithContent
-                }
-                // Container = card rectangle growing to the full page, in page pixels.
-                val t = p.coerceAtLeast(0f)
-                val scale = lerp(card.width / size.width, 1f, p).coerceAtLeast(.01f)
-                // While the poster fades in on a return, the container tightens to exactly the
-                // poster (the card's shape at page width), so no page text shows beneath it.
-                val posterHeight = size.width * card.height / card.width
-                val height =
-                    lerp(lerp(card.height, size.height, t) / scale, posterHeight, posterAlpha())
-                val corner = cornerPx * (1f - t) / scale
-                clip.reset()
-                clip.addRoundRect(RoundRect(0f, 0f, size.width, height, CornerRadius(corner)))
-                clipPath(clip) { this@drawWithContent.drawContent() }
-            }
-    return PosterZoom(backdropModifier, modifier, isClosing, posterAlpha)
 }
 
-/** Opening spring: fast with almost no overshoot, like a launcher opening an app. */
-private const val OPEN_DAMPING = .9f
-private const val OPEN_STIFFNESS = 1100f
-
-/** Fraction of the opening travel over which the page fades in. */
-private const val OPEN_FADE_SPAN = .12f
-
-/** Longest wait for the page's row and backdrop before zooming anyway. */
-private const val READY_TIMEOUT_MS = 160L
-
-/** The old page's picture dims to this brightness behind an opening zoom. */
-internal const val BACKDROP_BRIGHTNESS = .45f
-private const val BACKDROP_DIM_MS = 120
-
-/** Return: a brief hold while the page underneath starts rebuilding, then into the card. */
-private const val CLOSE_HOLD_MS = 40
-private const val CLOSE_MS = 250
+/**
+ * Shared bounds for the Details hero poster, the other end of [posterCardSharedBounds]. Its corners
+ * are rounded like the card while it is small and square once it has arrived.
+ *
+ * Returns null (plain navigation fades) without a [key], outside a shared transition layout and
+ * with system animations off.
+ */
+@Composable
+fun detailsPosterSharedBounds(key: PosterSharedElementKey?): Modifier? {
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalNavAnimatedVisibilityScope.current
+    if (key == null || sharedTransitionScope == null || animatedVisibilityScope == null) {
+        return null
+    }
+    if (!rememberSystemMotionEnabled()) return null
+    val tapOrigin = LocalPosterTapOrigin.current
+    val density = LocalDensity.current
+    val heroHeightPx = with(density) { posterHeroHeight().toPx() }
+    with(sharedTransitionScope) {
+        val corner =
+            animatedVisibilityScope.transition.animateDp(label = "detailsPosterCorner") { state ->
+                when (state) {
+                    EnterExitState.PreEnter -> LionLayout.CardRadius
+                    EnterExitState.Visible -> 0.dp
+                    EnterExitState.PostExit -> LionLayout.CardRadius
+                }
+            }
+        // Read while drawing, so the corner animation never recomposes the hero.
+        val clip =
+            remember(tapOrigin, key.origin, heroHeightPx, density) {
+                PosterOverlayClip(
+                    { with(density) { corner.value.toPx() } },
+                    tapOrigin,
+                    key.origin,
+                    heroHeightPx,
+                )
+            }
+        return Modifier.sharedBounds(
+            rememberSharedContentState(key),
+            animatedVisibilityScope = animatedVisibilityScope,
+            enter = EnterTransition.None,
+            exit = ExitTransition.None,
+            boundsTransform = PosterBoundsTransform,
+            zIndexInOverlay = POSTER_OVERLAY_Z,
+            clipInOverlayDuringTransition = clip,
+        )
+    }
+}
 
 /**
- * Closing progress (1 = full page, 0 = card) at which the poster starts to appear, and how long.
+ * The poster's flight between its card and the hero, timed by [PosterTiming]. It travels on an arc
+ * rather than a straight line: it sweeps sideways as it leaves the card and rises into place, so a
+ * card on the right swings in from the right, one on the left barely curves, and the way back
+ * retraces the same path. Fixed durations (not a spring), so a back gesture can scrub it.
+ *
+ * Going back, the poster holds briefly while the page body fades away under it, then flies home
+ * straight from wherever it is: from a page scrolled down to its episodes it comes in from above
+ * the screen.
  */
-private const val POSTER_FADE_START = .7f
-private const val POSTER_FADE_SPAN = .5f
+@OptIn(ExperimentalAnimationSpecApi::class)
+private val PosterBoundsTransform = BoundsTransform { initialBounds, targetBounds ->
+    val motion = PosterTiming
+    val opening = targetBounds.width > initialBounds.width
+    keyframes {
+        if (opening) {
+            durationMillis = motion.openMs
+            initialBounds at 0 using ArcMode.ArcBelow using LionMotion.Easing
+            targetBounds at motion.openMs
+        } else {
+            durationMillis = motion.closeHoldMs + motion.closeMs
+            initialBounds at 0 using LinearEasing
+            initialBounds at motion.closeHoldMs using ArcMode.ArcBelow using FastOutSlowInEasing
+            targetBounds at motion.closeHoldMs + motion.closeMs
+        }
+    }
+}
 
 /**
- * Bounds in root coordinates without clipping: a card cut off by the screen edge still reports its
- * whole rectangle, so the page zooms to the card's real shape.
+ * Clip for a flying poster: its rounded rectangle, cut at the top of its card's viewport while the
+ * poster is near card size, so it slides in under a fixed bar exactly as its card sits. The cut
+ * lifts as the poster grows towards the hero ([heroHeightPx] tall). Without a viewport for [origin]
+ * it is the rounded rectangle alone.
  */
-private fun LayoutCoordinates.fullBoundsInRoot(): Rect = Rect(positionInRoot(), size.toSize())
+private class PosterOverlayClip(
+    private val cornerPx: () -> Float,
+    private val tapOrigin: PosterTapOrigin?,
+    private val origin: String,
+    private val heroHeightPx: Float,
+) : SharedTransitionScope.OverlayClip {
+    private val shape = Path()
+    private val cut = Path()
+    private val result = Path()
+
+    override fun getClipPath(
+        sharedContentState: SharedTransitionScope.SharedContentState,
+        bounds: Rect,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Path {
+        shape.reset()
+        shape.addRoundRect(RoundRect(bounds, CornerRadius(cornerPx())))
+        val viewport = tapOrigin?.viewportOf(origin) ?: return shape
+        val card = tapOrigin.cardSizeOf(origin) ?: return shape
+        // 0 at hero size, 1 from a little above card size: the poster is already fully under the
+        // bar for the last frames of its flight, not just on the very last one.
+        val span = (heroHeightPx - card.height * FULL_CUT_SCALE).coerceAtLeast(1f)
+        val nearCard = ((heroHeightPx - bounds.height) / span).coerceIn(0f, 1f)
+        val cutTop = viewport.top * nearCard
+        if (cutTop <= bounds.top) return shape
+        cut.reset()
+        cut.addRect(Rect(bounds.left, cutTop, bounds.right, bounds.bottom))
+        result.reset()
+        result.op(shape, cut, PathOperation.Intersect)
+        return result
+    }
+}
+
+/**
+ * Height of the portrait Details hero: a full-width 2:3 poster on phones, capped on large screens.
+ */
+@Composable
+internal fun posterHeroHeight(): Dp =
+    (LocalConfiguration.current.screenWidthDp.dp * POSTER_HERO_RATIO).coerceIn(420.dp, 760.dp)
+
+private const val POSTER_HERO_RATIO = 1.5f
+
+/** A flying poster is cut at its viewport in full once it is within this multiple of card size. */
+private const val FULL_CUT_SCALE = 1.6f
+
+/** How quickly the card's own poster fades under the hero's copy as the poster leaves. */
+private const val CARD_COPY_FADE_MS = 80
+
+/** It stays solid this long first, covering the frames before the hero's copy has its image. */
+private const val CARD_COPY_HOLD_MS = 60
+
+/** Overlay order: the card's poster (0) below the hero's copy, the floating bar above both. */
+private const val POSTER_OVERLAY_Z = 1f
+internal const val NAV_BAR_OVERLAY_Z = 2f

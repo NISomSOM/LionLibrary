@@ -8,6 +8,7 @@ import com.singam.lionlibrary.R
 import com.singam.lionlibrary.domain.model.JumpBackInItem
 import com.singam.lionlibrary.domain.model.MediaType
 import com.singam.lionlibrary.domain.usecase.GetHomeContentUseCase
+import com.singam.lionlibrary.domain.usecase.MarkMediaWatchedUseCase
 import com.singam.lionlibrary.presentation.common.UiText
 import com.singam.lionlibrary.presentation.home.HomeAction
 import com.singam.lionlibrary.presentation.home.HomeEvent
@@ -46,6 +47,8 @@ class HomeViewModelTest {
             UnusedLaunchPlayer(),
             history,
             ExternalPlaybackRouter(settings, media, history, UnusedLaunchPlayer()),
+            media,
+            MarkMediaWatchedUseCase(media, history),
             FakeDeletionRepository(),
         )
 

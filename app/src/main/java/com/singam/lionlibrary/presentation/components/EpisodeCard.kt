@@ -54,11 +54,17 @@ fun EpisodeCard(
     fallbackArtwork: List<String?> = emptyList(),
 ) {
     val haptics = LocalHapticFeedback.current
+    val longPress = rememberLongPressSource()
+    // Long press and the overflow button both open the options, lifting out of the thumbnail.
+    val openOptions = {
+        longPress.capture()
+        onLongClick()
+    }
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .combinedClickable(onClick = onClick, onLongClick = openOptions)
                 .background(Color.Transparent)
                 .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
@@ -67,6 +73,7 @@ fun EpisodeCard(
                 modifier =
                     Modifier.width(96.dp)
                         .aspectRatio(16f / 9f)
+                        .then(longPress.modifier)
                         .clip(RoundedCornerShape(LionLayout.CardRadius))
                         .cardEdge(LionLayout.CardRadius, LionTheme.colors)
             ) {
@@ -145,7 +152,7 @@ fun EpisodeCard(
                     )
                 }
 
-                IconButton(onClick = onLongClick) {
+                IconButton(onClick = openOptions) {
                     Icon(
                         Icons.Default.MoreVert,
                         contentDescription = stringResource(R.string.more_actions),

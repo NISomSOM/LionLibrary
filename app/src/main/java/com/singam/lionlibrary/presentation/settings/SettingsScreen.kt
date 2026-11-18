@@ -38,6 +38,7 @@ import com.singam.lionlibrary.domain.model.DataError
 import com.singam.lionlibrary.domain.model.ScanOutcome
 import com.singam.lionlibrary.presentation.components.PageHeading
 import com.singam.lionlibrary.presentation.navigation.LocalFloatingNavigationInset
+import com.singam.lionlibrary.ui.theme.LionLayout
 import com.singam.lionlibrary.ui.theme.LionLibraryTheme
 import java.text.DateFormat
 import java.util.Date
@@ -232,11 +233,19 @@ fun SettingsScreen(
                 )
             }
             SettingsSection(stringResource(R.string.appearance)) {
+                // Tablets never fly the poster (banner hero and crossfade in every orientation),
+                // so the switch is greyed out there; the saved choice is kept for phones.
+                val posterAnimationAvailable = !LionLayout.isTablet
                 PlaybackSetting(
                     stringResource(R.string.poster_animation),
-                    state.posterTransitions,
+                    state.posterTransitions && posterAnimationAvailable,
                     { onAction(SettingsAction.OnPosterTransitionsToggle(it)) },
-                    description = stringResource(R.string.poster_animation_description),
+                    enabled = posterAnimationAvailable,
+                    description =
+                        stringResource(
+                            if (posterAnimationAvailable) R.string.poster_animation_description
+                            else R.string.not_available_on_tablets
+                        ),
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 PlaybackSetting(
@@ -492,7 +501,10 @@ private fun PlaybackSetting(
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color =
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                            alpha = if (enabled) 1f else .45f
+                        ),
                 )
             }
         }
@@ -509,6 +521,12 @@ private fun PlaybackSetting(
 @Preview(name = "Large text", fontScale = 2f)
 @Composable
 private fun SettingsPreview() {
+    LionLibraryTheme { SettingsScreen(SettingsState(), {}, {}, {}) }
+}
+
+@Preview(name = "Tablet: poster animation unavailable", widthDp = 840, heightDp = 1200)
+@Composable
+private fun SettingsTabletPreview() {
     LionLibraryTheme { SettingsScreen(SettingsState(), {}, {}, {}) }
 }
 

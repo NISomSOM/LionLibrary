@@ -18,6 +18,9 @@ import kotlin.math.roundToInt
 private const val HERO_PULL_RESISTANCE = .55f
 private const val HERO_PULL_MAX_PX = 420f
 
+/** The return spring ends within half a pixel of rest instead of chasing hundredths. */
+private const val PULL_SETTLE_PX = .5f
+
 /**
  * Rubber band at the top of a list whose first item is a hero (Details, Home carousel): a pull past
  * the top makes the hero taller by [pull] pixels, so the page follows the finger with growing
@@ -56,16 +59,25 @@ private class HeroPullConnection(
     }
 
     override suspend fun onPreFling(available: Velocity): Velocity {
-        if (pull.floatValue > 0f) {
-            animate(
-                pull.floatValue,
-                0f,
-                animationSpec = spring(dampingRatio = .82f, stiffness = 320f),
-            ) { value, _ ->
-                pull.floatValue = value
-            }
+        if (pull.floatValue <= 0f) return Velocity.Zero
+        animate(
+            pull.floatValue,
+            0f,
+            animationSpec =
+                spring(
+                    dampingRatio = .82f,
+                    stiffness = 320f,
+                    visibilityThreshold = PULL_SETTLE_PX,
+                ),
+        ) { value, _ ->
+            // Never below the resting height: the spring's tiny overshoot would shrink the hero.
+            pull.floatValue = value.coerceAtLeast(0f)
         }
-        return Velocity.Zero
+        pull.floatValue = 0f
+        // The release belongs to the pull. Handing its speed on to the list (already at the top)
+        // turned into the system's stretch overscroll once the spring had finished: a second small
+        // bounce about half a second after the hero settled.
+        return available
     }
 }
 

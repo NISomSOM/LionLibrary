@@ -302,7 +302,8 @@ class LibraryViewModel(
     }
 }
 
-private const val GENRES_KEY = "genres"
+// Not "genres": that is the route argument, which Navigation stores in the same handle as an array.
+private const val GENRES_KEY = "selectedGenres"
 private const val FILTERS_VISIBLE_KEY = "filtersVisible"
 
 private data class BrowseResult(

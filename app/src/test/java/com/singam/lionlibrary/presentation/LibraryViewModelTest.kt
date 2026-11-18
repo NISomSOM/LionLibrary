@@ -252,4 +252,16 @@ class LibraryViewModelTest {
             assertThat(vm.state.value.query.genres).containsOnly("Animation")
             vm.viewModelScope.cancel()
         }
+
+    @Test
+    fun `the genres route argument in the same handle does not break restoring`() =
+        runTest(dispatcher) {
+            // Navigation stores a List<String> route argument as an array under its own name.
+            val vm = viewModel(SavedStateHandle(mapOf("genres" to arrayOf("Drama"))))
+            backgroundScope.launch { vm.state.collect {} }
+            vm.setInitialFilter(null, listOf("Drama"))
+
+            assertThat(vm.state.value.query.genres).containsOnly("Drama")
+            vm.viewModelScope.cancel()
+        }
 }

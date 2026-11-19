@@ -406,7 +406,13 @@ class PlayerViewModel(
             completion?.let { checkSave(it.await()) }
             val current = target
             if (current != null && current == completedTarget) {
-                repository.adjacent(current, true)?.let { open(it) } ?: focus.abandon()
+                val next = repository.adjacent(current, true)
+                if (next != null) open(next)
+                else {
+                    // A movie or a show's final episode: nothing follows, so close the player.
+                    focus.abandon()
+                    mutableEvents.send(PlayerEvent.NavigateBack)
+                }
             }
         }
     }

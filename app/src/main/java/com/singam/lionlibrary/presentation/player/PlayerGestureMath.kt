@@ -3,7 +3,7 @@ package com.singam.lionlibrary.presentation.player
 import kotlin.math.abs
 import kotlin.math.roundToLong
 
-/** Thirds of the video area: volume/back-seek on the left, brightness/forward-seek on the right. */
+/** Thirds of the video area: brightness/back-seek on the left, volume/forward-seek on the right. */
 internal enum class GestureZone {
     LEFT,
     CENTER,

@@ -306,25 +306,26 @@ fun PlayerScreen(
                 }
 
                 override fun onLevelDrag(zone: GestureZone, deltaLevel: Float) {
+                    // Brightness on the left, volume on the right; each pill shows on the opposite edge.
                     if (zone == GestureZone.LEFT) {
+                        if (!brightnessDragging) dragBrightness = levels.brightness()
+                        brightnessDragging = true
+                        dragBrightness = (dragBrightness + deltaLevel).coerceIn(0f, 1f)
+                        levels.setBrightness(dragBrightness)
+                        brightnessLevel = dragBrightness
+                    } else {
                         if (!volumeDragging) dragVolume = levels.volume()
                         volumeDragging = true
                         // Fractional target so slow drags still accumulate between volume steps.
                         dragVolume = (dragVolume + deltaLevel).coerceIn(0f, 1f)
                         levels.setVolume(dragVolume)
                         volumeLevel = dragVolume
-                    } else {
-                        if (!brightnessDragging) dragBrightness = levels.brightness()
-                        brightnessDragging = true
-                        dragBrightness = (dragBrightness + deltaLevel).coerceIn(0f, 1f)
-                        levels.setBrightness(dragBrightness)
-                        brightnessLevel = dragBrightness
                     }
                 }
 
                 override fun onLevelDragEnd(zone: GestureZone) {
-                    if (zone == GestureZone.LEFT) volumeDragging = false
-                    else brightnessDragging = false
+                    if (zone == GestureZone.LEFT) brightnessDragging = false
+                    else volumeDragging = false
                 }
             }
         }
@@ -556,7 +557,7 @@ fun PlayerScreen(
             icon = Icons.Default.BrightnessMedium,
             contentDescription = stringResource(R.string.ui_brightness),
             modifier =
-                Modifier.align(Alignment.CenterStart).safeDrawingPadding().padding(start = 20.dp),
+                Modifier.align(Alignment.CenterEnd).safeDrawingPadding().padding(end = 20.dp),
         )
         PlayerLevelBar(
             level = volumeLevel,
@@ -565,7 +566,7 @@ fun PlayerScreen(
                 else Icons.AutoMirrored.Filled.VolumeUp,
             contentDescription = stringResource(R.string.ui_volume),
             modifier =
-                Modifier.align(Alignment.CenterEnd).safeDrawingPadding().padding(end = 20.dp),
+                Modifier.align(Alignment.CenterStart).safeDrawingPadding().padding(start = 20.dp),
         )
 
         state.failure?.let { failure ->

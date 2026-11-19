@@ -73,7 +73,7 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
                         }
 
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
-                            _state.update { it.copy(isPlaying = isPlaying) }
+                            _state.update { it.copy(isPlaying = isPlayingOrSeeking()) }
                         }
 
                         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -85,7 +85,12 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
                                     Player.STATE_ENDED -> EnginePlaybackState.ENDED
                                     else -> EnginePlaybackState.IDLE
                                 }
-                            _state.update { it.copy(playbackState = enginePlaybackState) }
+                            _state.update {
+                                it.copy(
+                                    playbackState = enginePlaybackState,
+                                    isPlaying = isPlayingOrSeeking(),
+                                )
+                            }
                             if (playbackState == Player.STATE_READY) {
                                 _state.update {
                                     it.copy(
@@ -142,6 +147,13 @@ class ExoPlayerEngine(context: Context) : LionPlayerEngine {
         exoPlayer.setMediaItem(mediaItemBuilder.build())
         exoPlayer.prepare()
     }
+
+    /**
+     * Playing as the viewer sees it: a seek briefly rebuffers with playWhenReady still set, and
+     * reporting that as a pause flashed the Play icon on every seek.
+     */
+    private fun Player.isPlayingOrSeeking(): Boolean =
+        isPlaying || (playWhenReady && playbackState == Player.STATE_BUFFERING)
 
     override fun play() {
         exoPlayer.play()

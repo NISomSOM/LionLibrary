@@ -10,6 +10,7 @@ import com.singam.lionlibrary.domain.model.*
 import com.singam.lionlibrary.domain.repository.*
 import com.singam.lionlibrary.domain.usecase.LaunchPlayerUseCase
 import com.singam.lionlibrary.presentation.player.PlayerAction
+import com.singam.lionlibrary.presentation.player.PlayerEvent
 import com.singam.lionlibrary.presentation.player.PlayerViewModel
 import com.singam.lionlibrary.presentation.player.engine.*
 import com.singam.lionlibrary.testing.FakeSettingsRepository
@@ -20,6 +21,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.*
@@ -34,7 +36,8 @@ import org.robolectric.annotation.Config
  * paused or failed; a speed picked during the hold being lost or applied too early; release without
  * hold; position ticks leaking into the main state; chapters not reaching the seek bar; anime
  * defaults; a manual subtitle choice not remembered; completion not saved before auto-next; and an
- * untouched file creating history on exit.
+ * untouched file creating history on exit; the player staying open after a
+ * movie or a show's final episode.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -220,6 +223,20 @@ class PlayerViewModelTest {
     }
 
     @Test
+    fun finalEpisodeClosesThePlayerAfterSavingCompletion() = playerTest {
+        repository.hasNext = false
+        val engine = start()
+        engine.position = 1_000
+
+        engine.finish()
+        runCurrent()
+
+        assertTrue(repository.saved.first().ended)
+        assertEquals(PlayerEvent.NavigateBack, vm.events.first())
+        assertFalse(engine.released)
+    }
+
+    @Test
     fun untouchedFileSavesNothingOnPause() = playerTest {
         start()
 
@@ -231,6 +248,7 @@ class PlayerViewModelTest {
 
 private class PlaybackFake : PlaybackRepository {
     var type = MediaType.TV_SHOW
+    var hasNext = true
     val saved = mutableListOf<PlaybackSnapshot>()
 
     private fun first() =
@@ -249,7 +267,7 @@ private class PlaybackFake : PlaybackRepository {
     override suspend fun target(type: MediaType, id: Long) = first()
 
     override suspend fun adjacent(target: PlaybackTarget, next: Boolean) =
-        if (next && target.episodeId == 11L)
+        if (next && hasNext && target.episodeId == 11L)
             first().copy(episodeId = 12, filePath = "content://fixture/two", episode = 2)
         else null
 
